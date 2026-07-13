@@ -240,7 +240,7 @@ export default function EventDetailScreen() {
               end={{ x: 1, y: 1 }}
               style={styles.resolutionBanner}
             >
-              <Ionicons name="trophy" size={20} color={colors.bg} />
+              <Ionicons name="trophy" size={20} color={colors.white} />
               <Text style={styles.resolutionText}>
                 Resolved: {event.resolution.winning_side} wins!
               </Text>
@@ -545,7 +545,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   resolutionText: {
-    color: colors.bg,
+    color: colors.white,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -776,7 +776,7 @@ const styles = StyleSheet.create({
   amountRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,

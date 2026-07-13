@@ -130,7 +130,7 @@ export default function ExploreScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
 
       {/* Header */}
       <View style={styles.header}>

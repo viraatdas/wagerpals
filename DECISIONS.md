@@ -81,3 +81,10 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   - HomeScreen actionSubtitleAlt inherits opacity 0.85 from actionSubtitle [out of lane] — Join Group card subtitle (textMuted) renders at 0.85 opacity — visually fine but slightly lighter than other textMuted uses; polish pass could give the alt style opacity: 1.
 - **By:** n7 · 2026-07-13T20:57:24.065Z
 
+## n0-2: No resolution work was needed: by the time this
+- **Did:** No resolution work was needed: by the time this resolver ran, jj reported zero conflicts (jj resolve --list empty, jj log -r conflicts() empty). DECISIONS.md at @ is coherent with no markers — prior resolver runs (n0-2 and n6 notes at lines 54-66) had already unioned both sides, and the current merge commit (rpxpprym, n7 six-heaviest-screens work into the integrated line) auto-merged cleanly as an empty change. Verified mobile typecheck passes (npx tsc --noEmit exit 0). No files edited.
+- **Interfaces:** None — no files changed. DECISIONS.md union from prior resolutions preserved verbatim, including the n0-2 web token contract and n6 mobile token contract.
+- **Follow-ups:**
+  - Stale conflict report in Rudder [out of lane] — Rudder reported resolver left 1 conflict(s) for DECISIONS.md but the repo had none; the signal appears to have been from an earlier merge already handled by a prior resolver run
+- **By:** n0-2 · 2026-07-13T23:37:35.323Z
+
