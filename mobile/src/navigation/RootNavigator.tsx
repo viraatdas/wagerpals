@@ -6,6 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Linking from 'expo-linking';
 
 import { RootStackParamList } from '../types/navigation';
+import { colors } from '../theme';
 import authService from '../services/auth';
 import apiService from '../services/api';
 import { AuthUser } from '../types';
@@ -111,7 +112,7 @@ export default function RootNavigator() {
   if (isLoading || checkingUsername) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#ea580c" />
+        <ActivityIndicator size="large" color={colors.brand} />
       </View>
     );
   }
@@ -119,9 +120,11 @@ export default function RootNavigator() {
   return (
     <NavigationContainer linking={linking}>
       <Stack.Navigator 
-        screenOptions={{ 
+        screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: '#f8fafc' },
+          headerStyle: { backgroundColor: colors.bg },
+          headerTitleStyle: { color: colors.text },
+          contentStyle: { backgroundColor: colors.bg2 },
           animation: 'slide_from_right',
         }}
       >
@@ -140,7 +143,7 @@ export default function RootNavigator() {
               options={{ 
                 headerShown: true, 
                 title: 'Group',
-                headerTintColor: '#ea580c',
+                headerTintColor: colors.brand,
                 headerBackTitle: 'Back',
               }}
             />
@@ -150,7 +153,7 @@ export default function RootNavigator() {
               options={{ 
                 headerShown: true, 
                 title: 'Event',
-                headerTintColor: '#ea580c',
+                headerTintColor: colors.brand,
                 headerBackTitle: 'Back',
               }}
             />
@@ -161,7 +164,7 @@ export default function RootNavigator() {
                 headerShown: true, 
                 title: 'Create Event', 
                 presentation: 'modal',
-                headerTintColor: '#ea580c',
+                headerTintColor: colors.brand,
               }}
             />
             <Stack.Screen 
@@ -170,7 +173,7 @@ export default function RootNavigator() {
               options={{ 
                 headerShown: true, 
                 title: 'Manage Group',
-                headerTintColor: '#ea580c',
+                headerTintColor: colors.brand,
                 headerBackTitle: 'Back',
               }}
             />
@@ -180,7 +183,7 @@ export default function RootNavigator() {
               options={{ 
                 headerShown: true, 
                 title: 'Join Group',
-                headerTintColor: '#ea580c',
+                headerTintColor: colors.brand,
                 headerBackTitle: 'Back',
               }}
             />
@@ -190,7 +193,7 @@ export default function RootNavigator() {
               options={{ 
                 headerShown: true, 
                 title: 'Profile',
-                headerTintColor: '#ea580c',
+                headerTintColor: colors.brand,
                 headerBackTitle: 'Back',
               }}
             />
@@ -201,7 +204,7 @@ export default function RootNavigator() {
                 headerShown: true,
                 title: 'Edit Username',
                 presentation: 'modal',
-                headerTintColor: '#ea580c',
+                headerTintColor: colors.brand,
               }}
             />
             <Stack.Screen
@@ -211,7 +214,7 @@ export default function RootNavigator() {
                 headerShown: true,
                 title: 'Wager Invite',
                 presentation: 'modal',
-                headerTintColor: '#ea580c',
+                headerTintColor: colors.brand,
               }}
             />
           </>
@@ -226,6 +229,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.bg,
   },
 });
