@@ -102,17 +102,17 @@ export default function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-background/70 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/90 backdrop-blur-xl">
         <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3.5">
           <div className="flex justify-between items-center gap-2 sm:gap-3">
             <Link href="/" className="flex min-w-0 items-center gap-2 flex-shrink whitespace-nowrap group">
               <img
                 src="/icons/icon-192x192.svg"
                 alt="WagerPals"
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex-shrink-0 ring-1 ring-white/10 transition-transform group-hover:scale-105"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex-shrink-0 ring-1 ring-gray-200 transition-transform group-hover:scale-105"
               />
               <span className="truncate text-lg sm:text-2xl font-display font-semibold text-foreground">
-                Wager<span className="text-gradient">Pals</span>
+                Wager<span className="text-brand-2">Pals</span>
               </span>
             </Link>
 
@@ -120,7 +120,7 @@ export default function Header() {
               {user && (
                 <Link
                   href="/profile?wallet=deposit#wallet"
-                  className="inline-flex h-10 max-w-[120px] sm:max-w-none items-center justify-center gap-1.5 overflow-hidden text-xs sm:text-sm font-semibold text-neon-mint bg-neon-mint/10 border border-neon-mint/25 rounded-full px-2.5 sm:px-3 whitespace-nowrap hover:bg-neon-mint/20 transition-colors"
+                  className="inline-flex h-10 max-w-[120px] sm:max-w-none items-center justify-center gap-1.5 overflow-hidden text-xs sm:text-sm font-semibold text-green-700 bg-green-600/10 border border-green-600/25 rounded-full px-2.5 sm:px-3 whitespace-nowrap hover:bg-green-600/15 transition-colors"
                   title="Deposit money into your wallet"
                 >
                   <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -137,7 +137,7 @@ export default function Header() {
                   href={link.href}
                   className={`hidden md:inline-flex text-sm font-medium transition-colors px-1 py-1 whitespace-nowrap ${
                     isActive(link.href)
-                      ? 'text-gradient'
+                      ? 'text-brand-2'
                       : 'text-muted hover:text-foreground'
                   }`}
                 >
@@ -150,13 +150,13 @@ export default function Header() {
               </Link>
 
               {user && (
-                <div className="hidden md:flex items-center gap-3 ml-1 pl-5 border-l border-white/10">
+                <div className="hidden md:flex items-center gap-3 ml-1 pl-5 border-l border-gray-200">
                   <span className="text-sm font-medium text-muted truncate max-w-[120px]">
                     {user.displayName || user.primaryEmail || 'User'}
                   </span>
                   <button
                     onClick={handleLogout}
-                    className="text-xs font-medium text-muted-2 hover:text-neon-rose transition-colors whitespace-nowrap"
+                    className="text-xs font-medium text-muted-2 hover:text-red-600 transition-colors whitespace-nowrap"
                   >
                     Sign Out
                   </button>
@@ -167,7 +167,7 @@ export default function Header() {
                 <div className="md:hidden flex items-center min-w-0">
                   <button
                     onClick={handleLogout}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-foreground hover:border-neon-rose/40 hover:text-neon-rose transition-colors"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-xs font-semibold text-foreground hover:border-red-300 hover:text-red-600 transition-colors"
                     title={`${user.displayName || user.primaryEmail} - Sign Out`}
                     aria-label="Account sign out"
                   >
@@ -180,7 +180,7 @@ export default function Header() {
         </div>
       </header>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-background/80 backdrop-blur-xl mobile-bottom-nav">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white/95 backdrop-blur-xl mobile-bottom-nav">
         <div className="grid grid-cols-6 px-1 pt-1">
           {navItems.map((item) => {
             const active = isActive(item.href);
@@ -188,11 +188,14 @@ export default function Header() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-medium transition-colors ${
-                  active ? 'text-neon-mint' : 'text-muted-2 hover:text-foreground'
+                className={`relative flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-medium transition-colors ${
+                  active ? 'text-brand-2' : 'text-muted-2 hover:text-foreground'
                 }`}
               >
-                <span className={`h-5 w-5 [&>svg]:h-5 [&>svg]:w-5 ${active ? 'drop-shadow-[0_0_6px_var(--neon-mint)]' : ''}`}>
+                {active && (
+                  <span className="absolute top-0 inset-x-4 h-0.5 rounded-full bg-brand-2" aria-hidden="true" />
+                )}
+                <span className="h-5 w-5 [&>svg]:h-5 [&>svg]:w-5">
                   {item.icon}
                 </span>
                 <span>{item.label}</span>

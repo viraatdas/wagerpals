@@ -37,7 +37,7 @@ export default function NavigationProgress() {
 
   return (
     <div
-      className={`fixed left-0 right-0 top-0 z-[100] h-0.5 bg-brand-gradient origin-left transition-transform duration-300 shadow-glow-ember ${
+      className={`fixed left-0 right-0 top-0 z-[100] h-0.5 bg-brand-gradient origin-left transition-transform duration-300 ${
         active ? 'scale-x-100' : 'scale-x-0'
       }`}
     />

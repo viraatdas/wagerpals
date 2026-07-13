@@ -100,9 +100,9 @@ export default function PushNotificationPrompt() {
   }
 
   return (
-    <div className="fixed bottom-24 left-4 right-4 max-w-sm glass-strong rounded-3xl p-4 border border-brand-2/30 shadow-glow-ember z-50 animate-slide-up sm:bottom-4 sm:left-auto">
+    <div className="fixed bottom-24 left-4 right-4 max-w-sm glass-strong rounded-3xl p-4 z-50 animate-slide-up sm:bottom-4 sm:left-auto">
       <div className="flex items-start">
-        <div className="flex-shrink-0 w-10 h-10 rounded-2xl bg-brand-2/15 border border-brand-2/30 flex items-center justify-center">
+        <div className="flex-shrink-0 w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
           <span className="text-xl">🔔</span>
         </div>
         <div className="ml-3 flex-1">
