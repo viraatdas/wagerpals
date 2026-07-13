@@ -155,7 +155,7 @@ export default function JoinGroupPage() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12">
         <div className="glass-strong rounded-3xl p-8 text-center animate-fade-in">
-          <div className="text-neon-rose mb-4">
+          <div className="text-red-500 mb-4">
             <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -177,7 +177,7 @@ export default function JoinGroupPage() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12">
         <div className="glass-strong rounded-3xl p-8 text-center animate-fade-in">
-          <div className="text-neon-mint mb-4">
+          <div className="text-green-600 mb-4">
             <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -201,8 +201,8 @@ export default function JoinGroupPage() {
     <div className="max-w-2xl mx-auto px-4 py-12">
       <div className="glass-strong rounded-3xl p-8 animate-rise">
         {isNewUser && (
-          <div className="glass-subtle rounded-2xl p-4 mb-6 border-neon-cyan/20">
-            <p className="text-neon-cyan text-center">
+          <div className="glass-subtle rounded-2xl p-4 mb-6 border-sky-200 bg-sky-50">
+            <p className="text-sky-700 text-center">
               👋 Welcome to WagerPals! You've been invited to join a group.
             </p>
           </div>
@@ -223,8 +223,8 @@ export default function JoinGroupPage() {
         </div>
 
         {error && (
-          <div className="glass-subtle rounded-2xl p-4 mb-6 border-neon-rose/20">
-            <p className="text-neon-rose">{error}</p>
+          <div className="glass-subtle rounded-2xl p-4 mb-6 border-red-200 bg-red-50">
+            <p className="text-red-600">{error}</p>
           </div>
         )}
 

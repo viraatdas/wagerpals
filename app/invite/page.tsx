@@ -36,12 +36,12 @@ function InviteContent() {
         <div className="flex items-center gap-4 mb-6">
           <div className="flex-1 glass-subtle rounded-2xl p-4 text-center">
             <p className="text-xs font-semibold text-muted-2 uppercase tracking-wide mb-1">Side A</p>
-            <p className="text-lg font-semibold text-neon-mint break-words">{sideA}</p>
+            <p className="text-lg font-semibold text-green-700 break-words">{sideA}</p>
           </div>
           <span className="text-sm font-bold text-muted-2">vs</span>
           <div className="flex-1 glass-subtle rounded-2xl p-4 text-center">
             <p className="text-xs font-semibold text-muted-2 uppercase tracking-wide mb-1">Side B</p>
-            <p className="text-lg font-semibold text-neon-rose break-words">{sideB}</p>
+            <p className="text-lg font-semibold text-red-600 break-words">{sideB}</p>
           </div>
         </div>
 
