@@ -65,3 +65,11 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
 - **Interfaces:** DECISIONS.md only; no code, tokens, or exports changed. n6 mobile token contract preserved verbatim for screen workers.
 - **By:** n6 · 2026-07-13T20:51:39.546Z
 
+## n8: Fixed dark-hardcoded styling in the remaining mobile screens and
+- **Did:** Fixed dark-hardcoded styling in the remaining mobile screens and shared components for the light Polymarket theme. Screens were already token-driven (n6 theme swap did most of the work); removed the leftovers: StatusBar light-content -> dark-content (Activity, Auth, Profile, UsernameSetup); rgba(255,255,255,0.05) input/field fills -> colors.white (Auth email+code inputs, CreateEvent side+date fields, UsernameSetup input); old dark-palette accent fills rgba(139,123,255,0.12) -> rgba(79,70,229,0.08) violet tint and rgba(255,194,61,0.12) -> rgba(217,119,6,0.08) amber tint (Activity, Profile); TextInputModal overlay rgba(0,0,0,0.6) -> rgba(0,0,0,0.4) over the white panel. White text on blue gradient buttons intentionally kept. EditUsername, JoinGroup, and both index.ts files needed no changes. Verified: cd mobile && npx tsc --noEmit passes (had to populate mobile/node_modules in this worktree via APFS clone from the main checkout — gitignored, not in diff); grep sweep over owned files finds no rgba(255,255,255,*), light-content, dark hexes, or heavy black overlays.
+- **Interfaces:** No new interfaces; styling-only edits to mobile/src/screens/{ActivityScreen,AuthScreen,CreateEventScreen,ProfileScreen,UsernameSetupScreen}.tsx and mobile/src/components/TextInputModal.tsx. Relies on n6 theme tokens verbatim (colors.white, colors.textFaint, glow() neutral shadow).
+- **Follow-ups:**
+  - Add violetFill/amberFill tokens to mobile theme [out of lane] — Activity and Profile now hardcode rgba(79,70,229,0.08) and rgba(217,119,6,0.08) tints because theme.ts only exposes mint/rose/brand/cyan fills; polish pass could centralize them
+  - screens/index.ts exports CreateEventScreen/EventDetailScreen from GroupAdminScreen [out of lane] — Looks like a stale placeholder mapping (file is unused by navigation as far as I can tell) but GroupAdminScreen is owned by the sibling worker so I left it untouched
+- **By:** n8 · 2026-07-13T20:55:48.435Z
+
