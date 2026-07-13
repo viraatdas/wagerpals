@@ -129,7 +129,7 @@ function SignInContent() {
           </h2>
 
           {error && (
-            <div className="mb-4 p-3 bg-neon-rose/10 border border-neon-rose/30 rounded-xl text-neon-rose text-sm">
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
               {error}
             </div>
           )}
@@ -145,7 +145,7 @@ function SignInContent() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="w-full bg-white/5 border border-white/10 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-3 focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition"
+              className="w-full bg-white border border-gray-200 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-3 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition"
               disabled={isLoading}
             />
             <button
@@ -171,9 +171,9 @@ function SignInContent() {
 
           {/* Divider */}
           <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-white/10" />
+            <div className="h-px flex-1 bg-gray-200" />
             <span className="text-sm text-muted-2">or</span>
-            <div className="h-px flex-1 bg-white/10" />
+            <div className="h-px flex-1 bg-gray-200" />
           </div>
 
           {/* Google OAuth */}

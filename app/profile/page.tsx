@@ -254,8 +254,8 @@ export default function ProfilePage() {
                   type="text"
                   value={newUsername}
                   onChange={handleUsernameChange}
-                  className={`w-full px-3 py-3 text-base sm:text-lg bg-white/5 border text-foreground placeholder:text-muted-2 rounded-xl outline-none transition focus:ring-2 ${
-                    error ? 'border-neon-rose/50 focus:ring-neon-rose/20' : 'border-white/10 focus:border-brand-2/50 focus:ring-brand-2/20'
+                  className={`w-full px-3 py-3 text-base sm:text-lg bg-white border text-foreground placeholder:text-muted-2 rounded-xl outline-none transition focus:ring-2 ${
+                    error ? 'border-red-300 focus:ring-red-100' : 'border-gray-200 focus:border-blue-400 focus:ring-blue-100'
                   }`}
                   placeholder="new username"
                   autoFocus
@@ -266,7 +266,7 @@ export default function ProfilePage() {
                   required
                 />
                 {error && (
-                  <p className="text-neon-rose text-sm mt-2 break-words">{error}</p>
+                  <p className="text-red-600 text-sm mt-2 break-words">{error}</p>
                 )}
                 <p className="text-xs text-muted-2 mt-2">
                   Letters, numbers, and underscores only
@@ -313,7 +313,7 @@ export default function ProfilePage() {
           </div>
           <p className="text-muted-2 text-sm mb-5">Available balance</p>
           {!stripePromise && (
-            <div className="mb-4 rounded-xl bg-neon-amber/10 border border-neon-amber/30 px-3 py-2 text-sm text-neon-amber">
+            <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-700">
               Card deposits are not configured yet. Add Stripe keys in Vercel to enable live wallet funding.
             </div>
           )}
@@ -343,14 +343,14 @@ export default function ProfilePage() {
                 options={{
                   clientSecret: depositClientSecret,
                   appearance: {
-                    theme: 'night',
+                    theme: 'stripe',
                     variables: {
-                      colorPrimary: '#ff3d81',
-                      colorBackground: '#0d0d1a',
-                      colorText: '#f4f5fb',
-                      colorTextSecondary: '#9a9eb8',
-                      colorTextPlaceholder: '#6f7390',
-                      colorDanger: '#ff5d7e',
+                      colorPrimary: '#2563eb',
+                      colorBackground: '#ffffff',
+                      colorText: '#1e2530',
+                      colorTextSecondary: '#6b7280',
+                      colorTextPlaceholder: '#9ca3af',
+                      colorDanger: '#dc2626',
                       borderRadius: '12px',
                       fontFamily: 'Inter, system-ui, sans-serif',
                     },
@@ -384,7 +384,7 @@ export default function ProfilePage() {
                     value={walletAction === 'deposit' ? depositAmount : withdrawAmount}
                     onChange={(e) => walletAction === 'deposit' ? setDepositAmount(e.target.value) : setWithdrawAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-full pl-7 pr-3 py-2.5 bg-white/5 border border-white/10 text-foreground placeholder:text-muted-2 rounded-xl text-base outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition"
+                    className="w-full pl-7 pr-3 py-2.5 bg-white border border-gray-200 text-foreground placeholder:text-muted-2 rounded-xl text-base outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition"
                     autoFocus
                   />
                 </div>
@@ -406,13 +406,13 @@ export default function ProfilePage() {
           )}
 
           {transactions.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-white/10">
+            <div className="mt-4 pt-4 border-t border-gray-200">
               <h3 className="text-sm text-muted-2 mb-2">Recent Transactions</h3>
               <div className="space-y-2 max-h-40 overflow-y-auto">
                 {transactions.slice(0, 5).map((tx: any) => (
                   <div key={tx.id} className="flex justify-between items-center text-sm">
                     <span className="text-muted truncate mr-2">{tx.description || tx.type}</span>
-                    <span className={`font-semibold whitespace-nowrap tabular-nums ${tx.amount > 0 ? 'text-neon-mint' : 'text-neon-rose'}`}>
+                    <span className={`font-semibold whitespace-nowrap tabular-nums ${tx.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {tx.amount > 0 ? '+' : ''}${Math.abs(tx.amount).toFixed(2)}
                     </span>
                   </div>
@@ -428,7 +428,7 @@ export default function ProfilePage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <div className="glass-subtle rounded-3xl p-4 sm:p-5">
               <div className="text-xs sm:text-sm text-muted-2 mb-1">Total Bet</div>
-              <div className="text-2xl sm:text-3xl font-display font-semibold text-neon-cyan break-words tabular-nums">
+              <div className="text-2xl sm:text-3xl font-display font-semibold text-sky-600 break-words tabular-nums">
                 ${userData.total_bet?.toFixed(2) || '0.00'}
               </div>
             </div>
@@ -437,9 +437,9 @@ export default function ProfilePage() {
               <div
                 className={`text-2xl sm:text-3xl font-display font-semibold break-words tabular-nums ${
                   userData.net_total > 0
-                    ? 'text-neon-mint'
+                    ? 'text-green-600'
                     : userData.net_total < 0
-                    ? 'text-neon-rose'
+                    ? 'text-red-600'
                     : 'text-muted'
                 }`}
               >
@@ -448,7 +448,7 @@ export default function ProfilePage() {
             </div>
             <div className="glass-subtle rounded-3xl p-4 sm:p-5">
               <div className="text-xs sm:text-sm text-muted-2 mb-1">Win Streak</div>
-              <div className="text-2xl sm:text-3xl font-display font-semibold text-neon-amber tabular-nums">
+              <div className="text-2xl sm:text-3xl font-display font-semibold text-amber-600 tabular-nums">
                 🔥 {userData.streak || 0}
               </div>
             </div>
