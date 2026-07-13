@@ -85,7 +85,7 @@ export default function AuthScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     height: 56,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: colors.white,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
   },
   codeInput: {
     height: 64,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: colors.white,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,

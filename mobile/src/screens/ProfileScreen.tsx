@@ -90,7 +90,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Profile Header */}
         <View style={styles.profileHeader}>
@@ -152,7 +152,7 @@ export default function ProfileScreen() {
               onPress={handleTestNotification}
               activeOpacity={0.7}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: 'rgba(255,194,61,0.12)' }]}>
+              <View style={[styles.menuIconContainer, { backgroundColor: 'rgba(217,119,6,0.08)' }]}>
                 <Ionicons name="notifications-outline" size={20} color={colors.amber} />
               </View>
               <Text style={styles.menuText}>Test Notifications</Text>
