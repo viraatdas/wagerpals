@@ -161,10 +161,10 @@ function CreateEventForm() {
               <button
                 type="button"
                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                className={`w-full bg-white/5 border rounded-xl px-5 py-4 flex items-center justify-between transition-all focus:outline-none focus:ring-2 focus:ring-brand-2/20 ${
+                className={`w-full bg-white border rounded-xl px-5 py-4 flex items-center justify-between transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-2/20 ${
                   selectedGroupId
                     ? 'border-brand-2/40 hover:border-brand-2/60'
-                    : 'border-white/10 hover:border-white/20'
+                    : 'border-gray-200 hover:border-gray-300'
                 } ${dropdownOpen ? 'border-brand-2/60' : ''}`}
               >
                 {selectedGroupId ? (
@@ -210,14 +210,14 @@ function CreateEventForm() {
                           setSelectedGroupId(group.id);
                           setDropdownOpen(false);
                         }}
-                        className={`w-full px-5 py-4 flex items-center gap-3 hover:bg-white/5 transition-colors text-left ${
+                        className={`w-full px-5 py-4 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left ${
                           selectedGroupId === group.id ? 'bg-brand-2/10' : ''
                         }`}
                       >
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-semibold flex-shrink-0 ${
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-semibold flex-shrink-0 ${
                           selectedGroupId === group.id
-                            ? 'bg-brand-gradient'
-                            : 'bg-white/10'
+                            ? 'bg-brand-gradient text-white'
+                            : 'bg-gray-100 text-muted'
                         }`}>
                           {group.name.charAt(0).toUpperCase()}
                         </div>
@@ -249,7 +249,7 @@ function CreateEventForm() {
               id="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-5 py-3.5 text-lg bg-white/5 border border-white/10 text-foreground placeholder:text-muted-2 rounded-xl focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition"
+              className="w-full px-5 py-3.5 text-lg bg-white border border-gray-200 shadow-sm text-foreground placeholder:text-muted-2 rounded-xl focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition"
               placeholder="Will it rain tomorrow?"
               required
             />
@@ -265,10 +265,10 @@ function CreateEventForm() {
                   <div className="flex-1 relative">
                     <div className={`absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
                       index === 0
-                        ? 'bg-neon-mint/15 text-neon-mint'
+                        ? 'bg-green-100 text-green-700'
                         : index === 1
-                        ? 'bg-neon-rose/15 text-neon-rose'
-                        : 'bg-white/10 text-muted'
+                        ? 'bg-red-100 text-red-600'
+                        : 'bg-gray-100 text-muted'
                     }`}>
                       {index + 1}
                     </div>
@@ -276,7 +276,7 @@ function CreateEventForm() {
                       type="text"
                       value={side}
                       onChange={(e) => handleSideChange(index, e.target.value)}
-                      className="w-full pl-14 pr-5 py-3.5 bg-white/5 border border-white/10 text-foreground placeholder:text-muted-2 rounded-xl focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition"
+                      className="w-full pl-14 pr-5 py-3.5 bg-white border border-gray-200 shadow-sm text-foreground placeholder:text-muted-2 rounded-xl focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition"
                       placeholder={`Option ${index + 1}`}
                       required
                     />
@@ -285,7 +285,7 @@ function CreateEventForm() {
                     <button
                       type="button"
                       onClick={() => removeSide(index)}
-                      className="px-4 py-2.5 text-neon-rose hover:bg-neon-rose/10 border border-neon-rose/30 rounded-xl text-sm transition-all hover:border-neon-rose/50"
+                      className="px-4 py-2.5 text-red-600 hover:bg-red-50 border border-red-200 rounded-xl text-sm transition-all hover:border-red-300"
                     >
                       ✕
                     </button>
@@ -318,7 +318,7 @@ function CreateEventForm() {
                   id="endDate"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full pl-14 pr-4 py-3.5 bg-white/5 border border-white/10 text-foreground placeholder:text-muted-2 rounded-xl focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition [color-scheme:dark]"
+                  className="w-full pl-14 pr-4 py-3.5 bg-white border border-gray-200 shadow-sm text-foreground placeholder:text-muted-2 rounded-xl focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition [color-scheme:light]"
                   required
                 />
               </div>
@@ -331,7 +331,7 @@ function CreateEventForm() {
                   id="endTime"
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full pl-14 pr-4 py-3.5 bg-white/5 border border-white/10 text-foreground placeholder:text-muted-2 rounded-xl focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition [color-scheme:dark]"
+                  className="w-full pl-14 pr-4 py-3.5 bg-white border border-gray-200 shadow-sm text-foreground placeholder:text-muted-2 rounded-xl focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition [color-scheme:light]"
                   required
                 />
               </div>

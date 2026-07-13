@@ -209,7 +209,7 @@ export default function GroupAdminPage() {
           {!group.is_public && (
             <div>
               <p className="text-foreground mb-2">
-                Resolver: <span className="font-medium text-neon-mint">@{group.resolver?.username || 'Not set'}</span>
+                Resolver: <span className="font-medium text-green-700">@{group.resolver?.username || 'Not set'}</span>
               </p>
               <div className="flex flex-wrap gap-2">
                 {group.members.map((member: any) => (
@@ -219,8 +219,8 @@ export default function GroupAdminPage() {
                     disabled={processing || group.resolver?.user_id === member.user_id}
                     className={`px-3 py-2 rounded-xl text-sm border break-all transition-colors ${
                       group.resolver?.user_id === member.user_id
-                        ? 'bg-neon-mint/10 border-neon-mint/30 text-neon-mint'
-                        : 'bg-white/5 border-white/10 text-muted hover:border-brand-2/40 hover:text-foreground'
+                        ? 'bg-green-50 border-green-300 text-green-700'
+                        : 'bg-gray-50 border-gray-200 text-muted hover:border-brand-2/40 hover:text-foreground'
                     } disabled:cursor-not-allowed`}
                   >
                     @{member.username}
@@ -253,14 +253,14 @@ export default function GroupAdminPage() {
                   <button
                     onClick={() => handleMemberAction('approve', member.user_id)}
                     disabled={processing}
-                    className="px-4 py-2 rounded-full text-sm font-semibold text-neon-mint bg-neon-mint/10 border border-neon-mint/30 hover:bg-neon-mint/20 disabled:opacity-50 transition-colors"
+                    className="px-4 py-2 rounded-full text-sm font-semibold text-green-700 bg-green-50 border border-green-300 hover:bg-green-100 disabled:opacity-50 transition-colors"
                   >
                     Approve
                   </button>
                   <button
                     onClick={() => handleMemberAction('decline', member.user_id)}
                     disabled={processing}
-                    className="px-4 py-2 rounded-full text-sm font-semibold text-neon-rose bg-neon-rose/10 border border-neon-rose/30 hover:bg-neon-rose/20 disabled:opacity-50 transition-colors"
+                    className="px-4 py-2 rounded-full text-sm font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-50 transition-colors"
                   >
                     Decline
                   </button>
@@ -272,7 +272,7 @@ export default function GroupAdminPage() {
       )}
 
       <section>
-        <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-white/20 pb-2">
+        <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-gray-300 pb-2">
           Members ({group.members.length})
         </h2>
         <div className="space-y-3 mt-6 stagger">
@@ -315,14 +315,14 @@ export default function GroupAdminPage() {
                       }
                     }}
                     disabled={processing}
-                    className="px-4 py-2 rounded-full text-sm font-semibold text-neon-rose bg-neon-rose/10 border border-neon-rose/30 hover:bg-neon-rose/20 disabled:opacity-50 transition-colors"
+                    className="px-4 py-2 rounded-full text-sm font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-50 transition-colors"
                   >
                     Remove
                   </button>
                 </div>
               )}
               {member.user_id === group.created_by && (
-                <span className="chip text-neon-cyan border-neon-cyan/25 bg-neon-cyan/10 w-fit">
+                <span className="chip text-sky-700 border-sky-200 bg-sky-50 w-fit">
                   Creator
                 </span>
               )}
@@ -332,15 +332,15 @@ export default function GroupAdminPage() {
       </section>
 
       {user.id === group.created_by && (
-        <section className="mt-8 glass rounded-2xl p-4 border-neon-rose/20">
-          <h2 className="text-xl font-display font-semibold text-neon-rose mb-2">Delete Group</h2>
+        <section className="mt-8 glass rounded-2xl p-4 border-red-200">
+          <h2 className="text-xl font-display font-semibold text-red-600 mb-2">Delete Group</h2>
           <p className="text-sm text-muted mb-4">
             This permanently removes the group, events, bets, comments, and memberships.
           </p>
           <button
             onClick={handleDeleteGroup}
             disabled={deleting}
-            className="px-4 py-2 rounded-full text-sm font-semibold text-neon-rose bg-neon-rose/10 border border-neon-rose/30 hover:bg-neon-rose/20 disabled:opacity-50 transition-colors"
+            className="px-4 py-2 rounded-full text-sm font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-50 transition-colors"
           >
             {deleting ? 'Deleting...' : 'Delete Group'}
           </button>

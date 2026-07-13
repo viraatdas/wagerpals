@@ -267,7 +267,7 @@ export default function EventPage() {
           <button
             onClick={handleDelete}
             disabled={deleting}
-            className="absolute top-0 right-0 hidden sm:inline-flex px-3 py-1 text-sm font-medium text-muted-2 hover:text-neon-rose hover:bg-neon-rose/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="absolute top-0 right-0 hidden sm:inline-flex px-3 py-1 text-sm font-medium text-muted-2 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Delete event"
           >
             Delete
@@ -286,7 +286,7 @@ export default function EventPage() {
               <span className="chip chip-yes">✓ Resolved</span>
             )}
             {paidResolver && (
-              <span className="chip text-neon-cyan bg-neon-cyan/10 border-neon-cyan/25 break-all">
+              <span className="chip text-sky-700 bg-sky-50 border-sky-200 break-all">
                 Resolver: @{paidResolver.username || 'Unknown'}
               </span>
             )}
@@ -294,7 +294,7 @@ export default function EventPage() {
           <button
             onClick={handleDelete}
             disabled={deleting}
-            className="mt-3 inline-flex sm:hidden px-3 py-1 text-sm font-medium text-neon-rose hover:bg-neon-rose/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-3 inline-flex sm:hidden px-3 py-1 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Delete event"
           >
             Delete Event
@@ -308,7 +308,7 @@ export default function EventPage() {
               <button
                 onClick={handleUnresolve}
                 disabled={resolving}
-                className="px-4 py-2 text-neon-amber bg-neon-amber/10 border border-neon-amber/30 text-sm font-medium rounded-full hover:bg-neon-amber/20 disabled:opacity-50 transition-colors"
+                className="px-4 py-2 text-amber-700 bg-amber-50 border border-amber-200 text-sm font-medium rounded-full hover:bg-amber-100 disabled:opacity-50 transition-colors"
               >
                 {resolving ? 'Unresolving...' : 'Unresolve Event'}
               </button>
@@ -317,7 +317,7 @@ export default function EventPage() {
         )}
 
         {event.status === 'active' && paidResolver && paidResolver.user_id !== user.id && (
-          <div className="glass rounded-2xl p-4 mb-6 text-sm text-muted font-light border-neon-cyan/20">
+          <div className="glass rounded-2xl p-4 mb-6 text-sm text-muted font-light border-sky-200">
             @{paidResolver.username || 'The chosen resolver'} is responsible for resolving this paid event.
           </div>
         )}
@@ -344,27 +344,27 @@ export default function EventPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6">
           {[
-            { side: event.side_a, tone: 'mint' as const },
-            { side: event.side_b, tone: 'rose' as const },
+            { side: event.side_a, tone: 'yes' as const },
+            { side: event.side_b, tone: 'no' as const },
           ].map(({ side, tone }) => {
             const stats = event.side_stats[side];
-            const isMint = tone === 'mint';
+            const isYes = tone === 'yes';
             return (
               <div
                 key={side}
                 className={`glass rounded-3xl p-5 relative overflow-hidden transition-shadow ${
-                  isMint
-                    ? 'border-neon-mint/25 hover:shadow-[0_0_40px_-12px_var(--neon-mint)]'
-                    : 'border-neon-rose/25 hover:shadow-[0_0_40px_-12px_var(--neon-rose)]'
+                  isYes
+                    ? 'border-green-200 hover:shadow-[0_4px_16px_-4px_rgba(22,163,74,0.2)]'
+                    : 'border-red-200 hover:shadow-[0_4px_16px_-4px_rgba(220,38,38,0.18)]'
                 }`}
               >
                 <div
-                  className={`absolute -top-10 -right-10 w-28 h-28 rounded-full blur-3xl opacity-40 pointer-events-none ${
-                    isMint ? 'bg-neon-mint/40' : 'bg-neon-rose/40'
+                  className={`absolute inset-x-0 top-0 h-1 pointer-events-none ${
+                    isYes ? 'bg-green-500' : 'bg-red-500'
                   }`}
                 />
-                <h3 className={`text-lg sm:text-xl font-semibold mb-2 border-b border-white/10 pb-2 break-words ${
-                  isMint ? 'text-neon-mint' : 'text-neon-rose'
+                <h3 className={`text-lg sm:text-xl font-semibold mb-2 border-b border-gray-100 pb-2 break-words ${
+                  isYes ? 'text-green-700' : 'text-red-600'
                 }`}>{side}</h3>
                 <div className="text-sm text-muted font-light">
                   <div>{stats.count} participants</div>

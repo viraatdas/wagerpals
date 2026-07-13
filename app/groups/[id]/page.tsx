@@ -168,7 +168,7 @@ export default function GroupPage() {
                     Payments enabled
                   </span>
                   <p className="text-sm text-muted">
-                    Wallet: <span className="font-semibold text-neon-mint">${wallet?.balance?.toFixed(2) || '0.00'}</span>
+                    Wallet: <span className="font-semibold text-green-700">${wallet?.balance?.toFixed(2) || '0.00'}</span>
                   </p>
                   {group.resolver && (
                     <p className="text-sm text-muted break-all">
@@ -226,7 +226,7 @@ export default function GroupPage() {
 
       {trendingEvents.length > 0 && (
         <section className="mb-12">
-          <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-neon-rose/60 pb-2">
+          <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-red-300 pb-2">
             🔥 Trending
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6 stagger">
@@ -252,7 +252,7 @@ export default function GroupPage() {
 
       {endedEvents.length > 0 && (
         <section className="mb-12">
-          <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-white/20 pb-2">
+          <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-gray-300 pb-2">
             Ended Bets
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6 stagger">
