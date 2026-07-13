@@ -15,14 +15,14 @@ const config: Config = {
         foreground: "var(--foreground)",
         muted: "var(--muted)",
         "muted-2": "var(--muted-2)",
-        // Brand "ember" stops
+        // Brand accent ramp (light → base → deep blue)
         brand: {
           1: "var(--brand-1)",
           2: "var(--brand-2)",
           3: "var(--brand-3)",
           DEFAULT: "var(--brand-2)",
         },
-        // Neon accents
+        // Semantic accents (legacy "neon" names, light-theme values)
         neon: {
           violet: "var(--neon-violet)",
           cyan: "var(--neon-cyan)",
@@ -45,15 +45,15 @@ const config: Config = {
         "cool-gradient":
           "linear-gradient(110deg, var(--neon-cyan), var(--neon-violet))",
         "glass-sheen":
-          "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0))",
+          "linear-gradient(180deg, rgba(255,255,255,0.5), rgba(255,255,255,0))",
       },
       boxShadow: {
-        glow: "0 0 40px -12px rgba(168, 85, 247, 0.5)",
-        "glow-ember": "0 0 40px -10px rgba(255, 61, 129, 0.55)",
-        "glow-mint": "0 0 32px -10px rgba(62, 230, 176, 0.55)",
-        "glow-rose": "0 0 32px -10px rgba(255, 93, 126, 0.55)",
-        "glow-cyan": "0 0 32px -10px rgba(56, 225, 255, 0.5)",
-        glass: "0 8px 32px -12px rgba(0,0,0,0.6)",
+        glow: "0 2px 8px -2px rgba(37, 99, 235, 0.18)",
+        "glow-ember": "0 2px 8px -2px rgba(37, 99, 235, 0.25)",
+        "glow-mint": "0 2px 8px -2px rgba(22, 163, 74, 0.2)",
+        "glow-rose": "0 2px 8px -2px rgba(220, 38, 38, 0.2)",
+        "glow-cyan": "0 2px 8px -2px rgba(2, 132, 199, 0.18)",
+        glass: "0 1px 3px rgba(0,0,0,0.06)",
       },
       backdropBlur: {
         xs: "2px",

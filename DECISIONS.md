@@ -19,6 +19,16 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
 - **Why:** user-approved plan; workers implement these nodes in isolated workspaces, honoring the dependency edges
 - **By:** conductor · 1783975368371
 
+## n0-2: Web light theme foundation — token contract for downstream workers
+- **What:** globals.css/tailwind.config.ts/layout.tsx are now light-themed. ALL class and token names are unchanged; only values changed. Contract for page/component workers:
+  - `--bg` #ffffff, `--bg-2` #f7f8fa (panel gray), `--foreground` #1e2530, `--muted` #6b7280, `--muted-2` #9ca3af.
+  - `--surface` and `--border` are still RGB **channels** but flipped from white to dark slate (`30 37 48` / `31 41 55`): `rgb(var(--surface)/0.05)` now yields a subtle gray tint on white, `rgb(var(--border)/0.1)` ≈ #e5e7eb hairline. Any component using raw `bg-white/5`, `border-white/10` etc. must be migrated — white-alpha overlays are invisible on the light canvas.
+  - Brand ramp is the blue accent: `--brand-1` #3b82f6, `--brand-2` #2563eb (DEFAULT), `--brand-3` #1d4ed8. Neon names are semantic now: mint=#16a34a (yes/live), rose=#dc2626 (no), amber=#d97706, cyan=#0284c7, violet=#4f46e5.
+  - `.glass`/`.glass-strong` = white bordered cards with subtle shadows; `.glass-subtle` = --bg-2 panel; `.btn-primary` = solid blue pill; `.btn-glass` = white bordered pill; chips = light tinted pills; `.text-gradient`/`.text-gradient-cool` = solid ink/blue (no longer transparent-clip). shadow-glow* tailwind tokens are now subtle light-theme shadows.
+  - `.aurora` is `display:none` and the div is removed from layout.tsx; html no longer has the `dark` class (tailwind `dark:` variants no longer apply). themeColor is #ffffff.
+- **Why:** keeps every downstream file compiling and rendering sensibly during the light-mode migration
+- **By:** n0-2 · 2026-07-13
+
 ## n0-2: Re-themed the web design system foundation from dark Midnight
 - **Did:** Re-themed the web design system foundation from dark Midnight Glass to a light Polymarket-like system. app/globals.css: :root vars redefined for light mode (white bg, #f7f8fa panels, dark slate text, blue brand ramp #3b82f6/#2563eb/#1d4ed8, neon-* mapped to semantic light accents green/red/amber/blues), --surface/--border RGB channels flipped from white to dark slate so existing rgb(var/alpha) overlays become gray tints on white, color-scheme:light; .glass* utilities are now white bordered cards with subtle shadows, .btn-primary a solid blue pill, .btn-glass white bordered, chips light tinted pills, .text-gradient(-cool) solid ink/blue, skeleton+scrollbar light, .aurora neutralized to display:none. tailwind.config.ts: shadow-glow* tokens softened to subtle light shadows, glass-sheen near-invisible; all token names kept. app/layout.tsx: removed dark class from html, removed aurora div, themeColor #ffffff. Verified: npx tsc --noEmit clean, npm run build succeeds (needed .env.local copied from main checkout for Stack Auth page-data collection; gitignored, not in diff). jj diff touches only the 3 owned files.
 - **Interfaces:** Token contract recorded in DECISIONS.md: all class/var names unchanged, values light. Key gotcha for siblings: --surface/--border are now dark-slate RGB channels, so raw bg-white/5 or border-white/10 utilities in components are invisible on the light canvas and must be migrated; dark: variants no longer apply since html lost the dark class.
@@ -34,4 +44,9 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   - Sync theme.ts values with final web globals.css once n0-2 lands [out of lane] — n0-2 had not landed while I worked; theme values follow the task-brief palette, which should match, but exact web values (e.g. gradient stops) may drift
   - Screens still reference old-look styles until screen workers re-style them [out of lane] — theme swap makes them light automatically but per-screen hardcoded colors (if any) are outside my lane
 - **By:** n6 · 2026-07-13T20:47:01.041Z
+
+## n0-2: Resolved the DECISIONS.md merge conflict by taking the union
+- **Did:** Resolved the DECISIONS.md merge conflict by taking the union of both sides: kept the integrated side (10-task light-theme plan approval, n0-2 and n6 completion reports) and re-inserted the workspace side's n0-2 token-contract entry, ordered chronologically after the plan approval. No code files conflicted; the light theme (globals.css, tailwind.config.ts, layout.tsx) merged cleanly.
+- **Interfaces:** DECISIONS.md only — no code, class names, or tokens changed by the resolution. The n0-2 token contract for downstream workers is preserved verbatim.
+- **By:** n0-2 · 2026-07-13T20:49:07.680Z
 

@@ -3,34 +3,35 @@
 @tailwind utilities;
 
 /* ============================================================
-   WagerPals — "Midnight Glass" design system
-   Dark, glassy, neon. Soft aurora glow + premium micro-motion.
+   WagerPals — light design system
+   Near-white canvas, crisp white cards, hairline borders,
+   one confident blue accent. Polymarket-like data density.
    ============================================================ */
 
 :root {
   /* Base canvas */
-  --bg: #07070f;
-  --bg-2: #0b0b18;
-  --surface: 255 255 255; /* rgb channels for glass, used via rgb(var(--surface) / a) */
-  --foreground: #f4f5fb;
-  --muted: #a4a8c2;
-  --muted-2: #868bab;
+  --bg: #ffffff;
+  --bg-2: #f7f8fa;
+  --surface: 30 37 48; /* slate ink channels — rgb(var(--surface) / a) yields subtle gray tints on white */
+  --foreground: #1e2530;
+  --muted: #6b7280;
+  --muted-2: #9ca3af;
 
-  /* Brand "ember" gradient (orange → pink → violet) — heritage callback, gone neon */
-  --brand-1: #ff7a3d;
-  --brand-2: #ff3d81;
-  --brand-3: #a855f7;
+  /* Brand ramp — the single blue accent (light → base → deep) */
+  --brand-1: #3b82f6;
+  --brand-2: #2563eb;
+  --brand-3: #1d4ed8;
 
-  /* Neon accents */
-  --neon-violet: #8b7bff;
-  --neon-cyan: #38e1ff;
-  --neon-mint: #3ee6b0; /* yes / win */
-  --neon-rose: #ff5d7e; /* no / loss */
-  --neon-amber: #ffc23d;
+  /* Semantic accents (legacy neon names, light-theme values) */
+  --neon-violet: #4f46e5;
+  --neon-cyan: #0284c7;
+  --neon-mint: #16a34a; /* yes / win */
+  --neon-rose: #dc2626; /* no / loss */
+  --neon-amber: #d97706;
 
-  --border: 255 255 255;
+  --border: 31 41 55; /* slate channels — rgb(var(--border) / 0.1) ≈ #e5e7eb hairline on white */
 
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -99,105 +100,55 @@ input, select, textarea {
   }
 }
 
-/* ---------- Aurora backdrop ---------- */
-/* Drop <div class="aurora"> ... </div> as a fixed layer behind content (in layout). */
+/* ---------- Aurora backdrop (retired) ---------- */
+/* The dark theme's animated glow layer. Kept as a no-op so any
+   remaining <div class="aurora"> renders nothing. */
 .aurora {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  overflow: hidden;
-  pointer-events: none;
-  background:
-    radial-gradient(60% 50% at 50% -10%, rgba(168, 85, 247, 0.18), transparent 70%),
-    var(--bg);
-}
-.aurora::before,
-.aurora::after {
-  content: '';
-  position: absolute;
-  width: 60vmax;
-  height: 60vmax;
-  border-radius: 50%;
-  filter: blur(80px);
-  opacity: 0.5;
-  will-change: transform;
-}
-.aurora::before {
-  top: -20vmax;
-  left: -10vmax;
-  background: radial-gradient(circle at center, rgba(255, 61, 129, 0.35), transparent 60%);
-  animation: drift1 22s ease-in-out infinite alternate;
-}
-.aurora::after {
-  bottom: -25vmax;
-  right: -10vmax;
-  background: radial-gradient(circle at center, rgba(56, 225, 255, 0.28), transparent 60%);
-  animation: drift2 26s ease-in-out infinite alternate;
-}
-
-@keyframes drift1 {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to   { transform: translate3d(12vmax, 8vmax, 0) scale(1.15); }
-}
-@keyframes drift2 {
-  from { transform: translate3d(0, 0, 0) scale(1.05); }
-  to   { transform: translate3d(-14vmax, -6vmax, 0) scale(1); }
+  display: none;
 }
 
 /* ============================================================
    Component utility classes — the shared vocabulary
    ============================================================ */
 @layer components {
-  /* Frosted glass surface */
+  /* Card surface (formerly frosted glass) — white, hairline border, soft shadow */
   .glass {
-    background: rgb(var(--surface) / 0.05);
-    backdrop-filter: blur(18px) saturate(160%);
-    -webkit-backdrop-filter: blur(18px) saturate(160%);
-    border: 1px solid rgb(var(--border) / 0.09);
-    box-shadow: 0 8px 32px -12px rgba(0, 0, 0, 0.6),
-      inset 0 1px 0 0 rgb(var(--border) / 0.08);
+    background: #ffffff;
+    border: 1px solid rgb(var(--border) / 0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   }
   .glass-strong {
-    background: rgb(var(--surface) / 0.08);
-    backdrop-filter: blur(28px) saturate(180%);
-    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    background: #ffffff;
     border: 1px solid rgb(var(--border) / 0.12);
-    box-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.75),
-      inset 0 1px 0 0 rgb(var(--border) / 0.1);
+    box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.08),
+      0 1px 3px rgba(0, 0, 0, 0.05);
   }
   .glass-subtle {
-    background: rgb(var(--surface) / 0.03);
-    border: 1px solid rgb(var(--border) / 0.06);
+    background: var(--bg-2);
+    border: 1px solid rgb(var(--border) / 0.07);
   }
 
-  /* Interactive lift on hover for glass cards */
+  /* Interactive lift on hover for cards */
   .glass-hover {
     transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
       box-shadow 0.25s ease, border-color 0.25s ease;
   }
   .glass-hover:hover {
-    transform: translateY(-3px);
-    border-color: rgb(var(--border) / 0.16);
-    box-shadow: 0 20px 48px -16px rgba(0, 0, 0, 0.7),
-      0 0 0 1px rgb(var(--border) / 0.04),
-      0 0 40px -12px rgba(168, 85, 247, 0.35);
+    transform: translateY(-2px);
+    border-color: rgb(var(--border) / 0.18);
+    box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.1),
+      0 1px 3px rgba(0, 0, 0, 0.05);
   }
 
-  /* Brand gradient text */
+  /* Display text (formerly gradient) — solid ink / solid accent */
   .text-gradient {
-    background: linear-gradient(110deg, var(--brand-1), var(--brand-2) 45%, var(--brand-3));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--foreground);
   }
   .text-gradient-cool {
-    background: linear-gradient(110deg, var(--neon-cyan), var(--neon-violet));
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--brand-2);
   }
 
-  /* Primary CTA — ember gradient with glow */
+  /* Primary CTA — solid blue with a whisper of depth */
   .btn-primary {
     position: relative;
     display: inline-flex;
@@ -208,19 +159,19 @@ input, select, textarea {
     color: #fff;
     border-radius: 9999px;
     padding: 0.625rem 1.25rem;
-    background: linear-gradient(110deg, var(--brand-1), var(--brand-2) 55%, var(--brand-3));
-    box-shadow: 0 8px 24px -8px rgba(255, 61, 129, 0.6),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.25);
+    background: linear-gradient(180deg, var(--brand-1), var(--brand-2));
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.3),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
     transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, filter 0.2s ease;
   }
   .btn-primary:hover {
-    box-shadow: 0 12px 32px -8px rgba(255, 61, 129, 0.75),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.3);
-    filter: brightness(1.06);
+    box-shadow: 0 2px 8px -1px rgba(37, 99, 235, 0.35),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
+    filter: brightness(1.05);
   }
   .btn-primary:active { transform: scale(0.96); }
 
-  /* Glass secondary button */
+  /* Secondary button — white, bordered */
   .btn-glass {
     display: inline-flex;
     align-items: center;
@@ -230,19 +181,18 @@ input, select, textarea {
     color: var(--foreground);
     border-radius: 9999px;
     padding: 0.625rem 1.25rem;
-    background: rgb(var(--surface) / 0.06);
-    border: 1px solid rgb(var(--border) / 0.1);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: #ffffff;
+    border: 1px solid rgb(var(--border) / 0.14);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
     transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, border-color 0.2s ease;
   }
   .btn-glass:hover {
-    background: rgb(var(--surface) / 0.1);
-    border-color: rgb(var(--border) / 0.18);
+    background: var(--bg-2);
+    border-color: rgb(var(--border) / 0.22);
   }
   .btn-glass:active { transform: scale(0.96); }
 
-  /* Pills / chips */
+  /* Pills / chips — light tinted */
   .chip {
     display: inline-flex;
     align-items: center;
@@ -252,24 +202,24 @@ input, select, textarea {
     letter-spacing: 0.01em;
     padding: 0.25rem 0.6rem;
     border-radius: 9999px;
-    background: rgb(var(--surface) / 0.06);
+    background: rgb(var(--surface) / 0.04);
     border: 1px solid rgb(var(--border) / 0.1);
     color: var(--muted);
   }
   .chip-live {
-    color: var(--neon-mint);
-    background: rgba(62, 230, 176, 0.1);
-    border-color: rgba(62, 230, 176, 0.25);
+    color: #15803d;
+    background: rgba(22, 163, 74, 0.08);
+    border-color: rgba(22, 163, 74, 0.25);
   }
   .chip-yes {
-    color: var(--neon-mint);
-    background: rgba(62, 230, 176, 0.1);
-    border-color: rgba(62, 230, 176, 0.25);
+    color: #15803d;
+    background: rgba(22, 163, 74, 0.08);
+    border-color: rgba(22, 163, 74, 0.25);
   }
   .chip-no {
-    color: var(--neon-rose);
-    background: rgba(255, 93, 126, 0.1);
-    border-color: rgba(255, 93, 126, 0.25);
+    color: #b91c1c;
+    background: rgba(220, 38, 38, 0.07);
+    border-color: rgba(220, 38, 38, 0.22);
   }
 
   /* Live status dot with pulse */
@@ -280,7 +230,6 @@ input, select, textarea {
     height: 7px;
     border-radius: 9999px;
     background: var(--neon-mint);
-    box-shadow: 0 0 8px var(--neon-mint);
   }
   .live-dot::after {
     content: '';
@@ -318,8 +267,8 @@ input, select, textarea {
 }
 
 @keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.0); }
-  50% { box-shadow: 0 0 28px -4px rgba(168, 85, 247, 0.55); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+  50% { box-shadow: 0 2px 12px -2px rgba(37, 99, 235, 0.25); }
 }
 .animate-pulse-glow { animation: pulseGlow 2.4s ease-in-out infinite; }
 
@@ -329,14 +278,14 @@ input, select, textarea {
 .skeleton {
   position: relative;
   overflow: hidden;
-  background: rgb(var(--surface) / 0.05);
+  background: rgb(var(--surface) / 0.06);
 }
 .skeleton::after {
   content: '';
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgb(var(--surface) / 0.08), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
   animation: shimmer 1.4s infinite;
 }
 
@@ -365,12 +314,12 @@ input, select, textarea {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--surface) / 0.1);
+  background: rgb(var(--surface) / 0.18);
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover { background: rgb(var(--surface) / 0.18); background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--surface) / 0.28); background-clip: content-box; }
 
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
@@ -379,5 +328,4 @@ input, select, textarea {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  .aurora::before, .aurora::after { animation: none; }
 }
