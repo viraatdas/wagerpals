@@ -14,15 +14,15 @@ type EventState = 'ongoing' | 'ended' | 'resolved';
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const stateChipClasses: Record<EventState, string> = {
-  ongoing: 'bg-neon-mint/10 border-neon-mint/25 text-neon-mint',
-  ended: 'bg-neon-amber/10 border-neon-amber/25 text-neon-amber',
-  resolved: 'bg-white/5 border-white/10 text-muted',
+  ongoing: 'bg-green-50 border-green-200 text-green-700',
+  ended: 'bg-amber-50 border-amber-200 text-amber-700',
+  resolved: 'bg-gray-50 border-gray-200 text-gray-500',
 };
 
 const stateDotClasses: Record<EventState, string> = {
-  ongoing: 'bg-neon-mint',
-  ended: 'bg-neon-amber',
-  resolved: 'bg-muted-2',
+  ongoing: 'bg-green-600',
+  ended: 'bg-amber-600',
+  resolved: 'bg-gray-400',
 };
 
 const stateLabels: Record<EventState, string> = {
@@ -194,7 +194,7 @@ export default function CalendarPage() {
                 <button
                   onClick={() => goToMonth(-1)}
                   aria-label="Previous month"
-                  className="no-min-size inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-muted hover:text-foreground hover:bg-white/10 transition-colors"
+                  className="no-min-size inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-muted hover:text-foreground hover:bg-gray-50 transition-colors"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -202,14 +202,14 @@ export default function CalendarPage() {
                 </button>
                 <button
                   onClick={goToToday}
-                  className="no-min-size inline-flex h-9 items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 text-sm font-medium text-muted hover:text-foreground hover:bg-white/10 transition-colors"
+                  className="no-min-size inline-flex h-9 items-center justify-center rounded-full border border-gray-200 bg-white px-4 text-sm font-medium text-muted hover:text-foreground hover:bg-gray-50 transition-colors"
                 >
                   Today
                 </button>
                 <button
                   onClick={() => goToMonth(1)}
                   aria-label="Next month"
-                  className="no-min-size inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-muted hover:text-foreground hover:bg-white/10 transition-colors"
+                  className="no-min-size inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-muted hover:text-foreground hover:bg-gray-50 transition-colors"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -237,6 +237,7 @@ export default function CalendarPage() {
                 const inMonth = date.getMonth() === viewMonth;
                 const isToday = key === todayKey;
                 const isSelected = key === selectedKey;
+                const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                 const dayEvents = eventsByDay.get(key) ?? [];
 
                 return (
@@ -258,18 +259,18 @@ export default function CalendarPage() {
                     }}
                     className={`cursor-pointer rounded-xl sm:rounded-2xl border p-1 sm:p-1.5 min-h-[56px] sm:min-h-[104px] transition-colors ${
                       isSelected
-                        ? 'border-brand-2/60 bg-white/[0.07]'
+                        ? 'border-blue-300 bg-blue-50 ring-1 ring-blue-500/40'
                         : isToday
-                          ? 'border-brand-2/40 bg-white/[0.04]'
-                          : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]'
+                          ? 'border-blue-200 bg-blue-50/60 hover:bg-blue-50'
+                          : `border-gray-200 ${isWeekend ? 'bg-gray-100/70' : 'bg-gray-50'} hover:bg-gray-100`
                     } ${inMonth ? '' : 'opacity-40'}`}
                   >
                     <span
                       className={`inline-flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-full text-[11px] sm:text-xs font-semibold tabular-nums ${
                         isToday
-                          ? 'bg-brand-2/20 text-brand-2 ring-1 ring-brand-2/40'
+                          ? 'bg-blue-600 text-white'
                           : inMonth
-                            ? 'text-foreground/80'
+                            ? 'text-foreground'
                             : 'text-muted-2'
                       }`}
                     >
@@ -332,13 +333,13 @@ export default function CalendarPage() {
             {/* Legend */}
             <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-2">
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-neon-mint" /> Live
+                <span className="h-2 w-2 rounded-full bg-green-600" /> Live
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-neon-amber" /> Awaiting resolution
+                <span className="h-2 w-2 rounded-full bg-amber-600" /> Awaiting resolution
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-muted-2" /> Resolved
+                <span className="h-2 w-2 rounded-full bg-gray-400" /> Resolved
               </span>
             </div>
           </div>
@@ -358,10 +359,10 @@ export default function CalendarPage() {
                     <Link
                       key={event.id}
                       href={`/events/${event.id}`}
-                      className="glass-subtle group flex items-center justify-between gap-3 rounded-2xl p-3.5 hover:border-white/[0.14] transition-colors"
+                      className="glass-subtle group flex items-center justify-between gap-3 rounded-2xl p-3.5 hover:border-gray-300 transition-colors"
                     >
                       <div className="min-w-0">
-                        <div className="font-medium text-foreground truncate group-hover:text-gradient transition-colors">
+                        <div className="font-medium text-foreground truncate group-hover:text-brand-2 transition-colors">
                           {event.title}
                         </div>
                         <div className="text-xs text-muted-2 mt-0.5 truncate">

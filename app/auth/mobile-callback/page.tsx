@@ -24,9 +24,9 @@ export default function MobileOAuthCallback() {
           <div style="padding: 20px; text-align: center; font-family: system-ui;">
             <h2>Authentication Successful!</h2>
             <p>Redirecting to WagerPals app...</p>
-            <p style="margin-top: 20px; color: #666;">
-              If the app doesn't open automatically, 
-              <a href="${mobileUrl}" style="color: #ea580c;">click here</a>
+            <p style="margin-top: 20px; color: #6b7280;">
+              If the app doesn't open automatically,
+              <a href="${mobileUrl}" style="color: #2563eb;">click here</a>
             </p>
           </div>
         `;
@@ -50,16 +50,16 @@ export default function MobileOAuthCallback() {
         <h1 style={{ fontSize: '24px', marginBottom: '16px' }}>
           Completing Sign In...
         </h1>
-        <div style={{ 
-          width: '40px', 
-          height: '40px', 
-          border: '3px solid #ea580c', 
+        <div style={{
+          width: '40px',
+          height: '40px',
+          border: '3px solid #2563eb',
           borderTopColor: 'transparent',
           borderRadius: '50%',
           margin: '20px auto',
           animation: 'spin 1s linear infinite'
         }} />
-        <p style={{ color: '#666', marginTop: '16px' }}>
+        <p style={{ color: '#6b7280', marginTop: '16px' }}>
           Redirecting to WagerPals app...
         </p>
       </div>
