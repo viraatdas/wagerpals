@@ -25,6 +25,15 @@ const navItems = [
     ),
   },
   {
+    href: '/calendar',
+    label: 'Calendar',
+    icon: (
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M8 15h.01M12 15h.01M16 15h.01M8 18h.01M12 18h.01M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  {
     href: '/create',
     label: 'Create',
     icon: (
@@ -85,6 +94,7 @@ export default function Header() {
   const desktopLinks = [
     { href: '/', label: 'Groups' },
     { href: '/all-events', label: 'All Events' },
+    { href: '/calendar', label: 'Calendar' },
     { href: '/activity', label: 'Activity' },
     { href: '/users', label: 'Users' },
     { href: '/profile', label: 'Profile' },
@@ -171,7 +181,7 @@ export default function Header() {
       </header>
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-background/80 backdrop-blur-xl mobile-bottom-nav">
-        <div className="grid grid-cols-5 px-1 pt-1">
+        <div className="grid grid-cols-6 px-1 pt-1">
           {navItems.map((item) => {
             const active = isActive(item.href);
             return (

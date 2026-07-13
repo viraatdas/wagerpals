@@ -30,7 +30,7 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   viewportFit: "cover",
-  themeColor: "#07070f",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -39,10 +39,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable} dark`}>
+    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
       <body className="font-sans antialiased text-foreground">
-        {/* Aurora glow backdrop */}
-        <div className="aurora" aria-hidden="true" />
         <ClientProviders>
           <ServiceWorkerRegistration />
           <div className="min-h-screen flex flex-col">
