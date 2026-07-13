@@ -34,27 +34,27 @@ export default function Toast({
   const typeStyles = {
     success: {
       icon: '✓',
-      borderColor: 'border-neon-mint/30',
-      textColor: 'text-neon-mint',
-      iconBg: 'bg-neon-mint/15',
+      accentColor: 'border-l-green-600',
+      textColor: 'text-green-700',
+      iconBg: 'bg-green-50',
     },
     error: {
       icon: '✕',
-      borderColor: 'border-neon-rose/30',
-      textColor: 'text-neon-rose',
-      iconBg: 'bg-neon-rose/15',
+      accentColor: 'border-l-red-600',
+      textColor: 'text-red-700',
+      iconBg: 'bg-red-50',
     },
     warning: {
       icon: '⚠',
-      borderColor: 'border-neon-amber/30',
-      textColor: 'text-neon-amber',
-      iconBg: 'bg-neon-amber/15',
+      accentColor: 'border-l-amber-500',
+      textColor: 'text-amber-700',
+      iconBg: 'bg-amber-50',
     },
     info: {
       icon: 'ℹ',
-      borderColor: 'border-neon-cyan/30',
-      textColor: 'text-neon-cyan',
-      iconBg: 'bg-neon-cyan/15',
+      accentColor: 'border-l-sky-600',
+      textColor: 'text-sky-700',
+      iconBg: 'bg-sky-50',
     },
   };
 
@@ -62,7 +62,7 @@ export default function Toast({
 
   return (
     <div className="fixed left-4 right-4 top-20 z-[60] animate-fade-in sm:left-auto sm:right-4">
-      <div className={`glass-strong ${styles.borderColor} border rounded-2xl p-4 max-w-md flex items-start gap-3`}>
+      <div className={`bg-white border border-gray-200 border-l-4 ${styles.accentColor} shadow-lg rounded-xl p-4 max-w-md flex items-start gap-3`}>
         <div className={`${styles.iconBg} rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0`}>
           <span className={`${styles.textColor} font-semibold text-lg`}>{styles.icon}</span>
         </div>

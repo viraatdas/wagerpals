@@ -158,7 +158,7 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
                 <div
                   key={`bet-${bet.id}`}
                   className={`glass rounded-2xl p-4 ${
-                    bet.is_late ? 'border-neon-amber/30' : ''
+                    bet.is_late ? 'border-amber-300' : ''
                   }`}
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
@@ -171,7 +171,7 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
                           {isPublic ? `${bet.amount.toFixed(2)} pts` : `$${bet.amount.toFixed(2)}`}
                         </span>
                         {bet.is_late && (
-                          <span className="chip text-neon-amber bg-neon-amber/10 border-neon-amber/25">
+                          <span className="chip text-amber-700 bg-amber-50 border-amber-200">
                             Late
                           </span>
                         )}
@@ -189,7 +189,7 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
                       <button
                         onClick={() => handleDeleteBet(bet.id)}
                         disabled={deletingBets.has(bet.id)}
-                        className="text-xs text-muted-2 hover:text-neon-rose font-medium px-2 py-1 rounded-lg hover:bg-neon-rose/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="text-xs text-muted-2 hover:text-red-600 font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Delete bet"
                       >
                         {deletingBets.has(bet.id) ? 'Deleting...' : 'Delete'}
@@ -203,13 +203,13 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
               return (
                 <div
                   key={`comment-${comment.id}`}
-                  className="glass rounded-2xl p-4 border-neon-cyan/20"
+                  className="glass rounded-2xl p-4 border-sky-200"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-2">
                         <span className="font-semibold text-foreground break-all">@{comment.username}</span>
-                        <span className="chip text-neon-cyan bg-neon-cyan/10 border-neon-cyan/25">
+                        <span className="chip text-sky-700 bg-sky-50 border-sky-200">
                           💬 Comment
                         </span>
                       </div>
@@ -224,7 +224,7 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
                       <button
                         onClick={() => handleDeleteComment(comment.id)}
                         disabled={deletingComments.has(comment.id)}
-                        className="text-xs text-muted-2 hover:text-neon-rose font-medium px-2 py-1 rounded-lg hover:bg-neon-rose/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="text-xs text-muted-2 hover:text-red-600 font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Delete comment"
                       >
                         {deletingComments.has(comment.id) ? 'Deleting...' : 'Delete'}

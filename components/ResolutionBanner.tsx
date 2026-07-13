@@ -16,14 +16,14 @@ export default function ResolutionBanner({ event, netResults, isPublic = false }
   const sortedResults = [...netResults].sort((a, b) => b.net - a.net);
 
   return (
-    <div className="glass-strong border border-neon-mint/30 rounded-3xl p-6 mb-6 shadow-glow-mint">
+    <div className="glass-strong border border-green-200 rounded-2xl p-6 mb-6">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-xl font-display font-semibold text-foreground inline-flex items-center gap-2">
-            <span className="text-neon-mint">✓</span> Event Resolved
+            <span className="text-green-600">✓</span> Event Resolved
           </h3>
           <p className="text-muted mt-2">
-            Winning side: <span className="font-semibold text-neon-mint">{event.resolution.winning_side}</span>
+            Winning side: <span className="font-semibold text-green-700">{event.resolution.winning_side}</span>
           </p>
         </div>
         <div className="chip chip-yes">
@@ -33,20 +33,20 @@ export default function ResolutionBanner({ event, netResults, isPublic = false }
 
       <div className="grid md:grid-cols-2 gap-4">
         <div>
-          <h4 className="text-sm font-semibold text-muted mb-2 pb-2 border-b border-white/10">Net Results</h4>
+          <h4 className="text-sm font-semibold text-muted mb-2 pb-2 border-b border-gray-200">Net Results</h4>
           <div className="space-y-1.5">
             {sortedResults.map((result) => (
               <div
                 key={result.user_id}
                 className="flex justify-between items-center py-2 px-3 glass-subtle rounded-xl"
               >
-                <span className="text-foreground/90">@{result.username}</span>
+                <span className="text-foreground">@{result.username}</span>
                 <span
                   className={`font-semibold tabular-nums ${
                     result.net > 0
-                      ? 'text-neon-mint'
+                      ? 'text-green-700'
                       : result.net < 0
-                      ? 'text-neon-rose'
+                      ? 'text-red-700'
                       : 'text-muted'
                   }`}
                 >
@@ -59,7 +59,7 @@ export default function ResolutionBanner({ event, netResults, isPublic = false }
 
         {payments.length > 0 && (
           <div>
-            <h4 className="text-sm font-semibold text-muted mb-2 pb-2 border-b border-white/10">Payments</h4>
+            <h4 className="text-sm font-semibold text-muted mb-2 pb-2 border-b border-gray-200">Payments</h4>
             <div className="space-y-1.5">
               {payments.map((payment, i) => (
                 <div
@@ -70,7 +70,7 @@ export default function ResolutionBanner({ event, netResults, isPublic = false }
                   {' → '}
                   <span className="font-medium text-foreground">{payment.to}</span>
                   {': '}
-                  <span className="font-semibold text-neon-mint tabular-nums">{isPublic ? `${payment.amount.toFixed(2)} pts` : `$${payment.amount.toFixed(2)}`}</span>
+                  <span className="font-semibold text-green-700 tabular-nums">{isPublic ? `${payment.amount.toFixed(2)} pts` : `$${payment.amount.toFixed(2)}`}</span>
                 </div>
               ))}
             </div>

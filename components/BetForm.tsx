@@ -50,11 +50,8 @@ export default function BetForm({ sides, eventId, userId, username, onBetPlaced,
   };
 
   return (
-    <form onSubmit={handleSubmit} className="glass rounded-3xl p-4 sm:p-6 relative overflow-hidden animate-rise">
-      {/* decorative ember glow */}
-      <div className="pointer-events-none absolute -top-16 -right-12 h-40 w-40 rounded-full bg-brand-2/20 blur-3xl" />
-
-      <h3 className="font-display text-lg font-semibold text-foreground mb-4 border-b border-white/10 pb-3 relative">
+    <form onSubmit={handleSubmit} className="glass rounded-2xl p-4 sm:p-6 relative overflow-hidden animate-rise">
+      <h3 className="font-display text-lg font-semibold text-foreground mb-4 border-b border-gray-200 pb-3 relative">
         Place Your <span className="text-gradient">Bet</span>
       </h3>
 
@@ -69,17 +66,17 @@ export default function BetForm({ sides, eventId, userId, username, onBetPlaced,
               const tone = i % 2 === 0 ? 'mint' : 'rose';
               const selectedClasses =
                 tone === 'mint'
-                  ? 'border-neon-mint/60 bg-neon-mint/10 text-neon-mint shadow-glow-mint'
-                  : 'border-neon-rose/60 bg-neon-rose/10 text-neon-rose shadow-glow-rose';
+                  ? 'border-green-600 bg-green-50 text-green-700'
+                  : 'border-red-600 bg-red-50 text-red-700';
               return (
                 <button
                   key={side}
                   type="button"
                   onClick={() => setSelectedSide(side)}
-                  className={`relative px-4 py-3.5 rounded-2xl font-semibold border transition-all break-words ${
+                  className={`relative px-4 py-3.5 rounded-xl font-semibold border transition-all break-words ${
                     selected
                       ? selectedClasses
-                      : 'border-white/10 bg-white/5 text-foreground/90 hover:bg-white/[0.08] hover:border-white/20'
+                      : 'border-gray-200 bg-white text-foreground hover:bg-gray-50 hover:border-gray-300'
                   }`}
                 >
                   <span className="flex items-center justify-center gap-2">
@@ -87,9 +84,9 @@ export default function BetForm({ sides, eventId, userId, username, onBetPlaced,
                       className={`h-2 w-2 rounded-full transition-all ${
                         selected
                           ? tone === 'mint'
-                            ? 'bg-neon-mint shadow-glow-mint'
-                            : 'bg-neon-rose shadow-glow-rose'
-                          : 'bg-white/20'
+                            ? 'bg-green-600'
+                            : 'bg-red-600'
+                          : 'bg-gray-300'
                       }`}
                     />
                     {side}
@@ -111,7 +108,7 @@ export default function BetForm({ sides, eventId, userId, username, onBetPlaced,
             onChange={(e) => setAmount(e.target.value)}
             min="0.01"
             step="0.01"
-            className="w-full bg-white/5 border border-white/10 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2.5 tabular-nums focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition"
+            className="w-full bg-white border border-gray-300 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2.5 tabular-nums focus:outline-none focus:border-brand-2 focus:ring-2 focus:ring-brand-2/20 transition"
             inputMode="decimal"
             placeholder="10.00"
             required
@@ -127,7 +124,7 @@ export default function BetForm({ sides, eventId, userId, username, onBetPlaced,
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={2}
-            className="w-full bg-white/5 border border-white/10 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition"
+            className="w-full bg-white border border-gray-300 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-brand-2 focus:ring-2 focus:ring-brand-2/20 transition"
             placeholder="Your prediction or reasoning..."
           />
         </div>
