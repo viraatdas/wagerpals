@@ -44,11 +44,8 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="glass-strong rounded-3xl max-w-md w-full p-8 animate-slide-up relative overflow-hidden">
-        {/* decorative ember glow */}
-        <div className="pointer-events-none absolute -top-20 -right-16 h-48 w-48 rounded-full bg-brand-2/20 blur-3xl" />
-
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white border border-gray-200 shadow-xl rounded-xl max-w-md w-full p-8 animate-slide-up relative overflow-hidden">
         <div className="text-center mb-6 relative">
           <h2 className="font-display text-3xl font-semibold text-foreground mb-2">
             Welcome to <span className="text-gradient">WagerPals</span>
@@ -68,10 +65,10 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
               onChange={handleChange}
               onClick={(e) => e.currentTarget.focus()}
               onTouchStart={(e) => e.currentTarget.focus()}
-              className={`w-full px-4 py-3 text-lg bg-white/5 border text-foreground placeholder:text-muted-2 rounded-xl outline-none transition ${
+              className={`w-full px-4 py-3 text-lg bg-white border text-foreground placeholder:text-muted-2 rounded-xl outline-none transition ${
                 error
-                  ? 'border-neon-rose/50 focus:ring-2 focus:ring-neon-rose/20'
-                  : 'border-white/10 focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20'
+                  ? 'border-red-400 focus:ring-2 focus:ring-red-200'
+                  : 'border-gray-300 focus:border-brand-2 focus:ring-2 focus:ring-brand-2/20'
               }`}
               placeholder="your username"
               autoFocus
@@ -82,7 +79,7 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
               required
             />
             {error && (
-              <p className="text-neon-rose text-sm mt-2">{error}</p>
+              <p className="text-red-600 text-sm mt-2">{error}</p>
             )}
             <p className="text-xs text-muted-2 mt-2">
               Letters, numbers, and underscores only

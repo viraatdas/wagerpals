@@ -345,6 +345,7 @@ const styles = StyleSheet.create({
   },
   actionSubtitleAlt: {
     color: colors.textMuted,
+    opacity: 1,
   },
   groupsSection: {
     flex: 1,

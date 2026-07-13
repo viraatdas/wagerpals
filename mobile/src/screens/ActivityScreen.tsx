@@ -51,9 +51,9 @@ export default function ActivityScreen() {
       case 'resolution':
         return { name: 'trophy-outline', color: colors.mint, bg: colors.mintFill };
       case 'event_created':
-        return { name: 'add-circle-outline', color: colors.violet, bg: 'rgba(79,70,229,0.08)' };
+        return { name: 'add-circle-outline', color: colors.violet, bg: colors.violetFill };
       case 'comment':
-        return { name: 'chatbubble-outline', color: colors.amber, bg: 'rgba(217,119,6,0.08)' };
+        return { name: 'chatbubble-outline', color: colors.amber, bg: colors.amberFill };
       default:
         return { name: 'ellipse', color: colors.textMuted, bg: colors.surfaceGlass };
     }
