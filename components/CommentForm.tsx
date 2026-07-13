@@ -49,7 +49,7 @@ export default function CommentForm({ eventId, userId, username, onCommentPosted
           value={content}
           onChange={(e) => setContent(e.target.value)}
           rows={3}
-          className="w-full bg-white/5 border border-white/10 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition"
+          className="w-full bg-white border border-gray-300 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-brand-2 focus:ring-2 focus:ring-brand-2/20 transition"
           placeholder="Add a comment..."
           required
         />
