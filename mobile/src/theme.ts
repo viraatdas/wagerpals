@@ -36,6 +36,8 @@ export const colors = {
   roseFill: 'rgba(220,38,38,0.08)',
   brandFill: 'rgba(37,99,235,0.08)',
   cyanFill: 'rgba(14,165,233,0.08)',
+  violetFill: 'rgba(79,70,229,0.08)',
+  amberFill: 'rgba(217,119,6,0.08)',
   white: '#ffffff',
 } as const;
 
