@@ -41,3 +41,7 @@ next-env.d.ts
 *.db-journal
 
 RUDDER.md
+.rudder/
+.rudder-worktrees/
+RUDDER_SHARED.md
+.claude/skills/rudder-*/
