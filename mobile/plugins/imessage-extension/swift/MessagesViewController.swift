@@ -34,7 +34,7 @@ class MessagesViewController: MSMessagesAppViewController {
         button.setTitle("Create a Wager", for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
         button.setTitleColor(.white, for: .normal)
-        button.backgroundColor = UIColor(red: 234/255, green: 88/255, blue: 12/255, alpha: 1)
+        button.backgroundColor = UIColor(red: 37/255, green: 99/255, blue: 235/255, alpha: 1)
         button.layer.cornerRadius = 12
         button.addTarget(self, action: #selector(expandTapped), for: .touchUpInside)
         button.translatesAutoresizingMaskIntoConstraints = false

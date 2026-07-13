@@ -86,7 +86,7 @@ struct ComposeWagerView: View {
                     .fontWeight(.semibold)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(isValid ? Color(red: 234/255, green: 88/255, blue: 12/255) : Color.gray)
+                    .background(isValid ? Color(red: 37/255, green: 99/255, blue: 235/255) : Color.gray)
                     .foregroundColor(.white)
                     .cornerRadius(12)
             }

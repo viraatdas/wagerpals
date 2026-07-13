@@ -37,6 +37,12 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   - Consider dropping Space Grotesk display font [out of lane] — font-display is kept loading in layout.tsx for compatibility; if downstream workers standardize on Inter for headings the extra font load can go
 - **By:** n0-2 · 2026-07-13T20:46:59.719Z
 
+## n6: mobile/src/theme.ts is now the LIGHT Polymarket-like token set (same export shape)
+- **What:** All exported names/shapes unchanged (colors.*, gradients.*, radius, spacing, glass.*, glow(), inputStyle) but values are now light: bg #FFFFFF, bg2 #F7F8FA, surface/surfaceElevated #FFFFFF, surfaceGlass rgba(15,23,42,0.04), border #E5E7EB, text #1E2530, textMuted #6B7280, textFaint #9CA3AF, brand/brand2 #2563EB (brand1 #3B82F6, brand3 #1D4ED8), mint #16A34A (YES), rose #DC2626 (NO), amber #D97706 (pending), cyan #0EA5E9, violet #4F46E5; *Fill tokens are 8% tints. glass.card/cardStrong are white cards with #E5E7EB border + soft slate shadow; glow() now ignores its color arg and returns a subtle neutral shadow; gradients.card is near-flat white. Screens restyled against these tokens get the light look automatically — do NOT hardcode dark values or re-add neon.
+- **Why:** 15 files (~500 refs) consume these tokens; keeping the shape lets screen workers re-style without import churn.
+- **Also:** nav chrome (tab bar white + hairline #E5E7EB top border, active tint colors.brand, inactive colors.textFaint; stack headers white bg / blue tint; contentStyle bg2), StatusBar style="dark", iMessage Swift accent is now #2563EB (was orange).
+- **By:** n6 · 2026-07-13
+
 ## n6: Redefined mobile/src/theme.ts as the light Polymarket-like token set with
 - **Did:** Redefined mobile/src/theme.ts as the light Polymarket-like token set with every exported name and object shape preserved (colors.*, gradients.*, radius, spacing, glass.*, glow(), inputStyle): white bg (#FFFFFF/#F7F8FA panels), #1E2530/#6B7280 text, #E5E7EB hairlines, blue #2563EB brand ramp, green #16A34A / red #DC2626 / amber #D97706 semantics, 8% translucent slate fills; glass.* are white cards with soft shadows, glow() returns a subtle neutral shadow, inputStyle is white with gray border. Restyled nav chrome: tab bar white with hairline #E5E7EB top border, blue active / gray inactive tint; stack headers white with blue tint and bg2 content; StatusBar dark-content. Swapped iMessage extension accent from orange to blue #2563EB in both Swift files. Verified: cd mobile && npx tsc --noEmit passes; no #ea580c or 234/255 remnants in owned files.
 - **Interfaces:** mobile/src/theme.ts token values changed, shape identical — consumers recompile unchanged. New semantic mapping for screen workers: brand=#2563EB, mint=#16A34A (YES), rose=#DC2626 (NO), amber=#D97706 (pending), border=#E5E7EB, text=#1E2530, textMuted=#6B7280; glass.card/cardStrong now include shadow props; glow() ignores its color arg (neutral shadow). Recorded in DECISIONS.md under n6.
@@ -49,4 +55,13 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
 - **Did:** Resolved the DECISIONS.md merge conflict by taking the union of both sides: kept the integrated side (10-task light-theme plan approval, n0-2 and n6 completion reports) and re-inserted the workspace side's n0-2 token-contract entry, ordered chronologically after the plan approval. No code files conflicted; the light theme (globals.css, tailwind.config.ts, layout.tsx) merged cleanly.
 - **Interfaces:** DECISIONS.md only — no code, class names, or tokens changed by the resolution. The n0-2 token contract for downstream workers is preserved verbatim.
 - **By:** n0-2 · 2026-07-13T20:49:07.680Z
+
+## n6: Resolved the DECISIONS.md merge conflict by taking the union
+- **Did:** Resolved the DECISIONS.md merge conflict by taking the union of both sides: kept the integrated side intact (10-task plan approval, n0-2 token contract + completion, n6 completion, n0-2 resolution note) and re-inserted the workspace side's n6 mobile token-contract entry, placed before the n6 completion report to mirror the n0-2 contract/completion ordering. No code files conflicted; the mobile theme, nav, and Swift accent changes merged cleanly.
+- **Interfaces:** DECISIONS.md only — no code or token values changed by the resolution. The n6 mobile token contract for screen workers is preserved verbatim.
+- **By:** n6 · 2026-07-13
+## n6: Resolved the 2-sided DECISIONS.md merge conflict by unioning both
+- **Did:** Resolved the 2-sided DECISIONS.md merge conflict by unioning both sides: kept the integrated log (10-task plan approval, n0-2 token contract + completion, n6 completion, n0-2 resolution note) and re-inserted the workspace side n6 mobile token-contract entry before the n6 completion report; appended an n6 resolution note. No code files conflicted.
+- **Interfaces:** DECISIONS.md only; no code, tokens, or exports changed. n6 mobile token contract preserved verbatim for screen workers.
+- **By:** n6 · 2026-07-13T20:51:39.546Z
 
