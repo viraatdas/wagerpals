@@ -51,9 +51,9 @@ export default function ActivityScreen() {
       case 'resolution':
         return { name: 'trophy-outline', color: colors.mint, bg: colors.mintFill };
       case 'event_created':
-        return { name: 'add-circle-outline', color: colors.violet, bg: 'rgba(139,123,255,0.12)' };
+        return { name: 'add-circle-outline', color: colors.violet, bg: 'rgba(79,70,229,0.08)' };
       case 'comment':
-        return { name: 'chatbubble-outline', color: colors.amber, bg: 'rgba(255,194,61,0.12)' };
+        return { name: 'chatbubble-outline', color: colors.amber, bg: 'rgba(217,119,6,0.08)' };
       default:
         return { name: 'ellipse', color: colors.textMuted, bg: colors.surfaceGlass };
     }
@@ -123,7 +123,7 @@ export default function ActivityScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
 
       {/* Header */}
       <View style={styles.header}>
