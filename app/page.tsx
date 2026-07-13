@@ -236,7 +236,7 @@ export default function Home() {
       />
 
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="glass-strong rounded-3xl p-6 max-w-md w-full animate-fade-in">
             <h2 className="text-2xl font-display font-semibold text-foreground mb-4">Create a Group</h2>
             <form onSubmit={handleCreateGroup}>
@@ -245,7 +245,7 @@ export default function Home() {
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder="Group name"
-                className="w-full bg-white/5 border border-white/10 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition mb-6"
+                className="w-full bg-gray-50 border border-gray-200 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2 focus:outline-none focus:bg-white focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition mb-6"
                 required
               />
               <div className="flex gap-3">
@@ -270,7 +270,7 @@ export default function Home() {
       )}
 
       {showJoinModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="glass-strong rounded-3xl p-6 max-w-md w-full animate-fade-in">
             <h2 className="text-2xl font-display font-semibold text-foreground mb-4">Join a Group</h2>
             <form onSubmit={handleJoinGroup}>
@@ -280,7 +280,7 @@ export default function Home() {
                 onChange={(e) => setGroupCode(e.target.value)}
                 placeholder="Enter 6-digit group code"
                 maxLength={6}
-                className="w-full bg-white/5 border border-white/10 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2 focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition mb-6 text-center text-2xl tracking-widest"
+                className="w-full bg-gray-50 border border-gray-200 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2 focus:outline-none focus:bg-white focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition mb-6 text-center text-2xl tracking-widest"
                 required
               />
               <div className="flex gap-3">
@@ -305,14 +305,12 @@ export default function Home() {
       )}
       
       {/* Hero Section */}
-      <div className="relative overflow-hidden">
-        <div className="pointer-events-none absolute -top-24 -left-16 w-72 h-72 rounded-full bg-brand-2/20 blur-3xl" />
-        <div className="pointer-events-none absolute -top-10 right-0 w-80 h-80 rounded-full bg-neon-violet/20 blur-3xl" />
+      <div className="relative overflow-hidden bg-gradient-to-b from-background-2 to-background">
         <div className="relative max-w-4xl mx-auto px-4 py-10 sm:py-14 animate-rise">
           <div className="flex items-center gap-3 mb-3">
-            <img src="/icons/icon-192x192.svg" alt="" className="w-11 h-11 rounded-2xl ring-1 ring-white/10 animate-floaty" />
+            <img src="/icons/icon-192x192.svg" alt="" className="w-11 h-11 rounded-2xl ring-1 ring-black/[0.06] animate-floaty" />
             <h1 className="text-4xl sm:text-5xl font-display font-semibold text-foreground">
-              Wager<span className="text-gradient">Pals</span>
+              WagerPals
             </h1>
           </div>
           <p className="text-muted text-lg mb-6 max-w-lg">
@@ -352,22 +350,22 @@ export default function Home() {
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 ${
                         group.is_public
-                          ? 'bg-gradient-to-br from-neon-cyan to-neon-violet'
+                          ? 'bg-gradient-to-br from-sky-500 to-indigo-500'
                           : 'bg-brand-gradient'
                       }`}>
                         {group.name.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <h3 className="text-base font-semibold text-foreground truncate group-hover:text-gradient transition-colors">
+                        <h3 className="text-base font-semibold text-foreground truncate group-hover:text-brand-2 transition-colors">
                           {group.name}
                         </h3>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-2">
                           <span>{group.member_count} members</span>
-                          <span className="w-1 h-1 rounded-full bg-white/20" />
+                          <span className="w-1 h-1 rounded-full bg-gray-300" />
                           <span className="font-mono">{group.id}</span>
                           {group.is_admin && (
                             <>
-                              <span className="w-1 h-1 rounded-full bg-white/20" />
+                              <span className="w-1 h-1 rounded-full bg-gray-300" />
                               <span className="text-brand-2">Admin</span>
                             </>
                           )}
@@ -376,7 +374,7 @@ export default function Home() {
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-2">
                       {group.is_public ? (
-                        <span className="chip text-neon-cyan border-neon-cyan/25 bg-neon-cyan/10">
+                        <span className="chip text-sky-700 bg-sky-50 border-sky-200">
                           Public
                         </span>
                       ) : (

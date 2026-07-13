@@ -136,8 +136,8 @@ export default function UsersPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 mobile-page animate-rise">
-      <h1 className="font-display text-3xl font-semibold mb-2">
-        <span className="text-gradient">Users</span>
+      <h1 className="font-display text-3xl font-semibold text-foreground mb-2">
+        Users
       </h1>
       <p className="text-muted mb-8">
         View members from your groups
@@ -166,7 +166,7 @@ export default function UsersPage() {
                 className="w-full glass rounded-2xl px-6 py-4 flex items-center justify-between transition focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-brand-gradient rounded-xl flex items-center justify-center text-white font-semibold shadow-glow-ember">
+                  <div className="w-10 h-10 bg-brand-gradient rounded-xl flex items-center justify-center text-white font-semibold">
                     {selectedGroup?.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="text-left">
@@ -196,14 +196,14 @@ export default function UsersPage() {
                         setSelectedGroupId(group.id);
                         setDropdownOpen(false);
                       }}
-                      className={`w-full px-6 py-4 flex items-center gap-3 hover:bg-white/5 transition-colors text-left ${
+                      className={`w-full px-6 py-4 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left ${
                         selectedGroupId === group.id ? 'bg-brand-2/10' : ''
                       }`}
                     >
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-semibold ${
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-semibold ${
                         selectedGroupId === group.id
-                          ? 'bg-brand-gradient shadow-glow-ember'
-                          : 'bg-white/10'
+                          ? 'bg-brand-gradient text-white'
+                          : 'bg-gray-100 text-muted'
                       }`}>
                         {group.name.charAt(0).toUpperCase()}
                       </div>
@@ -249,17 +249,17 @@ export default function UsersPage() {
                   const isTop = rank <= 3;
                   const rankStyles =
                     rank === 1
-                      ? 'bg-gradient-to-br from-neon-amber to-brand-2 text-background shadow-glow-ember'
+                      ? 'bg-amber-100 text-amber-700'
                       : rank === 2
-                      ? 'bg-white/15 text-foreground'
+                      ? 'bg-gray-200 text-gray-600'
                       : rank === 3
-                      ? 'bg-brand-2/20 text-brand-2'
-                      : 'bg-white/5 text-muted-2';
+                      ? 'bg-brand-2/10 text-brand-2'
+                      : 'bg-gray-100 text-muted-2';
                   return (
                   <div
                     key={user.id}
-                    className={`glass-subtle glass-hover rounded-2xl p-6 ${
-                      isTop ? 'border-brand-2/30 shadow-glow-ember' : ''
+                    className={`glass glass-hover rounded-2xl p-6 ${
+                      isTop ? 'border-brand-2/30' : ''
                     }`}
                   >
                     <div className="flex items-start gap-4">
@@ -281,7 +281,7 @@ export default function UsersPage() {
                         <div className="grid grid-cols-3 gap-4 mt-4">
                           <div>
                             <div className="text-xs text-muted-2 mb-1">Total Bet</div>
-                            <div className="text-xl font-medium text-neon-cyan tabular-nums">
+                            <div className="text-xl font-medium text-foreground tabular-nums">
                               ${user.total_bet.toFixed(2)}
                             </div>
                           </div>
@@ -290,9 +290,9 @@ export default function UsersPage() {
                             <div
                               className={`text-xl font-medium tabular-nums ${
                                 user.net_total > 0
-                                  ? 'text-neon-mint'
+                                  ? 'text-green-600'
                                   : user.net_total < 0
-                                  ? 'text-neon-rose'
+                                  ? 'text-red-600'
                                   : 'text-muted'
                               }`}
                             >
@@ -301,7 +301,7 @@ export default function UsersPage() {
                           </div>
                           <div>
                             <div className="text-xs text-muted-2 mb-1">Win Streak</div>
-                            <div className="text-xl font-light text-foreground tabular-nums">🔥 {user.streak}</div>
+                            <div className="text-xl font-medium text-foreground tabular-nums">🔥 {user.streak}</div>
                           </div>
                         </div>
                       </div>

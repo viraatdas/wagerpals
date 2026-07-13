@@ -42,12 +42,12 @@ export default function ActivityPage() {
     if (activity.type === 'bet') {
       return (
         <div className="flex justify-between items-start">
-          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-neon-cyan shadow-[0_0_8px_var(--neon-cyan)]" />
+          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-sky-500" />
           <div className="flex-1">
             <p className="text-foreground">
-              <span className="font-medium text-neon-cyan">@{activity.username || 'Unknown'}</span>
+              <span className="font-medium text-sky-700">@{activity.username || 'Unknown'}</span>
               {' bet '}
-              <span className="font-semibold text-gradient">${activity.amount?.toFixed(2)}</span>
+              <span className="font-semibold text-foreground">${activity.amount?.toFixed(2)}</span>
               {' on '}
               <span className="font-medium">{activity.side}</span>
               {' in '}
@@ -77,10 +77,10 @@ export default function ActivityPage() {
     if (activity.type === 'event_created') {
       return (
         <div className="flex justify-between items-start">
-          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-neon-violet shadow-[0_0_8px_var(--neon-violet)]" />
+          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-indigo-500" />
           <div>
             <p className="text-foreground">
-              <span className="font-medium text-neon-violet">@{activity.username || 'Unknown'}</span>
+              <span className="font-medium text-indigo-600">@{activity.username || 'Unknown'}</span>
               {' created '}
               <span className="text-muted">"{activity.event_title}"</span>
               {activity.group_name && (
@@ -103,10 +103,10 @@ export default function ActivityPage() {
     if (activity.type === 'resolution') {
       return (
         <div className="flex justify-between items-start">
-          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-neon-mint shadow-[0_0_8px_var(--neon-mint)]" />
+          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-green-500" />
           <div>
             <p className="text-foreground">
-              <span className="font-medium text-neon-mint">✓ Resolved:</span>
+              <span className="font-medium text-green-700">✓ Resolved:</span>
               {' '}
               <span className="text-muted">"{activity.event_title}"</span>
               {activity.group_name && (
@@ -119,7 +119,7 @@ export default function ActivityPage() {
               )}
             </p>
             <p className="text-sm text-muted mt-1">
-              Winner: <span className="font-medium text-neon-mint">{activity.winning_side}</span>
+              Winner: <span className="font-medium text-green-700">{activity.winning_side}</span>
             </p>
           </div>
           <span className="text-xs text-muted-2 ml-2 whitespace-nowrap">
@@ -132,10 +132,10 @@ export default function ActivityPage() {
     if (activity.type === 'comment') {
       return (
         <div className="flex justify-between items-start">
-          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-neon-amber shadow-[0_0_8px_var(--neon-amber)]" />
+          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-amber-500" />
           <div className="flex-1">
             <p className="text-foreground">
-              <span className="font-medium text-neon-amber">@{activity.username || 'Unknown'}</span>
+              <span className="font-medium text-amber-700">@{activity.username || 'Unknown'}</span>
               {' commented on '}
               <span className="text-muted">"{activity.event_title}"</span>
               {activity.group_name && (
@@ -188,7 +188,7 @@ export default function ActivityPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 mobile-page animate-rise">
       <h1 className="font-display text-3xl font-semibold text-foreground mb-2">
-        Activity <span className="text-gradient">Feed</span>
+        Activity Feed
       </h1>
       <p className="text-muted mb-8">
         Recent events, bets, and resolutions from your groups
@@ -208,7 +208,7 @@ export default function ActivityPage() {
               key={`${activity.type}-${activity.event_id}-${activity.timestamp}-${index}`}
               href={`/events/${activity.event_id}`}
             >
-              <div className="glass-subtle glass-hover rounded-2xl p-4 cursor-pointer">
+              <div className="glass glass-hover rounded-2xl p-4 cursor-pointer">
                 {renderActivity(activity, index)}
               </div>
             </Link>

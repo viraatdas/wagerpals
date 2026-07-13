@@ -74,7 +74,7 @@ export default function Explore() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 mobile-page animate-rise">
       <h1 className="font-display text-2xl sm:text-3xl font-semibold text-foreground mb-6">
-        Explore <span className="text-gradient">Events</span>
+        Explore Events
       </h1>
 
       <div className="grid grid-cols-2 gap-2 mb-6 sm:flex sm:flex-wrap">

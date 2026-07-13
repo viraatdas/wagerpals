@@ -84,16 +84,16 @@ export default function AllEventsPage() {
           ← Back to Groups
         </Link>
         <h1 className="font-display text-3xl sm:text-4xl font-semibold text-foreground mb-2">
-          All <span className="text-gradient">Events</span>
+          All Events
         </h1>
-        <p className="text-base sm:text-lg text-muted font-light">
+        <p className="text-base sm:text-lg text-muted">
           Events from all your groups
         </p>
       </div>
 
       {groupedEvents.length === 0 ? (
         <div className="glass rounded-3xl text-center py-14 px-6 animate-fade-in">
-          <p className="text-muted mb-5 font-light">No events in any of your groups yet.</p>
+          <p className="text-muted mb-5">No events in any of your groups yet.</p>
           <Link
             href="/create"
             className="btn-primary"
