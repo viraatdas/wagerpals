@@ -209,7 +209,7 @@ export default function GroupDetailScreen() {
                   end={{ x: 1, y: 1 }}
                   style={styles.depositButton}
                 >
-                  <Ionicons name="card-outline" size={18} color="#fff" />
+                  <Ionicons name="card-outline" size={18} color={colors.white} />
                   <Text style={styles.depositButtonText}>Deposit</Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   depositButtonText: {
-    color: '#fff',
+    color: colors.white,
     fontWeight: '600',
   },
   resolverText: {

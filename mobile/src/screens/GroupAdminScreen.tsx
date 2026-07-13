@@ -253,7 +253,7 @@ export default function GroupAdminScreen() {
                   style={[styles.actionBtn, styles.secondaryBtn]}
                   onPress={() => handleAction('demote', member.user_id, member.username || '')}
                 >
-                  <Text style={styles.btnText}>Demote</Text>
+                  <Text style={[styles.btnText, styles.btnTextSecondary]}>Demote</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   fullButtonText: {
-    color: '#fff',
+    color: colors.white,
     fontWeight: '600',
   },
   resolverList: {
@@ -463,8 +463,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   btnText: {
-    color: '#fff',
+    color: colors.white,
     fontSize: 14,
     fontWeight: '600',
+  },
+  btnTextSecondary: {
+    color: colors.text,
   },
 });

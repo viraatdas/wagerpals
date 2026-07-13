@@ -127,7 +127,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
 
       {/* Header */}
       <View style={styles.header}>
@@ -144,7 +144,7 @@ export default function HomeScreen() {
           activeOpacity={0.7}
         >
           <View style={styles.profileAvatar}>
-            <Ionicons name="person" size={20} color="#ea580c" />
+            <Ionicons name="person" size={20} color={colors.brand2} />
           </View>
         </TouchableOpacity>
       </View>
@@ -163,7 +163,7 @@ export default function HomeScreen() {
             style={styles.actionCard}
           >
             <View style={styles.actionIconContainer}>
-              <Ionicons name="add" size={28} color="#fff" />
+              <Ionicons name="add" size={28} color={colors.white} />
             </View>
             <Text style={styles.actionTitle}>Create Group</Text>
             <Text style={styles.actionSubtitle}>Start a new betting group</Text>
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    backgroundColor: colors.brand3,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
@@ -332,12 +332,13 @@ const styles = StyleSheet.create({
   actionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
     marginBottom: 4,
   },
   actionSubtitle: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: colors.white,
+    opacity: 0.85,
   },
   actionTitleAlt: {
     color: colors.text,
