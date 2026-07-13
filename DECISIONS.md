@@ -14,3 +14,24 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   - Mobile bottom nav now has 6 tabs [out of lane] — grid-cols-6 fits but is tighter on very narrow phones; consider consolidating if more tabs are added
 - **By:** n0 · 2026-07-13T01:41:23.556Z
 
+## Plan approved
+- **What:** Approved a 10-task plan for: wagerpals redesign is dark mode which i hate. it should still be light mode mdodern esque feel. give it a polymarket like feel. Tasks: Web light design system foundation; Web nav + chrome components (light); Web core UI components (light); Web browse pages (light); Web detail + creation pages (light); Web calendar, profile + auth pages (light); Mobile theme foundation + nav + iMessage accent; Mobile screens A (heavy screens, light); Mobile screens B (remaining screens, light); Final light-theme polish + consistency pass.
+- **Why:** user-approved plan; workers implement these nodes in isolated workspaces, honoring the dependency edges
+- **By:** conductor · 1783975368371
+
+## n0-2: Re-themed the web design system foundation from dark Midnight
+- **Did:** Re-themed the web design system foundation from dark Midnight Glass to a light Polymarket-like system. app/globals.css: :root vars redefined for light mode (white bg, #f7f8fa panels, dark slate text, blue brand ramp #3b82f6/#2563eb/#1d4ed8, neon-* mapped to semantic light accents green/red/amber/blues), --surface/--border RGB channels flipped from white to dark slate so existing rgb(var/alpha) overlays become gray tints on white, color-scheme:light; .glass* utilities are now white bordered cards with subtle shadows, .btn-primary a solid blue pill, .btn-glass white bordered, chips light tinted pills, .text-gradient(-cool) solid ink/blue, skeleton+scrollbar light, .aurora neutralized to display:none. tailwind.config.ts: shadow-glow* tokens softened to subtle light shadows, glass-sheen near-invisible; all token names kept. app/layout.tsx: removed dark class from html, removed aurora div, themeColor #ffffff. Verified: npx tsc --noEmit clean, npm run build succeeds (needed .env.local copied from main checkout for Stack Auth page-data collection; gitignored, not in diff). jj diff touches only the 3 owned files.
+- **Interfaces:** Token contract recorded in DECISIONS.md: all class/var names unchanged, values light. Key gotcha for siblings: --surface/--border are now dark-slate RGB channels, so raw bg-white/5 or border-white/10 utilities in components are invisible on the light canvas and must be migrated; dark: variants no longer apply since html lost the dark class.
+- **Follow-ups:**
+  - Migrate raw white-alpha utilities in components [out of lane] — ~52 uses of bg-white/N and border-white/N in app/ and components/ render invisible on the light canvas; owned by page/component workers
+  - Consider dropping Space Grotesk display font [out of lane] — font-display is kept loading in layout.tsx for compatibility; if downstream workers standardize on Inter for headings the extra font load can go
+- **By:** n0-2 · 2026-07-13T20:46:59.719Z
+
+## n6: Redefined mobile/src/theme.ts as the light Polymarket-like token set with
+- **Did:** Redefined mobile/src/theme.ts as the light Polymarket-like token set with every exported name and object shape preserved (colors.*, gradients.*, radius, spacing, glass.*, glow(), inputStyle): white bg (#FFFFFF/#F7F8FA panels), #1E2530/#6B7280 text, #E5E7EB hairlines, blue #2563EB brand ramp, green #16A34A / red #DC2626 / amber #D97706 semantics, 8% translucent slate fills; glass.* are white cards with soft shadows, glow() returns a subtle neutral shadow, inputStyle is white with gray border. Restyled nav chrome: tab bar white with hairline #E5E7EB top border, blue active / gray inactive tint; stack headers white with blue tint and bg2 content; StatusBar dark-content. Swapped iMessage extension accent from orange to blue #2563EB in both Swift files. Verified: cd mobile && npx tsc --noEmit passes; no #ea580c or 234/255 remnants in owned files.
+- **Interfaces:** mobile/src/theme.ts token values changed, shape identical — consumers recompile unchanged. New semantic mapping for screen workers: brand=#2563EB, mint=#16A34A (YES), rose=#DC2626 (NO), amber=#D97706 (pending), border=#E5E7EB, text=#1E2530, textMuted=#6B7280; glass.card/cardStrong now include shadow props; glow() ignores its color arg (neutral shadow). Recorded in DECISIONS.md under n6.
+- **Follow-ups:**
+  - Sync theme.ts values with final web globals.css once n0-2 lands [out of lane] — n0-2 had not landed while I worked; theme values follow the task-brief palette, which should match, but exact web values (e.g. gradient stops) may drift
+  - Screens still reference old-look styles until screen workers re-style them [out of lane] — theme swap makes them light automatically but per-screen hardcoded colors (if any) are outside my lane
+- **By:** n6 · 2026-07-13T20:47:01.041Z
+
