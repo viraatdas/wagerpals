@@ -13,8 +13,10 @@
     "db:add-push": "tsx scripts/add-push-subscriptions.ts",
     "db:migrate-mobile": "tsx scripts/migrate-mobile.ts",
     "db:migrate-wallet": "tsx scripts/migrate-wallet.ts",
+    "db:migrate": "tsx scripts/migrate-comeback.ts",
     "verify-pwa": "tsx scripts/verify-pwa-setup.ts",
-    "test:push": "tsx scripts/test-push-notification.ts"
+    "test:push": "tsx scripts/test-push-notification.ts",
+    "brand:assets": "tsx scripts/generate-brand-assets.ts"
   },
   "dependencies": {
     "@stackframe/stack": "^2.8.41",
@@ -37,6 +39,7 @@
     "autoprefixer": "^10.4.20",
     "dotenv": "^17.2.3",
     "postcss": "^8.4.47",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.20.6",
     "typescript": "^5"

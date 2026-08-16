@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
+import Logo from './Logo';
 
 const navItems = [
   {
@@ -106,14 +107,11 @@ export default function Header() {
         <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3.5">
           <div className="flex justify-between items-center gap-2 sm:gap-3">
             <Link href="/" className="flex min-w-0 items-center gap-2 flex-shrink whitespace-nowrap group">
-              <img
-                src="/icons/icon-192x192.svg"
-                alt="WagerPals"
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex-shrink-0 ring-1 ring-gray-200 transition-transform group-hover:scale-105"
+              <Logo
+                variant="lockup"
+                animate="mount"
+                markClassName="w-7 h-7 sm:w-8 sm:h-8 flex-shrink-0 transition-transform group-hover:scale-105"
               />
-              <span className="truncate text-lg sm:text-2xl font-display font-semibold text-foreground">
-                Wager<span className="text-brand-2">Pals</span>
-              </span>
             </Link>
 
             <nav className="flex flex-shrink-0 items-center justify-end gap-2 md:gap-5 min-w-0">
