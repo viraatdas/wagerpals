@@ -1,0 +1,48 @@
+{
+  "cli": {
+    "version": ">= 13.4.4",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://localhost:3000"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": true,
+        "buildConfiguration": "Release"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://wagerpals.io",
+        "EXPO_PUBLIC_AUTH0_DOMAIN": "dev-ti4x5dupc1lejewk.us.auth0.com",
+        "EXPO_PUBLIC_AUTH0_CLIENT_ID": "M7v0CKV88mVEscfNVWVj2wZS54CzV3oP"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "credentialsSource": "remote",
+      "ios": {
+        "buildConfiguration": "Release"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://wagerpals.io",
+        "EXPO_PUBLIC_AUTH0_DOMAIN": "dev-ti4x5dupc1lejewk.us.auth0.com",
+        "EXPO_PUBLIC_AUTH0_CLIENT_ID": "M7v0CKV88mVEscfNVWVj2wZS54CzV3oP"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "viraat.laldas@gmail.com",
+        "ascAppId": "6754625373",
+        "appleTeamId": "3C4383262W"
+      }
+    }
+  }
+}

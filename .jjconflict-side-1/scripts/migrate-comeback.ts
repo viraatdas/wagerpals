@@ -7,6 +7,9 @@ dotenv.config({ path: '.env.local' });
 
 let applied = 0;
 let skipped = 0;
+// Steps that could not be applied because existing data blocks them. Tracked separately from
+// `skipped` so the summary never reports a blocked step as an already-present no-op.
+let blocked = 0;
 
 async function columnExists(table: string, column: string): Promise<boolean> {
   const res = await sql`
@@ -74,7 +77,7 @@ async function createUsersEmailUniqueIndex(): Promise<void> {
       console.warn(`       - ${row.email_lower} (${row.cnt} users)`);
     }
     console.warn('     Run identity consolidation to merge/dedupe these accounts, then re-run this migration.');
-    skipped++;
+    blocked++;
     return;
   }
 
@@ -130,6 +133,7 @@ async function addTransactionsTypeCheck(): Promise<void> {
     }
     console.warn('     Constraint left NOT VALID: new/updated rows are enforced, existing rows are not.');
     console.warn('     Clean up the offending rows, then re-run this migration to validate.');
+    blocked++;
   }
 }
 
@@ -272,7 +276,12 @@ async function migrateComeback(): Promise<void> {
     skipped++;
   }
 
-  console.log(`\n🎉 Migration complete: ${applied} change(s) newly applied, ${skipped} already present (no-op).`);
+  if (blocked > 0) {
+    console.log(`\n⚠️  Migration finished with warnings: ${applied} change(s) newly applied, ${skipped} already present, ${blocked} blocked by existing data (see warnings above).`);
+    console.log('   Resolve the data issues and re-run this migration; run `npm run db:verify` to confirm.');
+  } else {
+    console.log(`\n🎉 Migration complete: ${applied} change(s) newly applied, ${skipped} already present (no-op).`);
+  }
 }
 
 migrateComeback()

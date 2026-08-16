@@ -1,0 +1,13 @@
+<!--
+  WagerPals mark — flat all-white silhouette.
+  Android renders notification icons from the alpha channel only, so every
+  element must be white here; any colour would be discarded anyway.
+  Geometry mirrors mark.svg exactly.
+-->
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(0,-1.5)">
+    <path d="M6,13 L18,52 L32,21" fill="none" stroke="#ffffff" stroke-width="8.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M32,21 L46,52 L58,13" fill="none" stroke="#ffffff" stroke-width="8.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="32" cy="15" r="5.9" fill="#ffffff"/>
+  </g>
+</svg>

@@ -1,0 +1,22 @@
+<!--
+  WagerPals mark — full colour, transparent background.
+  Two mirrored chevrons meeting at a raised centre apex, crowned by a gold coin:
+  the two sides of a bet meeting in the middle, with the stake at the meeting point.
+  Geometry validated down to 16px — do not adjust coordinates, stroke widths or radii
+  without re-running `npm run brand:assets` and re-checking the small sizes.
+-->
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="wpMarkW" x1="6" y1="12" x2="58" y2="12" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="wpMarkC" x1="26" y1="10" x2="38" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f59e0b"/><stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(0,-1.5)">
+    <path d="M6,13 L18,52 L32,21" fill="none" stroke="url(#wpMarkW)" stroke-width="8.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M32,21 L46,52 L58,13" fill="none" stroke="url(#wpMarkW)" stroke-width="8.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="32" cy="15" r="5.9" fill="url(#wpMarkC)"/>
+  </g>
+</svg>
