@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { User } from '@/lib/types';
-import { getAuthenticatedUserId, requireAuthUser, verifyUserMatch } from '@/lib/auth';
+import { getAuthenticatedUserId, requireAuth, requireAuthUser, verifyUserMatch } from '@/lib/auth';
 import { syncUser } from '@/lib/sync-user';
 
 export const dynamic = 'force-dynamic';
@@ -46,6 +46,13 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json(toPublicUser(user));
   }
+
+  // No params: the whole user directory. This is a bulk read of every human on
+  // the platform, so it is never served to an anonymous caller — auth is
+  // checked BEFORE the database is touched, so an unauthenticated request
+  // can't even learn how many users exist or how long the query takes.
+  const authResult = await requireAuth(request);
+  if (authResult instanceof NextResponse) return authResult;
 
   const users = await db.users.getAll();
   return NextResponse.json(users.map(toPublicUser));
