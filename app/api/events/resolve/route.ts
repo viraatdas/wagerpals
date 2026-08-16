@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { sql } from '@vercel/postgres';
 import { db } from '@/lib/db';
-import { calculateNetResults, generateId } from '@/lib/utils';
+import { calculateNetResults } from '@/lib/utils';
 import { sendPushToAllSubscribers } from '@/lib/push';
 import { requireAuth } from '@/lib/auth';
 import { getGroupResolver } from '@/lib/group-resolver';
+import { settleCashEvent, isPaymentError, type SettleCashEventResult } from '@/lib/payments';
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request);
   if (authResult instanceof NextResponse) return authResult;
 
   const body = await request.json();
-  const { event_id, winning_side } = body;
+  const { event_id, winning_side, action } = body;
+  const isCancel = action === 'cancel';
 
-  if (!event_id || !winning_side) {
+  if (!event_id) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
@@ -21,13 +24,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
-  const group = await db.groups.get(event.group_id);
-  const isRealMoney = group && !group.is_public;
+  if (!isCancel && (!winning_side || (winning_side !== event.side_a && winning_side !== event.side_b))) {
+    return NextResponse.json({ error: 'Invalid winning side' }, { status: 400 });
+  }
 
-  if (isRealMoney) {
+  if (event.status === 'resolved') {
+    return NextResponse.json({ error: 'Event already resolved' }, { status: 400 });
+  }
+
+  const group = await db.groups.get(event.group_id);
+  const requiresResolver = event.payment_type === 'cash' || (group && !group.is_public);
+
+  if (requiresResolver) {
     const resolver = await getGroupResolver(event.group_id);
     if (!resolver || resolver.user_id !== authResult.userId) {
-      return NextResponse.json({ error: 'Only the chosen resolver can resolve paid group events' }, { status: 403 });
+      const message = isCancel
+        ? 'Only the chosen resolver can resolve or cancel paid group events'
+        : 'Only the chosen resolver can resolve paid group events';
+      return NextResponse.json({ error: message }, { status: 403 });
     }
   } else {
     // Only group admins can resolve free/public events
@@ -37,61 +51,129 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (event.status === 'resolved') {
-    return NextResponse.json({ error: 'Event already resolved' }, { status: 400 });
+  if (isCancel && event.payment_type !== 'cash') {
+    return NextResponse.json({ error: 'Only real-money events can be cancelled' }, { status: 400 });
   }
 
-  const bets = await db.bets.getByEvent(event_id);
-  const netResults = calculateNetResults(bets, winning_side);
-
-  // Update user totals and credit wallets for real-money groups
-  for (const result of netResults) {
-    const user = await db.users.get(result.user_id);
-    if (user) {
-      const newTotal = Math.round((user.net_total + result.net) * 100) / 100;
-      const newStreak = result.net > 0 ? user.streak + 1 : 0;
-      await db.users.update(result.user_id, {
-        net_total: newTotal,
-        streak: newStreak,
-      });
-
-      // Credit wallet for winners (return original bet + winnings)
-      if (isRealMoney && result.net > 0) {
-        // Find user's original bet amount
-        const userBets = bets.filter(b => b.user_id === result.user_id && !b.is_late);
-        const originalBet = userBets.reduce((sum, b) => sum + b.amount, 0);
-        const payout = originalBet + result.net;
-
-        await db.wallets.getOrCreate(result.user_id);
-        await db.wallets.updateBalance(result.user_id, payout);
-
-        await db.transactions.create({
-          id: generateId(),
-          user_id: result.user_id,
-          type: 'winnings',
-          amount: payout,
-          status: 'completed',
-          description: `Won on "${event.title}" - ${winning_side}`,
-        });
-      } else if (isRealMoney && result.net === 0) {
-        // Push bet: return original bet amount
-        const userBets = bets.filter(b => b.user_id === result.user_id && !b.is_late);
-        const originalBet = userBets.reduce((sum, b) => sum + b.amount, 0);
-        if (originalBet > 0) {
-          await db.wallets.getOrCreate(result.user_id);
-          await db.wallets.updateBalance(result.user_id, originalBet);
-
-          await db.transactions.create({
-            id: generateId(),
-            user_id: result.user_id,
-            type: 'bet_refund',
-            amount: originalBet,
-            status: 'completed',
-            description: `Push on "${event.title}" - bet returned`,
-          });
-        }
+  if (isCancel) {
+    let settlement: SettleCashEventResult;
+    try {
+      settlement = await settleCashEvent(event_id, null);
+    } catch (error: any) {
+      if (isPaymentError(error)) {
+        return NextResponse.json(
+          { error: error.message, code: error.code, ...error.details },
+          { status: error.status }
+        );
       }
-      // Losers: their money was already deducted when the bet was placed
+      console.error('[Resolve API] Failed to cancel event:', error);
+      return NextResponse.json({ error: 'Failed to settle event' }, { status: 500 });
+    }
+
+    const resolved_at = Date.now();
+
+    // A cancelled event is "resolved" with no winning side. db.events.update
+    // can't write resolved_at without a winning_side, so this goes straight
+    // through raw SQL instead.
+    await sql`UPDATE events SET status = 'resolved', winning_side = NULL, resolved_at = ${resolved_at} WHERE id = ${event_id}`;
+
+    // Same race window as the resolve path below: a bet could have committed
+    // between the refund above and this status update, stranding its hold.
+    // The event is resolved now, so no new hold can appear and one sweep is
+    // enough. Refunds again (winningSide null), so nobody loses money.
+    try {
+      const sweep = await settleCashEvent(event_id, null);
+      if (sweep.holds_settled > 0) {
+        console.warn(`[Resolve API] Swept ${sweep.holds_settled} late hold(s) on cancelled event ${event_id}`);
+      }
+    } catch (error: any) {
+      console.error('[Resolve API] Post-cancel escrow sweep failed:', error);
+    }
+
+    // No winners or losers on a cancelled event — leave net_total/streak alone.
+
+    // Add to activity feed
+    const activityData = {
+      type: 'resolution' as const,
+      timestamp: resolved_at,
+      event_id,
+      event_title: event.title,
+      username: 'System',
+      winning_side: 'Cancelled',
+    };
+
+    try {
+      await db.activities.add(activityData);
+    } catch (error: any) {
+      console.error('[Resolve API] Failed to add to activity feed:', error);
+    }
+
+    // Send push notification
+    try {
+      await sendPushToAllSubscribers({
+        title: '↩️ Event Cancelled',
+        body: `"${event.title}" was cancelled — every stake has been refunded.`,
+        url: `/events/${event_id}`,
+        eventId: event_id,
+        tag: `resolution-${event_id}`,
+      });
+    } catch (error: any) {
+      console.error('[Resolve API] Failed to send push notifications:', error);
+    }
+
+    const updatedEvent = await db.events.get(event_id);
+
+    return NextResponse.json({
+      ...updatedEvent,
+      cancelled: true,
+      settlement,
+    });
+  }
+
+  // Settle the money first, then mark the event resolved — never the other
+  // way round. If we marked it resolved first and settlement then failed,
+  // the stakes would be stranded in escrow on an event nobody can resolve
+  // again. In this order the worst case is money correctly paid out on an
+  // event that is still 'active', which a retry fixes (a second
+  // settleCashEvent finds no held holds and returns a no_holds noop, so it
+  // cannot double-pay).
+  let settlement: SettleCashEventResult | null = null;
+  if (event.payment_type === 'cash') {
+    try {
+      settlement = await settleCashEvent(event_id, winning_side);
+    } catch (error: any) {
+      if (isPaymentError(error)) {
+        return NextResponse.json(
+          { error: error.message, code: error.code, ...error.details },
+          { status: error.status }
+        );
+      }
+      console.error('[Resolve API] Failed to settle event:', error);
+      return NextResponse.json({ error: 'Failed to settle event' }, { status: 500 });
+    }
+  }
+
+  // A refunded settlement (nobody bet the winning side) makes every player
+  // whole, so there are no winners or losers to record. calculateNetResults
+  // would report a full loss for everyone here, contradicting the refund.
+  const refunded = settlement?.mode === 'refund';
+
+  const bets = await db.bets.getByEvent(event_id);
+  const netResults = refunded ? [] : calculateNetResults(bets, winning_side);
+
+  // Update leaderboard stats — applies to free AND cash events. All wallet
+  // crediting is owned by the payments engine now (settleCashEvent above).
+  if (!refunded) {
+    for (const result of netResults) {
+      const user = await db.users.get(result.user_id);
+      if (user) {
+        const newTotal = Math.round((user.net_total + result.net) * 100) / 100;
+        const newStreak = result.net > 0 ? user.streak + 1 : 0;
+        await db.users.update(result.user_id, {
+          net_total: newTotal,
+          streak: newStreak,
+        });
+      }
     }
   }
 
@@ -105,6 +187,24 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  // Close the race window between the settlement above and this status
+  // update: placeCashBet only rejects bets on a resolved event, so a bet
+  // that committed in between would leave a 'held' hold stranded on an
+  // event nobody can settle again. Now that the event is resolved no new
+  // hold can appear, so one more sweep is enough. It is a no_holds noop in
+  // the normal case, and it cannot double-pay — settleCashEvent only ever
+  // touches holds still in 'held'.
+  if (event.payment_type === 'cash') {
+    try {
+      const sweep = await settleCashEvent(event_id, winning_side);
+      if (sweep.holds_settled > 0) {
+        console.warn(`[Resolve API] Swept ${sweep.holds_settled} late hold(s) on ${event_id} settled after resolution`);
+      }
+    } catch (error: any) {
+      console.error('[Resolve API] Post-resolution escrow sweep failed:', error);
+    }
+  }
+
   // Add to activity feed
   const activityData = {
     type: 'resolution' as const,
@@ -114,7 +214,7 @@ export async function POST(request: NextRequest) {
     username: 'System',
     winning_side,
   };
-  
+
   try {
     await db.activities.add(activityData);
   } catch (error: any) {
@@ -139,5 +239,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     ...updatedEvent,
     net_results: netResults,
+    settlement,
   });
 }

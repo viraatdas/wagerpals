@@ -4,6 +4,7 @@ import { generateId } from '@/lib/utils';
 import { Bet } from '@/lib/types';
 import { sendPushToAllSubscribers } from '@/lib/push';
 import { requireAuth, verifyUserMatch } from '@/lib/auth';
+import { placeCashBet, isPaymentError } from '@/lib/payments';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,11 +27,87 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
+  // ---- Cash path: real-money bet, escrowed via placeCashBet ----
+  if (event.payment_type === 'cash') {
+    if (side !== event.side_a && side !== event.side_b) {
+      return NextResponse.json({ error: 'Invalid side' }, { status: 400 });
+    }
+
+    let result;
+    try {
+      result = await placeCashBet({
+        eventId: event_id,
+        userId: user_id,
+        username,
+        side,
+        amount: parseFloat(amount),
+        note,
+      });
+    } catch (error: any) {
+      if (isPaymentError(error)) {
+        return NextResponse.json(
+          { error: error.message, code: error.code, ...error.details },
+          { status: error.status }
+        );
+      }
+      console.error('[Bets API] Failed to place cash bet:', error);
+      return NextResponse.json({ error: 'Failed to place bet' }, { status: 500 });
+    }
+
+    // Update user's total_bet (only non-late bets count toward stats)
+    if (!result.bet.is_late) {
+      const user = await db.users.get(user_id);
+      if (user) {
+        await db.users.update(user_id, {
+          total_bet: Math.round((user.total_bet + result.bet.amount) * 100) / 100,
+        });
+      }
+    }
+
+    // Add to activity feed
+    const activityData = {
+      type: 'bet' as const,
+      timestamp: result.bet.timestamp,
+      event_id,
+      event_title: event.title,
+      user_id,
+      username,
+      side,
+      amount: result.bet.amount,
+      note: note || undefined,
+    };
+
+    try {
+      await db.activities.add(activityData);
+    } catch (error: any) {
+      console.error('[Bets API] Failed to add to activity feed:', error);
+    }
+
+    // Send push notification
+    try {
+      await sendPushToAllSubscribers({
+        title: '💰 New Bet Placed',
+        body: `${username} bet $${result.bet.amount.toFixed(2)} on "${side}" - ${event.title}`,
+        url: `/events/${event_id}`,
+        eventId: event_id,
+        tag: `bet-${result.bet.id}`,
+      });
+    } catch (error: any) {
+      console.error('[Bets API] Failed to send push notifications:', error);
+    }
+
+    return NextResponse.json({ ...result.bet, wallet: result.wallet, hold_id: result.hold.id });
+  }
+
+  // ---- Free path: no money moves, points only ----
   const timestamp = Date.now();
   const isLate = timestamp > event.end_time;
-  
+
   // Parse and round amount to 2 decimal places
   const parsedAmount = Math.round(parseFloat(amount) * 100) / 100;
+  if (!(parsedAmount > 0)) {
+    return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 });
+  }
 
   const newBet: Bet = {
     id: generateId(),
@@ -43,34 +120,6 @@ export async function POST(request: NextRequest) {
     timestamp,
     is_late: isLate,
   };
-
-  // Check if this is a real-money group (non-public) and deduct from wallet
-  const group = await db.groups.get(event.group_id);
-  if (group && !group.is_public && !isLate) {
-    const wallet = await db.wallets.getOrCreate(user_id);
-    if (wallet.balance < parsedAmount) {
-      return NextResponse.json({
-        error: `Insufficient wallet balance. You have $${wallet.balance.toFixed(2)} but need $${parsedAmount.toFixed(2)}. Deposit funds first.`,
-        balance: wallet.balance,
-      }, { status: 400 });
-    }
-
-    // Atomic deduction
-    const { success } = await db.wallets.deductBalance(user_id, parsedAmount);
-    if (!success) {
-      return NextResponse.json({ error: 'Insufficient wallet balance' }, { status: 400 });
-    }
-
-    // Record bet_placed transaction
-    await db.transactions.create({
-      id: generateId(),
-      user_id,
-      type: 'bet_placed',
-      amount: -parsedAmount,
-      status: 'completed',
-      description: `Bet on "${side}" - ${event.title}`,
-    });
-  }
 
   await db.bets.create(newBet);
 
@@ -96,7 +145,7 @@ export async function POST(request: NextRequest) {
     amount: parsedAmount,
     note: note || undefined,
   };
-  
+
   try {
     await db.activities.add(activityData);
   } catch (error: any) {
@@ -160,6 +209,17 @@ export async function DELETE(request: NextRequest) {
     // Only the bet owner can delete their bet
     const mismatch = verifyUserMatch(authResult.userId, bet.user_id);
     if (mismatch) return mismatch;
+
+    // Bets on cash events cannot be deleted — the stake is escrowed and
+    // deleting the bet would strand it. The resolver must cancel the event
+    // to refund every stake instead.
+    const event = await db.events.get(bet.event_id);
+    if (event && event.payment_type === 'cash') {
+      return NextResponse.json({
+        error: 'Bets on real-money events cannot be deleted. Ask the resolver to cancel the event to refund every stake.',
+        code: 'CASH_BET_IMMUTABLE',
+      }, { status: 400 });
+    }
 
     // Update user's total_bet (only non-late bets count toward stats)
     if (!bet.is_late) {
