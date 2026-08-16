@@ -22,7 +22,8 @@
     "identity:check": "tsx scripts/check-identity.ts",
     "identity:backfill": "tsx scripts/backfill-user-emails.ts",
     "users:merge": "tsx scripts/merge-duplicate-users.ts",
-    "stack:link-accounts": "tsx scripts/set-stack-account-linking.ts"
+    "stack:link-accounts": "tsx scripts/set-stack-account-linking.ts",
+    "verify:notifications": "tsx scripts/verify-notifications.ts"
   },
   "dependencies": {
     "@stackframe/stack": "^2.8.41",

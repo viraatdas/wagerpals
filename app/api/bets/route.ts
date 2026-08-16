@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { generateId } from '@/lib/utils';
 import { Bet } from '@/lib/types';
-import { sendPushToAllSubscribers } from '@/lib/push';
+import { notifyEventAudience } from '@/lib/push';
 import { requireAuth, verifyUserMatch } from '@/lib/auth';
 import { placeCashBet, isPaymentError } from '@/lib/payments';
 
@@ -85,12 +85,17 @@ export async function POST(request: NextRequest) {
 
     // Send push notification
     try {
-      await sendPushToAllSubscribers({
-        title: '💰 New Bet Placed',
-        body: `${username} bet $${result.bet.amount.toFixed(2)} on "${side}" - ${event.title}`,
-        url: `/events/${event_id}`,
+      await notifyEventAudience({
         eventId: event_id,
-        tag: `bet-${result.bet.id}`,
+        category: 'bets',
+        payload: {
+          title: '💰 New Bet Placed',
+          body: `${username} bet $${result.bet.amount.toFixed(2)} on "${side}" - ${event.title}`,
+          url: `/events/${event_id}`,
+          eventId: event_id,
+          tag: `bet-${result.bet.id}`,
+        },
+        excludeUserIds: [user_id],
       });
     } catch (error: any) {
       console.error('[Bets API] Failed to send push notifications:', error);
@@ -155,12 +160,17 @@ export async function POST(request: NextRequest) {
   // Send push notification
   try {
     const lateText = isLate ? ' (late bet)' : '';
-    await sendPushToAllSubscribers({
-      title: `💰 New Bet Placed${lateText}`,
-      body: `${username} bet $${parsedAmount.toFixed(2)} on "${side}" - ${event.title}`,
-      url: `/events/${event_id}`,
+    await notifyEventAudience({
       eventId: event_id,
-      tag: `bet-${newBet.id}`,
+      category: 'bets',
+      payload: {
+        title: `💰 New Bet Placed${lateText}`,
+        body: `${username} bet $${parsedAmount.toFixed(2)} on "${side}" - ${event.title}`,
+        url: `/events/${event_id}`,
+        eventId: event_id,
+        tag: `bet-${newBet.id}`,
+      },
+      excludeUserIds: [user_id],
     });
   } catch (error: any) {
     console.error('[Bets API] Failed to send push notifications:', error);

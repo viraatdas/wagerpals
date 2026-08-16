@@ -24,6 +24,10 @@ function CreateEventForm() {
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [groupMembers, setGroupMembers] = useState<any[]>([]);
+  const [membersError, setMembersError] = useState(false);
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [notifySubject, setNotifySubject] = useState(true);
 
   useEffect(() => {
     if (!user) {
@@ -52,6 +56,42 @@ function CreateEventForm() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [dropdownOpen]);
+
+  // Load members of the selected group so we can offer the "who is this bet
+  // about" picker. Always reset the subject when the group changes.
+  useEffect(() => {
+    setSelectedSubjectId('');
+    setNotifySubject(true);
+    setGroupMembers([]);
+    setMembersError(false);
+
+    if (!selectedGroupId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await fetch(`/api/groups/members?groupId=${selectedGroupId}`);
+        if (!response.ok) throw new Error('Failed to fetch group members');
+        const data = await response.json();
+        if (!cancelled) {
+          setGroupMembers(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch group members:', error);
+        if (!cancelled) {
+          setGroupMembers([]);
+          setMembersError(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGroupId]);
 
   const fetchGroups = async (uid: string) => {
     try {
@@ -116,6 +156,8 @@ function CreateEventForm() {
         creator_username: username,
         payment_type: paymentType,
         stake_amount: stakeAmount,
+        subject_user_id: selectedSubjectId || null,
+        notify_subject: selectedSubjectId ? notifySubject : true,
       };
 
       const response = await fetch('/api/events', {
@@ -150,6 +192,12 @@ function CreateEventForm() {
   if (!user) {
     return null; // Will redirect to signin
   }
+
+  // Other active members of the selected group, excluding ourselves —
+  // you can't make a bet "about" yourself.
+  const eligibleSubjects = groupMembers.filter(
+    (member) => member.status === 'active' && member.user_id !== user.id
+  );
 
   return (
     <>
@@ -254,6 +302,74 @@ function CreateEventForm() {
               )}
             </div>
           </div>
+
+          {/* Optional subject picker */}
+          {selectedGroupId && membersError && (
+            <div>
+              <label className="block text-sm font-medium text-muted mb-2">
+                Who is this bet about? (optional)
+              </label>
+              <p className="text-sm text-muted-2 font-light">
+                Couldn't load this group's members right now, so this bet won't be tied to anyone in particular.
+              </p>
+            </div>
+          )}
+
+          {selectedGroupId && !membersError && eligibleSubjects.length > 0 && (
+            <div>
+              <label htmlFor="subject" className="block text-sm font-medium text-muted mb-2">
+                Who is this bet about? (optional)
+              </label>
+              <select
+                id="subject"
+                aria-label="Who is this bet about?"
+                value={selectedSubjectId}
+                onChange={(e) => setSelectedSubjectId(e.target.value)}
+                className="w-full px-5 py-3.5 bg-white border border-gray-200 shadow-sm text-foreground rounded-xl focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition"
+              >
+                <option value="">No one / Nobody in particular</option>
+                {eligibleSubjects.map((member) => (
+                  <option key={member.user_id} value={member.user_id}>
+                    {member.username}
+                  </option>
+                ))}
+              </select>
+              <p className="text-sm text-muted-2 font-light mt-2">
+                Pick someone if this bet is specifically about them.
+              </p>
+
+              {selectedSubjectId && (
+                <div className="mt-4 flex items-start gap-3">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-pressed={notifySubject}
+                    aria-label="Let them know about this bet"
+                    onClick={() => setNotifySubject(!notifySubject)}
+                    className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-2/20 ${
+                      notifySubject ? 'bg-brand-2' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
+                        notifySubject ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <div>
+                    <div className="text-sm font-medium text-foreground">
+                      Let them know about this bet
+                    </div>
+                    {!notifySubject && (
+                      <p className="text-sm text-muted-2 font-light mt-1">
+                        They won't get any notifications about this bet — not when it's created, when people bet, when someone comments, or when it resolves. It stays off their activity feed until it's resolved. They can still see it if they open the bet directly or browse the group.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <label htmlFor="title" className="block text-sm font-medium text-muted mb-2">

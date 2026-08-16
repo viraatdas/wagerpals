@@ -25,16 +25,21 @@ process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_
 // Neutralize outbound push before any route handler runs.
 //
 // This database holds real push subscriptions on real devices. Every route
-// this script exercises calls sendPushToAllSubscribers, which makes one live
-// HTTPS request per subscription — hundreds of round-trips across a full run,
-// and a real side effect on real users' endpoints. A verification script must
-// not do that. The routes wrap push in their own try/catch and treat failure
-// as non-fatal, so stubbing it changes nothing about the money paths under
-// test. lib/push.ts reads webpush.sendNotification at call time, so mutating
-// the shared module object here is enough.
+// this script exercises notifies the event's group, which means live HTTPS
+// requests to real browser endpoints and to Expo — a real side effect on real
+// users' devices. A verification script must not do that. The routes wrap
+// push in their own try/catch and treat failure as non-fatal, so stubbing it
+// changes nothing about the money paths under test.
+//
+// lib/push.ts routes every send through a swappable transport, so replacing
+// it here covers BOTH web push and Expo (mutating web-push alone would leave
+// the Expo fetch live).
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const webpushModule = require('web-push');
-webpushModule.sendNotification = async () => ({ statusCode: 201, body: '', headers: {} });
+const pushModule = require('../lib/push');
+pushModule.setPushTransport({
+  sendWebPush: async () => ({ ok: true }),
+  sendExpo: async (tokens: string[]) => tokens.map((token) => ({ token, ok: true })),
+});
 
 import { NextRequest } from 'next/server';
 import { sql } from '@vercel/postgres';

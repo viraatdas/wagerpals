@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { generateId } from '@/lib/utils';
 import { Event, PaymentType } from '@/lib/types';
-import { sendPushToAllSubscribers } from '@/lib/push';
+import { notifyEventAudience, applySubjectPrivacy } from '@/lib/push';
 import { requireAuth, verifyUserMatch } from '@/lib/auth';
 import { getGroupResolver } from '@/lib/group-resolver';
 import { MAX_TRANSACTION_AMOUNT } from '@/lib/payments';
@@ -100,8 +100,6 @@ export async function POST(request: NextRequest) {
     stake_amount = Math.round(parsedStake * 100) / 100;
   }
 
-  // subject_user_id / notify_subject belong to a sibling feature — just pass
-  // them through without building behaviour on top of them here.
   const subjectUserId: string | null = typeof subject_user_id === 'string' ? subject_user_id : null;
   // `null` means "not specified" here, same as omitting it — only an explicit
   // `false` suppresses the subject's notification. Coercing null to false
@@ -126,6 +124,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  if (subjectUserId) {
+    const isSubjectMember = await db.groupMembers.isMember(group_id, subjectUserId);
+    if (!isSubjectMember) {
+      return NextResponse.json({ error: 'Subject must be a member of this group' }, { status: 400 });
+    }
+  }
+
   const timestamp = Date.now();
 
   const newEvent: Event = {
@@ -145,6 +150,8 @@ export async function POST(request: NextRequest) {
 
   await db.events.create(newEvent);
 
+  await applySubjectPrivacy(newEvent.id, subjectUserId, notifySubject);
+
   // Add to activity feed if creator info is provided
   if (creator_username) {
     const activityData = {
@@ -163,18 +170,23 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Send push notification to all subscribers
+  // Notify the group (never the whole platform, never a hidden subject)
   try {
     const creatorText = creator_username ? ` by ${creator_username}` : '';
     const cashText = payment_type === 'cash'
       ? (stake_amount !== null ? ` · $${stake_amount.toFixed(2)} stake` : ' · real money')
       : '';
-    await sendPushToAllSubscribers({
-      title: '🎲 New Bet Created!',
-      body: `${newEvent.title}${creatorText}${cashText}`,
-      url: `/events/${newEvent.id}`,
+    await notifyEventAudience({
       eventId: newEvent.id,
-      tag: `event-${newEvent.id}`,
+      category: 'bets',
+      payload: {
+        title: '🎲 New Bet Created!',
+        body: `${newEvent.title}${creatorText}${cashText}`,
+        url: `/events/${newEvent.id}`,
+        eventId: newEvent.id,
+        tag: `event-${newEvent.id}`,
+      },
+      excludeUserIds: creator_user_id ? [creator_user_id] : [],
     });
   } catch (error: any) {
     console.error('[Events API] Failed to send push notifications:', error);

@@ -10,6 +10,32 @@ import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-
 import { loadStripe } from '@stripe/stripe-js';
 import Toast, { ToastType } from '@/components/Toast';
 import { validateUsername } from '@/lib/utils';
+import { subscribeToWebPush } from '@/components/PushNotificationPrompt';
+
+type NotificationCategoryKey =
+  | 'bets'
+  | 'comments'
+  | 'mentions'
+  | 'resolutions'
+  | 'invites'
+  | 'payments';
+
+interface NotificationPreferencesState {
+  user_id: string;
+  push_enabled: boolean;
+  email_enabled: boolean;
+  categories: Record<string, boolean>;
+  updated_at?: string;
+}
+
+const NOTIFICATION_CATEGORY_OPTIONS: { key: NotificationCategoryKey; label: string }[] = [
+  { key: 'bets', label: 'New bets' },
+  { key: 'comments', label: 'Comments' },
+  { key: 'mentions', label: 'Mentions' },
+  { key: 'resolutions', label: 'Resolutions' },
+  { key: 'invites', label: 'Group invites' },
+  { key: 'payments', label: 'Payouts' },
+];
 
 const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
   ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
@@ -32,6 +58,12 @@ export default function ProfilePage() {
   const [walletAction, setWalletAction] = useState<'none' | 'deposit' | 'withdraw'>('none');
   const [walletLoading, setWalletLoading] = useState(false);
   const [depositClientSecret, setDepositClientSecret] = useState<string | null>(null);
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPreferencesState | null>(null);
+  const [notifLoading, setNotifLoading] = useState(true);
+  const [notifError, setNotifError] = useState<string | null>(null);
+  const [notifSavingKeys, setNotifSavingKeys] = useState<Set<string>>(new Set());
+  const [deviceEnabled, setDeviceEnabled] = useState<boolean | null>(null);
+  const [deviceEnabling, setDeviceEnabling] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -50,6 +82,136 @@ export default function ProfilePage() {
       }
     }
   }, [user, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    fetchNotificationPreferences();
+    checkDeviceSubscription();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  const fetchNotificationPreferences = async () => {
+    if (!user) return;
+    setNotifLoading(true);
+    setNotifError(null);
+    try {
+      const response = await fetch('/api/push/preferences', {
+        credentials: 'same-origin',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setNotifPrefs(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch notification preferences:', error);
+    } finally {
+      setNotifLoading(false);
+    }
+  };
+
+  const checkDeviceSubscription = async () => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (
+        typeof Notification === 'undefined' ||
+        Notification.permission !== 'granted' ||
+        !('serviceWorker' in navigator) ||
+        !('PushManager' in window)
+      ) {
+        setDeviceEnabled(false);
+        return;
+      }
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      setDeviceEnabled(!!subscription);
+    } catch (error) {
+      console.error('Failed to check device subscription:', error);
+      setDeviceEnabled(false);
+    }
+  };
+
+  const handleEnableOnDevice = async () => {
+    setDeviceEnabling(true);
+    try {
+      const success = await subscribeToWebPush();
+      setDeviceEnabled(success);
+    } finally {
+      setDeviceEnabling(false);
+    }
+  };
+
+  const handleToggleMasterNotifications = async () => {
+    if (!notifPrefs || notifSavingKeys.has('push_enabled')) return;
+    const previous = notifPrefs;
+    const nextValue = !notifPrefs.push_enabled;
+
+    setNotifSavingKeys((prev) => new Set(prev).add('push_enabled'));
+    setNotifError(null);
+    setNotifPrefs({ ...notifPrefs, push_enabled: nextValue });
+
+    try {
+      const response = await fetch('/api/push/preferences', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ push_enabled: nextValue }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setNotifPrefs(data);
+      } else {
+        setNotifPrefs(previous);
+        setNotifError('Failed to update notification setting.');
+      }
+    } catch (error) {
+      setNotifPrefs(previous);
+      setNotifError('Failed to update notification setting.');
+    } finally {
+      setNotifSavingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete('push_enabled');
+        return next;
+      });
+    }
+  };
+
+  const handleToggleCategory = async (key: NotificationCategoryKey) => {
+    if (!notifPrefs || notifSavingKeys.has(key) || !notifPrefs.push_enabled) return;
+    const previous = notifPrefs;
+    const nextValue = !notifPrefs.categories?.[key];
+
+    setNotifSavingKeys((prev) => new Set(prev).add(key));
+    setNotifError(null);
+    setNotifPrefs({
+      ...notifPrefs,
+      categories: { ...notifPrefs.categories, [key]: nextValue },
+    });
+
+    try {
+      const response = await fetch('/api/push/preferences', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categories: { [key]: nextValue } }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setNotifPrefs(data);
+      } else {
+        setNotifPrefs(previous);
+        setNotifError('Failed to update notification setting.');
+      }
+    } catch (error) {
+      setNotifPrefs(previous);
+      setNotifError('Failed to update notification setting.');
+    } finally {
+      setNotifSavingKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
 
   const fetchUserData = async () => {
     if (!user) return;
@@ -422,6 +584,73 @@ export default function ProfilePage() {
           )}
         </div>
 
+        {/* Notifications Card */}
+        <div className="glass rounded-3xl p-4 sm:p-6 mt-6">
+          <h2 className="font-display text-xl font-semibold text-foreground mb-4">Notifications</h2>
+
+          {notifLoading ? (
+            <div className="space-y-3">
+              <div className="skeleton h-10 rounded-2xl" />
+              <div className="skeleton h-10 rounded-2xl" />
+              <div className="skeleton h-10 rounded-2xl" />
+            </div>
+          ) : !notifPrefs ? (
+            <p className="text-sm text-muted">Unable to load notification preferences right now.</p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-4 pb-4 border-b border-gray-200">
+                <div>
+                  <p className="text-foreground font-medium">Push notifications</p>
+                  <p className="text-sm text-muted-2">Master switch for all push notifications</p>
+                </div>
+                <ToggleSwitch
+                  checked={notifPrefs.push_enabled}
+                  onChange={handleToggleMasterNotifications}
+                  disabled={notifSavingKeys.has('push_enabled')}
+                  label="Push notifications"
+                />
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {NOTIFICATION_CATEGORY_OPTIONS.map(({ key, label }) => (
+                  <div
+                    key={key}
+                    className={`flex items-center justify-between gap-4 ${
+                      !notifPrefs.push_enabled ? 'opacity-50' : ''
+                    }`}
+                  >
+                    <span className="text-sm text-foreground">{label}</span>
+                    <ToggleSwitch
+                      checked={!!notifPrefs.categories?.[key]}
+                      onChange={() => handleToggleCategory(key)}
+                      disabled={!notifPrefs.push_enabled || notifSavingKeys.has(key)}
+                      label={label}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {notifError && (
+                <p className="text-red-600 text-sm mt-3">{notifError}</p>
+              )}
+
+              <div className="mt-5 pt-4 border-t border-gray-200">
+                {deviceEnabled ? (
+                  <p className="text-sm text-muted-2">Notifications are enabled on this device.</p>
+                ) : (
+                  <button
+                    onClick={handleEnableOnDevice}
+                    disabled={deviceEnabling}
+                    className="btn-glass text-sm px-4 py-2 disabled:opacity-50"
+                  >
+                    {deviceEnabling ? 'Enabling...' : 'Enable on this device'}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
         {/* Stats Card */}
         <div className="mt-6">
           <h2 className="font-display text-xl font-semibold text-foreground mb-4">Your Stats</h2>
@@ -471,6 +700,38 @@ export default function ProfilePage() {
         </div>
       </div>
     </>
+  );
+}
+
+function ToggleSwitch({
+  checked,
+  onChange,
+  disabled,
+  label,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-pressed={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors outline-none focus:ring-2 focus:ring-blue-100 disabled:opacity-50 disabled:cursor-not-allowed ${
+        checked ? 'bg-blue-600' : 'bg-gray-200'
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+          checked ? 'translate-x-6' : 'translate-x-1'
+        }`}
+      />
+    </button>
   );
 }
 

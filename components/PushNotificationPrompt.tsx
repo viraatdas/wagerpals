@@ -1,26 +1,134 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useUser } from '@stackframe/stack';
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+async function postSubscription(subscription: PushSubscription): Promise<boolean> {
+  try {
+    const json = subscription.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+      return false;
+    }
+
+    const response = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        endpoint: json.endpoint,
+        keys: {
+          p256dh: json.keys.p256dh,
+          auth: json.keys.auth,
+        },
+      }),
+    });
+
+    return response.ok;
+  } catch (error) {
+    console.error('Error saving push subscription:', error);
+    return false;
+  }
+}
+
+/**
+ * Requests notification permission (if needed), subscribes this device to
+ * web push, and registers the subscription against the signed-in user.
+ * Safe to call from anywhere (e.g. a "Enable on this device" button) -
+ * never throws, resolves to whether the device ended up subscribed.
+ */
+export async function subscribeToWebPush(): Promise<boolean> {
+  try {
+    if (typeof window === 'undefined') return false;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+    if (typeof Notification === 'undefined') return false;
+
+    let permission = Notification.permission;
+    if (permission === 'default') {
+      permission = await Notification.requestPermission();
+    }
+    if (permission !== 'granted') {
+      return false;
+    }
+
+    const registration = await navigator.serviceWorker.ready;
+
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!vapidPublicKey) {
+        console.error('VAPID public key not configured');
+        return false;
+      }
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+      });
+    }
+
+    return await postSubscription(subscription);
+  } catch (error) {
+    console.error('Error subscribing to push notifications:', error);
+    return false;
+  }
+}
 
 export default function PushNotificationPrompt() {
+  const user = useUser({ or: 'return-null' });
   const [showPrompt, setShowPrompt] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const resyncedRef = useRef(false);
 
   useEffect(() => {
+    resyncedRef.current = false;
+    if (!user) {
+      setShowPrompt(false);
+      setIsSubscribed(false);
+      return;
+    }
     checkSubscriptionStatus();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const checkSubscriptionStatus = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      return;
+    }
+    if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+      setShowPrompt(false);
       return;
     }
 
     try {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
-      
+
       if (subscription) {
         setIsSubscribed(true);
+
+        // Re-bind the existing subscription to the current user id, once
+        // per mount, so notifications keep working after a sign-out/in on
+        // a shared browser.
+        if (!resyncedRef.current) {
+          resyncedRef.current = true;
+          postSubscription(subscription);
+        }
       } else {
         // Check if user has already dismissed the prompt
         const dismissed = localStorage.getItem('pushNotificationPromptDismissed');
@@ -33,60 +141,13 @@ export default function PushNotificationPrompt() {
     }
   };
 
-  const urlBase64ToUint8Array = (base64String: string) => {
-    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding)
-      .replace(/\-/g, '+')
-      .replace(/_/g, '/');
-
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-  };
-
-  const subscribeToPushNotifications = async () => {
-    try {
-      const permission = await Notification.requestPermission();
-      
-      if (permission !== 'granted') {
-        setShowPrompt(false);
-        return;
-      }
-
-      const registration = await navigator.serviceWorker.ready;
-      
-      const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!vapidPublicKey) {
-        console.error('VAPID public key not configured');
-        return;
-      }
-
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-      });
-
-      // Send subscription to backend
-      const response = await fetch('/api/push/subscribe', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(subscription.toJSON()),
-      });
-
-      if (response.ok) {
-        setIsSubscribed(true);
-        setShowPrompt(false);
-      } else {
-        console.error('Failed to save subscription on server');
-      }
-    } catch (error) {
-      console.error('Error subscribing to push notifications:', error);
+  const handleEnable = async () => {
+    const success = await subscribeToWebPush();
+    if (success) {
+      setIsSubscribed(true);
+      setShowPrompt(false);
+    } else {
+      setShowPrompt(false);
     }
   };
 
@@ -95,7 +156,7 @@ export default function PushNotificationPrompt() {
     localStorage.setItem('pushNotificationPromptDismissed', 'true');
   };
 
-  if (!showPrompt || isSubscribed) {
+  if (!user || !showPrompt || isSubscribed) {
     return null;
   }
 
@@ -114,7 +175,7 @@ export default function PushNotificationPrompt() {
           </p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <button
-              onClick={subscribeToPushNotifications}
+              onClick={handleEnable}
               className="btn-primary text-sm px-4 py-2"
             >
               Enable

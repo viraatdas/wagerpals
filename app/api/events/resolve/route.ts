@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@vercel/postgres';
 import { db } from '@/lib/db';
 import { calculateNetResults } from '@/lib/utils';
-import { sendPushToAllSubscribers } from '@/lib/push';
+import { notifyEventAudience } from '@/lib/push';
 import { requireAuth } from '@/lib/auth';
 import { getGroupResolver } from '@/lib/group-resolver';
 import { settleCashEvent, isPaymentError, type SettleCashEventResult } from '@/lib/payments';
@@ -110,12 +110,17 @@ export async function POST(request: NextRequest) {
 
     // Send push notification
     try {
-      await sendPushToAllSubscribers({
-        title: '↩️ Event Cancelled',
-        body: `"${event.title}" was cancelled — every stake has been refunded.`,
-        url: `/events/${event_id}`,
+      await notifyEventAudience({
         eventId: event_id,
-        tag: `resolution-${event_id}`,
+        category: 'resolutions',
+        payload: {
+          title: '↩️ Event Cancelled',
+          body: `"${event.title}" was cancelled — every stake has been refunded.`,
+          url: `/events/${event_id}`,
+          eventId: event_id,
+          tag: `resolution-${event_id}`,
+        },
+        excludeUserIds: [authResult.userId],
       });
     } catch (error: any) {
       console.error('[Resolve API] Failed to send push notifications:', error);
@@ -223,12 +228,17 @@ export async function POST(request: NextRequest) {
 
   // Send push notification
   try {
-    await sendPushToAllSubscribers({
-      title: '🏆 Event Resolved!',
-      body: `"${event.title}" - Winner: ${winning_side}`,
-      url: `/events/${event_id}`,
+    await notifyEventAudience({
       eventId: event_id,
-      tag: `resolution-${event_id}`,
+      category: 'resolutions',
+      payload: {
+        title: '🏆 Event Resolved!',
+        body: `"${event.title}" - Winner: ${winning_side}`,
+        url: `/events/${event_id}`,
+        eventId: event_id,
+        tag: `resolution-${event_id}`,
+      },
+      excludeUserIds: [authResult.userId],
     });
   } catch (error: any) {
     console.error('[Resolve API] Failed to send push notifications:', error);

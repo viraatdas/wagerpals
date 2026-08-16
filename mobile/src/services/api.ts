@@ -223,18 +223,21 @@ class ApiService {
   }
 
   // Push notification APIs
-  async sendPushToUser(input: {
-    userId: string;
+  //
+  // Sends a test notification to the SIGNED-IN user. /api/push/send-to-user
+  // used to take a target userId from the body, which let any caller push
+  // arbitrary text at any user; it was deleted. /api/push/test derives the
+  // recipient and the copy from the session, so the input is ignored — the
+  // parameter is kept so callers don't have to change.
+  async sendPushToUser(_input?: {
+    userId?: string;
     title?: string;
     body?: string;
     url?: string;
     eventId?: string;
     tag?: string;
   }): Promise<{ ok: boolean } | any> {
-    return this.request('/api/push/send-to-user', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
+    return this.request('/api/push/test', { method: 'POST' });
   }
   async subscribeToPush(subscription: {
     token: string;

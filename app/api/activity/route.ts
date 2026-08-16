@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { filterActivitiesForViewer } from '@/lib/push';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -20,7 +21,11 @@ export async function GET(request: NextRequest) {
 
     const activities = await db.activities.getByUserGroups(userId, limit, offset);
 
-    return NextResponse.json(activities, {
+    // An event whose subject asked not to be notified must not surface in
+    // that subject's own feed until it resolves.
+    const visible = await filterActivitiesForViewer(userId, activities);
+
+    return NextResponse.json(visible, {
       headers: {
         'Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30',
       },

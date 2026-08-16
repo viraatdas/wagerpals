@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wagerpals-v2';
+const CACHE_NAME = 'wagerpals-v3';
 const STATIC_CACHE = [
   '/manifest.json',
   '/icons/icon-192x192.svg',
@@ -129,25 +129,68 @@ self.addEventListener('push', (event) => {
 
 // Notification click event - navigate to the event
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
+  try {
+    event.notification.close();
 
-  const urlToOpen = event.notification.data?.url || '/';
+    // Resolve the target path from the payload. Prefer an explicit url,
+    // fall back to /events/<eventId>, else the home page.
+    const data = (event.notification && event.notification.data) || {};
+    let targetPath = '/';
+    if (data.url) {
+      targetPath = data.url;
+    } else if (data.eventId) {
+      targetPath = `/events/${data.eventId}`;
+    }
 
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
-        // Check if there's already a window open
-        for (let i = 0; i < clientList.length; i++) {
-          const client = clientList[i];
-          if (client.url === urlToOpen && 'focus' in client) {
-            return client.focus();
+    // Security: never let a push payload send the user to another origin.
+    // Resolve against our own origin and reject anything that doesn't
+    // stay on it (falls back to '/').
+    let targetUrl;
+    try {
+      const resolved = new URL(targetPath, self.location.origin);
+      targetUrl = resolved.origin === self.location.origin
+        ? resolved.href
+        : self.location.origin + '/';
+    } catch (e) {
+      targetUrl = self.location.origin + '/';
+    }
+
+    event.waitUntil(
+      (async () => {
+        try {
+          const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+
+          // Reuse an existing same-origin window/tab if we have one, and
+          // navigate it to the target path (not just focus it in place).
+          for (let i = 0; i < clientList.length; i++) {
+            const client = clientList[i];
+            try {
+              if (new URL(client.url).origin === self.location.origin) {
+                if ('focus' in client) {
+                  await client.focus();
+                }
+                if ('navigate' in client) {
+                  return client.navigate(targetUrl);
+                }
+                return client;
+              }
+            } catch (e) {
+              // Ignore malformed client URLs and keep looking.
+            }
           }
+
+          // No reusable client - open a new window.
+          if (clients.openWindow) {
+            return clients.openWindow(targetUrl);
+          }
+        } catch (e) {
+          // Never let a bad payload/environment break the click handler.
         }
-        // If not, open a new window
-        if (clients.openWindow) {
-          return clients.openWindow(urlToOpen);
-        }
-      })
-  );
+      })()
+    );
+  } catch (e) {
+    // Swallow any synchronous errors so a malformed notification can't
+    // throw inside the event listener.
+  }
 });
 
