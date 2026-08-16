@@ -78,10 +78,17 @@ export default function JoinGroupPage() {
       const data = await response.json();
       setGroup(data);
 
-      // Check if user is already a member
+      // Check if user is already a member. `viewer_status` is the caller's own
+      // membership row as reported by the API — non-members get it instead of
+      // the roster, which is members-only. The array scan stays as a fallback
+      // for a response that predates that field.
       if (user) {
-        const isMember = data.members.some((m: any) => m.user_id === user.id && m.status === 'active');
-        const pendingForUser = data.pending_requests?.some((m: any) => m.user_id === user.id);
+        const isMember =
+          data.viewer_status === 'active' ||
+          (data.members || []).some((m: any) => m.user_id === user.id && m.status === 'active');
+        const pendingForUser =
+          data.viewer_status === 'pending' ||
+          (data.pending_requests || []).some((m: any) => m.user_id === user.id);
 
         if (isMember) {
           setAlreadyMember(true);

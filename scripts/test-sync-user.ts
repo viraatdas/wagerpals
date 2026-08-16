@@ -808,26 +808,144 @@ test('creating a user does not spend an extra UPDATE undoing the INSERT', async 
 });
 
 // ===========================================================================
-// Tombstones (merged_into) — pinned so a behaviour change is deliberate
+// Tombstones (merged_into) — a retired id resolves to the account that
+// absorbed it, and is never patched back into a working identity
 // ===========================================================================
 
-test('a tombstoned row is still returned by a sync, and keeps its pointer', async () => {
-  seed({ id: UUID_A, username: 'ada_old', merged_into: UUID_B, email: null });
+test('signing in on a merged-away id returns the surviving account', async () => {
+  // The shape scripts/merge-duplicate-users.ts --keep-tombstones leaves behind:
+  // the loser keeps its row, with merged_into set and its email cleared.
+  seed({ id: UUID_A, username: 'ada_old', merged_into: UUID_B, email: null, last_seen_at: '2020-01-01T00:00:00.000Z' });
   seed({ id: UUID_B, username: 'ada', email: 'ada@example.com' });
 
   const user = expectOk(
-    await syncUser(stackUser({ id: UUID_A, primaryEmail: 'ada@example.com', primaryEmailVerified: true })),
+    await syncUser(
+      stackUser({ id: UUID_A, primaryEmail: 'ada@example.com', primaryEmailVerified: true, oauthProviderIds: ['google'] })
+    ),
     'tombstoned row'
   );
 
-  // scripts/merge-duplicate-users.ts --keep-tombstones can leave a row in this
-  // state. Signing in on the merged-away Stack account currently revives it as
-  // a working identity. Pinned here so a future change to that policy has to
-  // be deliberate — see the follow-up filed with this suite.
-  assertEqual(user.id, UUID_A, 'the session id still resolves to its own row');
-  assertEqual(user.merged_into, UUID_B, 'and the tombstone pointer is preserved, not cleared');
-  assertEqual(user.email, undefined, 'the canonical row keeps the email — the tombstone does not take it back');
-  assertEqual(rawRow(UUID_B).email, 'ada@example.com', 'the canonical row is untouched');
+  assertEqual(user.id, UUID_B, 'the sync resolves to the canonical account, not the tombstone');
+  assertEqual(user.merged_into, null, 'and the row handed back is a live one');
+  assertEqual(providersOf(user), ['google'], 'the sign-in method is linked onto the survivor');
+  assert(logged.some(line => line.includes(UUID_B) && line.includes('merged into')), 'the redirect is logged');
+});
+
+test('the tombstone itself is left untouched by the redirect', async () => {
+  seed({ id: UUID_A, username: 'ada_old', merged_into: UUID_B, email: null, last_seen_at: '2020-01-01T00:00:00.000Z' });
+  seed({ id: UUID_B, username: 'ada', email: 'ada@example.com' });
+
+  expectOk(await syncUser(stackUser({ id: UUID_A, displayName: 'Ada Reborn' })), 'tombstoned row');
+
+  const tomb = rawRow(UUID_A);
+  assertEqual(tomb.merged_into, UUID_B, 'the pointer is preserved, not cleared');
+  assertEqual(tomb.last_seen_at, '2020-01-01T00:00:00.000Z', 'last_seen_at is not bumped on a retired row');
+  assertEqual(tomb.display_name, null, 'no profile field is written back onto it');
+  assert(!statements.some(s => s.startsWith(`update:${UUID_A}`)), 'the tombstone is never UPDATEd');
+});
+
+test('a multi-hop merge chain is followed all the way to the live account', async () => {
+  const UUID_C = 'b95d1f70-6c3a-4b52-9f88-1d2e4a6c8b09';
+  seed({ id: UUID_A, username: 'ada_oldest', merged_into: UUID_B });
+  seed({ id: UUID_B, username: 'ada_old', merged_into: UUID_C });
+  seed({ id: UUID_C, username: 'ada', email: 'ada@example.com' });
+
+  const user = expectOk(await syncUser(stackUser({ id: UUID_A })), 'two-hop chain');
+
+  assertEqual(user.id, UUID_C, 'both hops are followed');
+  assertEqual(rawRow(UUID_B).merged_into, UUID_C, 'the intermediate tombstone is left alone');
+});
+
+test('a merge cycle fails closed instead of resurrecting a tombstone', async () => {
+  seed({ id: UUID_A, username: 'ada_a', merged_into: UUID_B });
+  seed({ id: UUID_B, username: 'ada_b', merged_into: UUID_A });
+
+  const failure = expectErr(await syncUser(stackUser({ id: UUID_A })), 'cyclic chain');
+
+  assertEqual(failure.status, 500, 'an unresolvable chain is a server-side data error');
+  assert(!statements.some(s => s.startsWith('update:')), 'and nothing is written');
+});
+
+test('a merged_into pointing at a row that no longer exists fails closed', async () => {
+  seed({ id: UUID_A, username: 'ada_old', merged_into: UUID_B });
+
+  const failure = expectErr(await syncUser(stackUser({ id: UUID_A })), 'dangling pointer');
+
+  assertEqual(failure.status, 500, 'a dangling tombstone is not silently revived');
+  assert(!statements.some(s => s.startsWith('update:')), 'and nothing is written');
+});
+
+test('a retired account never renames the survivor that absorbed it', async () => {
+  seed({ id: UUID_A, username: 'bob_old', merged_into: UUID_B, email: null });
+  seed({ id: UUID_B, username: 'ada', email: 'ada@example.com' });
+
+  const user = expectOk(
+    await syncUser(stackUser({ id: UUID_A, primaryEmail: 'bob@example.com', primaryEmailVerified: true })),
+    'tombstoned row with its own verified email'
+  );
+
+  assertEqual(user.id, UUID_B, 'still resolves to the survivor');
+  assertEqual(user.email, 'ada@example.com', 'the survivor keeps the address the merge picked');
+  assertEqual(user.auth_methods![0].identifier, 'bob@example.com', 'the method still records how they signed in');
+});
+
+test('a survivor with no email adopts the one the retired account verified', async () => {
+  seed({ id: UUID_A, username: 'bob_old', merged_into: UUID_B, email: null });
+  seed({ id: UUID_B, username: 'ada', email: null });
+
+  const user = expectOk(
+    await syncUser(stackUser({ id: UUID_A, primaryEmail: 'bob@example.com', primaryEmailVerified: true })),
+    'tombstoned row, survivor has no email'
+  );
+
+  assertEqual(user.id, UUID_B, 'still resolves to the survivor');
+  assertEqual(user.email, 'bob@example.com', 'an empty survivor picks the address up');
+});
+
+test('an email the tombstone still holds is not copied onto the survivor', async () => {
+  // --keep-tombstones clears the loser's email, but a hand-written merge may
+  // not have. Writing it onto the survivor would trip idx_users_email_lower.
+  seed({ id: UUID_A, username: 'bob_old', merged_into: UUID_B, email: 'bob@example.com' });
+  seed({ id: UUID_B, username: 'ada', email: null });
+
+  const user = expectOk(
+    await syncUser(stackUser({ id: UUID_A, primaryEmail: 'bob@example.com', primaryEmailVerified: true })),
+    'tombstoned row still holding its email'
+  );
+
+  assertEqual(user.id, UUID_B, 'still resolves to the survivor');
+  assertEqual(user.email, undefined, 'the address stays where it is rather than raising a unique violation');
+  assertEqual(rawRow(UUID_A).email, 'bob@example.com', 'the tombstone keeps it');
+  assert(logged.some(line => line.includes('users:merge')), 'and the operator is told how to fix it');
+});
+
+test('a username chosen while signed in on a retired id lands on the survivor', async () => {
+  seed({ id: UUID_A, username: 'ada_old', merged_into: UUID_B });
+  seed({ id: UUID_B, username: 'ada', email: 'ada@example.com' });
+
+  const user = expectOk(
+    await syncUser(stackUser({ id: UUID_A }), { username: 'Ada_L', usernameSelected: true }),
+    'username choice on a tombstoned session'
+  );
+
+  assertEqual(user.id, UUID_B, 'the survivor is renamed');
+  assertEqual(user.username, 'ada_l', 'to the chosen name');
+  assertEqual(rawRow(UUID_A).username, 'ada_old', 'the tombstone keeps its own name');
+});
+
+test('re-confirming the survivor’s own username is not a conflict', async () => {
+  // resolveExplicitUsername compares the holder against the row being written;
+  // checking it against the signed-in (tombstoned) id would reject this.
+  seed({ id: UUID_A, username: 'ada_old', merged_into: UUID_B });
+  seed({ id: UUID_B, username: 'ada', email: 'ada@example.com' });
+
+  const user = expectOk(
+    await syncUser(stackUser({ id: UUID_A }), { username: 'ada', usernameSelected: true }),
+    'survivor re-confirming its own username'
+  );
+
+  assertEqual(user.id, UUID_B, 'resolves to the survivor');
+  assertEqual(user.username_selected, true, 'and the name is now marked as chosen');
 });
 
 // ===========================================================================

@@ -122,6 +122,54 @@ async function resolveExplicitUsername(rawUsername: string, currentUserId: strin
   return { ok: true, username: normalized };
 }
 
+/**
+ * How far a `merged_into` chain may be followed before we call the data
+ * corrupt. scripts/merge-duplicate-users.ts re-points existing tombstones at
+ * the new survivor (`UPDATE users SET merged_into = C WHERE merged_into = L`),
+ * so a healthy chain is one hop; longer ones only arise from hand-written
+ * merges, and are still worth following.
+ */
+const MAX_MERGE_HOPS = 16;
+
+type CanonicalResolution = { ok: true; user: User } | { ok: false; status: number; error: string };
+
+/**
+ * Walk `merged_into` from a tombstoned row to the account that survived the
+ * merge, following multi-hop chains (A → B → C) and refusing to loop on a
+ * cycle or to chase a pointer at a row that no longer exists.
+ *
+ * Failing closed matters here: handing the tombstone back would revive an
+ * identity the merge deliberately retired, splitting one human's history in
+ * two again — exactly what `npm run users:merge` was run to undo.
+ */
+async function resolveCanonicalUser(tombstone: User): Promise<CanonicalResolution> {
+  let current = tombstone;
+  const seen = new Set<string>([current.id]);
+
+  while (current.merged_into) {
+    const nextId = current.merged_into;
+    if (seen.has(nextId)) {
+      console.error(`[syncUser] merged_into chain from ${tombstone.id} loops back to ${nextId}; refusing to resolve it`);
+      return { ok: false, status: 500, error: 'Failed to sync user' };
+    }
+    if (seen.size > MAX_MERGE_HOPS) {
+      console.error(
+        `[syncUser] merged_into chain from ${tombstone.id} is longer than ${MAX_MERGE_HOPS} hops; refusing to follow it`
+      );
+      return { ok: false, status: 500, error: 'Failed to sync user' };
+    }
+    const next = await db.users.get(nextId);
+    if (!next) {
+      console.error(`[syncUser] user ${current.id} is merged into ${nextId}, which does not exist`);
+      return { ok: false, status: 500, error: 'Failed to sync user' };
+    }
+    seen.add(nextId);
+    current = next;
+  }
+
+  return { ok: true, user: current };
+}
+
 async function syncExistingUser(
   existing: User,
   stackUser: AuthenticatedStackUser,
@@ -129,30 +177,62 @@ async function syncExistingUser(
   emailToWrite: string | null,
   opts?: { username?: string; usernameSelected?: boolean }
 ): Promise<SyncUserResult> {
+  // A row carrying merged_into is a tombstone: the dedupe tool folded it into
+  // another account. Signing in on that Stack Auth id has to land on the
+  // survivor — patching the tombstone would resurrect the duplicate identity.
+  let target = existing;
+  if (existing.merged_into) {
+    const canonical = await resolveCanonicalUser(existing);
+    if (!canonical.ok) return canonical;
+    target = canonical.user;
+    console.warn(
+      `[syncUser] stack account ${stackUser.id} was merged into ${target.id}; syncing the surviving row instead`
+    );
+
+    // syncUser resolved email ownership against the id that signed in, but we
+    // are about to write a *different* row, so that answer no longer applies.
+    // The survivor's own address always wins — the merge already picked it,
+    // and a retired Stack account must not rename the account that absorbed
+    // it. Only an empty survivor adopts the address, and only if it is free:
+    // the tombstone may still be holding it, and copying it across would trip
+    // idx_users_email_lower and turn a sign-in into a 500.
+    if (emailToWrite && target.email) {
+      emailToWrite = null;
+    } else if (emailToWrite) {
+      const owner = await db.users.getByEmail(emailToWrite);
+      if (owner && owner.id !== target.id) {
+        console.warn(
+          `[syncUser] email ${emailToWrite} is still held by user ${owner.id}; not writing it onto ${target.id}. Run: npm run users:merge -- --apply`
+        );
+        emailToWrite = null;
+      }
+    }
+  }
+
   const patch: Partial<User> = {};
 
-  if (emailToWrite && emailToWrite !== existing.email) {
+  if (emailToWrite && emailToWrite !== target.email) {
     patch.email = emailToWrite;
   }
 
   const displayName = stackUser.displayName?.trim();
-  if (displayName && displayName !== existing.display_name) {
+  if (displayName && displayName !== target.display_name) {
     patch.display_name = displayName;
   }
 
   const avatarUrl = stackUser.profileImageUrl?.trim();
-  if (avatarUrl && avatarUrl !== existing.avatar_url) {
+  if (avatarUrl && avatarUrl !== target.avatar_url) {
     patch.avatar_url = avatarUrl;
   }
 
   const incomingMethods = buildAuthMethodsFromStackUser(stackUser, email);
-  const mergedMethods = mergeAuthMethods(existing.auth_methods || [], incomingMethods);
-  if (authMethodsChanged(existing.auth_methods || [], mergedMethods)) {
+  const mergedMethods = mergeAuthMethods(target.auth_methods || [], incomingMethods);
+  if (authMethodsChanged(target.auth_methods || [], mergedMethods)) {
     patch.auth_methods = mergedMethods;
   }
 
   if (opts?.usernameSelected === true && opts.username) {
-    const resolved = await resolveExplicitUsername(opts.username, stackUser.id);
+    const resolved = await resolveExplicitUsername(opts.username, target.id);
     if (!resolved.ok) return resolved;
     patch.username = resolved.username;
     patch.username_selected = true;
@@ -160,7 +240,7 @@ async function syncExistingUser(
 
   patch.last_seen_at = new Date().toISOString();
 
-  const updated = await db.users.update(stackUser.id, patch);
+  const updated = await db.users.update(target.id, patch);
   if (!updated) {
     return { ok: false, status: 500, error: 'Failed to sync user' };
   }

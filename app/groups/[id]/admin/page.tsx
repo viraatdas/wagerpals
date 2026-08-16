@@ -32,8 +32,9 @@ export default function GroupAdminPage() {
       if (!response.ok) throw new Error('Failed to fetch group');
       const data = await response.json();
 
-      // Check if user is admin
-      const userMember = data.members.find((m: any) => m.user_id === uid);
+      // Check if user is admin. Non-members get no roster at all from the
+      // API, so the lookup simply comes up empty and they get bounced.
+      const userMember = (data.members || []).find((m: any) => m.user_id === uid);
       if (userMember?.role !== 'admin') {
         router.push(`/groups/${params.id}`);
         return;
