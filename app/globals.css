@@ -21,6 +21,11 @@
   --brand-1: #3b82f6;
   --brand-2: #2563eb;
   --brand-3: #1d4ed8;
+  /* RGB channels of the same colors — lets Tailwind alpha modifiers
+     (bg-brand-2/10, ring-brand-2/20, …) actually apply the alpha */
+  --brand-1-rgb: 59 130 246;
+  --brand-2-rgb: 37 99 235;
+  --brand-3-rgb: 29 78 216;
 
   /* Semantic accents (legacy neon names, light-theme values) */
   --neon-violet: #4f46e5;
@@ -28,6 +33,11 @@
   --neon-mint: #16a34a; /* yes / win */
   --neon-rose: #dc2626; /* no / loss */
   --neon-amber: #d97706;
+  --neon-violet-rgb: 79 70 229;
+  --neon-cyan-rgb: 2 132 199;
+  --neon-mint-rgb: 22 163 74;
+  --neon-rose-rgb: 220 38 38;
+  --neon-amber-rgb: 217 119 6;
 
   --border: 31 41 55; /* slate channels — rgb(var(--border) / 0.1) ≈ #e5e7eb hairline on white */
 

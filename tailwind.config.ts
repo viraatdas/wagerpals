@@ -15,20 +15,21 @@ const config: Config = {
         foreground: "var(--foreground)",
         muted: "var(--muted)",
         "muted-2": "var(--muted-2)",
-        // Brand accent ramp (light → base → deep blue)
+        // Brand accent ramp (light → base → deep blue).
+        // RGB-channel vars so alpha modifiers (bg-brand-2/10) work.
         brand: {
-          1: "var(--brand-1)",
-          2: "var(--brand-2)",
-          3: "var(--brand-3)",
-          DEFAULT: "var(--brand-2)",
+          1: "rgb(var(--brand-1-rgb) / <alpha-value>)",
+          2: "rgb(var(--brand-2-rgb) / <alpha-value>)",
+          3: "rgb(var(--brand-3-rgb) / <alpha-value>)",
+          DEFAULT: "rgb(var(--brand-2-rgb) / <alpha-value>)",
         },
         // Semantic accents (legacy "neon" names, light-theme values)
         neon: {
-          violet: "var(--neon-violet)",
-          cyan: "var(--neon-cyan)",
-          mint: "var(--neon-mint)",
-          rose: "var(--neon-rose)",
-          amber: "var(--neon-amber)",
+          violet: "rgb(var(--neon-violet-rgb) / <alpha-value>)",
+          cyan: "rgb(var(--neon-cyan-rgb) / <alpha-value>)",
+          mint: "rgb(var(--neon-mint-rgb) / <alpha-value>)",
+          rose: "rgb(var(--neon-rose-rgb) / <alpha-value>)",
+          amber: "rgb(var(--neon-amber-rgb) / <alpha-value>)",
         },
       },
       fontFamily: {

@@ -152,7 +152,7 @@ export default function ProfileScreen() {
               onPress={handleTestNotification}
               activeOpacity={0.7}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: 'rgba(217,119,6,0.08)' }]}>
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.amberFill }]}>
                 <Ionicons name="notifications-outline" size={20} color={colors.amber} />
               </View>
               <Text style={styles.menuText}>Test Notifications</Text>
