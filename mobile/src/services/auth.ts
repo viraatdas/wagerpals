@@ -1,7 +1,13 @@
 // Authentication service using Stack Auth via web-based OAuth
-import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { AuthUser } from '../types';
+import {
+  setSharedItem,
+  getSharedItem,
+  publishSharedIdentity,
+  clearSharedSession,
+  migrateLegacySecureStore,
+} from './shared-session';
 
 // @ts-ignore
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__
@@ -14,8 +20,14 @@ class AuthService {
 
   async init() {
     try {
-      const storedUser = await SecureStore.getItemAsync('user');
-      const storedToken = await SecureStore.getItemAsync('accessToken');
+      // Must run before any read below: this app used to store the session
+      // under SecureStore's default (unshared) keychain location. If we read
+      // the new shared location first, an already-signed-in user whose
+      // session hasn't been migrated yet would look signed out.
+      await migrateLegacySecureStore();
+
+      const storedUser = await getSharedItem('user');
+      const storedToken = await getSharedItem('accessToken');
 
       if (storedUser && storedToken) {
         this.currentUser = JSON.parse(storedUser);
@@ -37,7 +49,21 @@ class AuthService {
   async syncUser(): Promise<void> {
     try {
       const { default: apiService } = await import('./api');
-      await apiService.syncUser();
+      const syncedUser = await apiService.syncUser();
+
+      // Publish the shared session for the iMessage extension here, right
+      // after a successful sync — this is the only point where we have the
+      // real WagerPals username (backend `/api/users` response), as opposed
+      // to the email local-part used as a placeholder displayName during
+      // sign-in. Both signInWithCode/signInWithGoogle (which await this
+      // method) and init() (session restore) funnel through here.
+      if (this.currentUser && syncedUser?.username) {
+        await publishSharedIdentity({
+          id: syncedUser.id || this.currentUser.id,
+          username: syncedUser.username,
+          displayName: this.currentUser.displayName ?? null,
+        });
+      }
     } catch (error) {
       console.warn('User sync failed:', error);
     }
@@ -71,10 +97,10 @@ class AuthService {
     const data = await response.json();
 
     if (data.access_token) {
-      await SecureStore.setItemAsync('accessToken', data.access_token);
+      await setSharedItem('accessToken', data.access_token);
     }
     if (data.refresh_token) {
-      await SecureStore.setItemAsync('refreshToken', data.refresh_token);
+      await setSharedItem('refreshToken', data.refresh_token);
     }
 
     const user: AuthUser = {
@@ -120,9 +146,9 @@ class AuthService {
           throw new Error('No access token received');
         }
 
-        await SecureStore.setItemAsync('accessToken', accessToken);
+        await setSharedItem('accessToken', accessToken);
         if (refreshToken) {
-          await SecureStore.setItemAsync('refreshToken', refreshToken);
+          await setSharedItem('refreshToken', refreshToken);
         }
 
         const user: AuthUser = {
@@ -161,9 +187,10 @@ class AuthService {
   }
 
   private async clearStorage() {
-    await SecureStore.deleteItemAsync('user');
-    await SecureStore.deleteItemAsync('accessToken');
-    await SecureStore.deleteItemAsync('refreshToken');
+    // Wipes accessToken/refreshToken/user AND the `sharedSession` key, so the
+    // iMessage extension loses access the moment the user signs out of the
+    // main app.
+    await clearSharedSession();
   }
 
   getCurrentUser(): AuthUser | null {
@@ -172,7 +199,7 @@ class AuthService {
 
   async getAccessToken(): Promise<string | null> {
     try {
-      return await SecureStore.getItemAsync('accessToken');
+      return await getSharedItem('accessToken');
     } catch {
       return null;
     }
@@ -189,7 +216,7 @@ class AuthService {
 
   private async setUser(user: AuthUser) {
     this.currentUser = user;
-    await SecureStore.setItemAsync('user', JSON.stringify(user));
+    await setSharedItem('user', JSON.stringify(user));
     this.notifyListeners();
   }
 

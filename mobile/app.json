@@ -16,11 +16,16 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.wagerpals.app",
+      "appleTeamId": "3C4383262W",
       "associatedDomains": [
         "applinks:wagerpals-v2-q0eep0858-viraatdas-projects.vercel.app",
         "applinks:wagerpals.io",
         "applinks:*.wagerpals.io"
       ],
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.wagerpals.app"],
+        "keychain-access-groups": ["$(AppIdentifierPrefix)com.wagerpals.shared"]
+      },
       "config": {
         "usesNonExemptEncryption": false
       }
@@ -68,12 +73,24 @@
           "sounds": []
         }
       ],
-      "./plugins/imessage-extension/withIMessageExtension"
+      [
+        "./plugins/imessage-extension/withIMessageExtension",
+        {
+          "teamId": "3C4383262W",
+          "appGroup": "group.com.wagerpals.app",
+          "appStoreId": "6754625373",
+          "webBaseUrl": "https://wagerpals.io"
+        }
+      ]
     ],
     "extra": {
       "apiUrl": "${EXPO_PUBLIC_API_URL}",
       "auth0Domain": "${EXPO_PUBLIC_AUTH0_DOMAIN}",
       "auth0ClientId": "${EXPO_PUBLIC_AUTH0_CLIENT_ID}",
+      "appleTeamId": "3C4383262W",
+      "keychainAccessGroup": "3C4383262W.com.wagerpals.shared",
+      "keychainService": "wagerpals",
+      "appGroup": "group.com.wagerpals.app",
       "eas": {
         "projectId": "749a2dc6-bdc5-44e4-907b-3c77e36bb760"
       }
