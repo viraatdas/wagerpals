@@ -262,7 +262,7 @@ export const db = {
         VALUES (
           ${user.id},
           ${user.username},
-          ${user.username_selected || true},
+          ${user.username_selected ?? false},
           ${user.net_total},
           ${user.total_bet},
           ${user.streak},
@@ -1243,6 +1243,25 @@ export const db = {
         SELECT * FROM escrow_holds WHERE bet_id = ${betId} ORDER BY created_at ASC
       `;
       return result.rows.map(mapEscrowHold);
+    },
+
+    /**
+     * Escrow status of every bet in one event, keyed by bet id. The ledger draws
+     * an escrow chip on each cash bet, and getWalletSummary only ever returns
+     * the caller's own holds — so the chip needs this event-wide view instead.
+     * Only the status is returned: amount and owner are already on the bet.
+     */
+    getStatusByBetForEvent: async (eventId: string): Promise<Record<string, EscrowHoldStatus>> => {
+      const result = await sql`
+        SELECT bet_id, status FROM escrow_holds
+        WHERE event_id = ${eventId} AND bet_id IS NOT NULL
+        ORDER BY created_at ASC
+      `;
+      const statusByBet: Record<string, EscrowHoldStatus> = {};
+      for (const row of result.rows) {
+        statusByBet[row.bet_id] = row.status as EscrowHoldStatus;
+      }
+      return statusByBet;
     },
 
     getByUser: async (userId: string, status?: EscrowHoldStatus): Promise<EscrowHold[]> => {

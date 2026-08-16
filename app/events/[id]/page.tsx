@@ -10,7 +10,7 @@ import CommentThread from '@/components/CommentThread';
 import ResolutionBanner from '@/components/ResolutionBanner';
 import ConfirmationModal from '@/components/ConfirmationModal';
 import Toast, { ToastType } from '@/components/Toast';
-import { EventWithStats, NetResult } from '@/lib/types';
+import { EscrowHoldStatus, EventWithStats, NetResult } from '@/lib/types';
 import { calculateNetResults } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +24,8 @@ type EventPageData = EventWithStats & {
   payment_type?: 'none' | 'cash';
   stake_amount?: number | null;
   escrow_total?: number;
+  /** Escrow status of every bet in the event, keyed by bet id (cash events only). */
+  escrow_by_bet?: Record<string, EscrowHoldStatus>;
 };
 
 type ConfirmationModalConfig = {
@@ -517,6 +519,8 @@ export default function EventPage() {
               isPublic={isPublic}
               paymentType={event.payment_type}
               eventId={event.id}
+              eventStatus={event.status}
+              escrowByBet={event.escrow_by_bet}
             />
           </div>
         </div>

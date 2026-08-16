@@ -35,8 +35,17 @@ async function indexExists(indexName: string): Promise<boolean> {
   return res.rows.length > 0;
 }
 
-async function constraintStatus(constraintName: string): Promise<{ exists: boolean; validated: boolean }> {
-  const res = await sql`SELECT convalidated FROM pg_constraint WHERE conname = ${constraintName}`;
+// Constraint names are only unique per table, so pg_constraint must be filtered by the owning
+// relation (and its schema) — a bare conname match can report a same-named constraint on an
+// unrelated table, making this migration skip a step it never actually applied.
+async function constraintStatus(table: string, constraintName: string): Promise<{ exists: boolean; validated: boolean }> {
+  const res = await sql`
+    SELECT c.convalidated
+    FROM pg_constraint c
+    JOIN pg_class t ON t.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    WHERE n.nspname = 'public' AND t.relname = ${table} AND c.conname = ${constraintName}
+  `;
   if (res.rows.length === 0) return { exists: false, validated: false };
   return { exists: true, validated: res.rows[0].convalidated === true };
 }
@@ -91,7 +100,7 @@ async function createUsersEmailUniqueIndex(): Promise<void> {
 // failure is reported but does not abort the migration (new/updated rows are still checked).
 async function addTransactionsTypeCheck(): Promise<void> {
   const label = 'transactions_type_check';
-  const status = await constraintStatus(label);
+  const status = await constraintStatus('transactions', label);
 
   if (!status.exists) {
     await sql`
@@ -160,7 +169,7 @@ async function migrateComeback(): Promise<void> {
   await step('events.notify_subject', () => columnExists('events', 'notify_subject'), () => sql`ALTER TABLE events ADD COLUMN IF NOT EXISTS notify_subject BOOLEAN NOT NULL DEFAULT TRUE`);
 
   console.log('\n4. events: constraint & indexes');
-  await step('events_payment_type_check', () => constraintStatus('events_payment_type_check').then((s) => s.exists), () => sql`ALTER TABLE events ADD CONSTRAINT events_payment_type_check CHECK (payment_type IN ('none', 'cash'))`);
+  await step('events_payment_type_check', () => constraintStatus('events', 'events_payment_type_check').then((s) => s.exists), () => sql`ALTER TABLE events ADD CONSTRAINT events_payment_type_check CHECK (payment_type IN ('none', 'cash'))`);
   await step('idx_events_payment_type', () => indexExists('idx_events_payment_type'), () => sql`CREATE INDEX IF NOT EXISTS idx_events_payment_type ON events(payment_type)`);
   await step('idx_events_subject_user_id', () => indexExists('idx_events_subject_user_id'), () => sql`CREATE INDEX IF NOT EXISTS idx_events_subject_user_id ON events(subject_user_id) WHERE subject_user_id IS NOT NULL`);
 

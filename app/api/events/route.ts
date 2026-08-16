@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { generateId } from '@/lib/utils';
-import { Event, PaymentType } from '@/lib/types';
+import { EscrowHoldStatus, Event, PaymentType } from '@/lib/types';
 import { notifyEventAudience, applySubjectPrivacy } from '@/lib/push';
 import { requireAuth, verifyUserMatch } from '@/lib/auth';
 import { getGroupResolver } from '@/lib/group-resolver';
@@ -20,10 +20,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    const [bets, group, escrow_total] = await Promise.all([
+    const isCash = event.payment_type === 'cash';
+    const [bets, group, escrow_total, escrow_by_bet] = await Promise.all([
       db.bets.getByEvent(id),
       db.groups.get(event.group_id),
-      event.payment_type === 'cash' ? db.escrowHolds.getHeldTotalForEvent(id) : Promise.resolve(0),
+      isCash ? db.escrowHolds.getHeldTotalForEvent(id) : Promise.resolve(0),
+      // Every player's escrow status, not just the caller's: the ledger renders
+      // an escrow chip on each cash bet regardless of who placed it.
+      isCash
+        ? db.escrowHolds.getStatusByBetForEvent(id)
+        : Promise.resolve({} as Record<string, EscrowHoldStatus>),
     ]);
     const sideStats: Record<string, { count: number; total: number }> = {
       [event.side_a]: { count: 0, total: 0 },
@@ -54,6 +60,7 @@ export async function GET(request: NextRequest) {
       total_bets: bets.length,
       total_participants: uniqueParticipants,
       escrow_total,
+      escrow_by_bet,
     });
   }
 

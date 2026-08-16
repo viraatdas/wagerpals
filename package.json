@@ -18,6 +18,8 @@
     "verify-pwa": "tsx scripts/verify-pwa-setup.ts",
     "verify:payments": "tsx scripts/verify-payments.ts",
     "test:push": "tsx scripts/test-push-notification.ts",
+    "test:sync-user": "tsx scripts/test-sync-user.ts",
+    "test:auth": "tsx scripts/test-auth-consolidation.ts",
     "brand:assets": "tsx scripts/generate-brand-assets.ts",
     "identity:check": "tsx scripts/check-identity.ts",
     "identity:backfill": "tsx scripts/backfill-user-emails.ts",
@@ -25,7 +27,9 @@
     "stack:link-accounts": "tsx scripts/set-stack-account-linking.ts",
     "verify:notifications": "tsx scripts/verify-notifications.ts",
     "verify:imessage": "tsx scripts/verify-imessage.ts",
-    "verify:comments": "tsx scripts/verify-comments.ts"
+    "verify:comments": "tsx scripts/verify-comments.ts",
+    "verify:escrow-chips": "tsx scripts/verify-escrow-chips.ts",
+    "verify:constraints": "tsx scripts/verify-constraint-status.ts"
   },
   "dependencies": {
     "@stackframe/stack": "^2.8.41",

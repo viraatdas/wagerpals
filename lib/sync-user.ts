@@ -57,6 +57,11 @@ function authMethodKey(m: AuthMethod): string {
  * Union existing auth methods with newly-observed ones, de-duplicated on
  * provider+identifier. Entries that already existed keep their original
  * (earliest) linked_at; newly-added entries are stamped with `now`.
+ *
+ * A method recorded with no identifier — which is what we store while the
+ * user's email is still unverified — is *upgraded in place* once the same
+ * provider shows up carrying a real identifier. Without that, verifying an
+ * email forks one sign-in method into two near-duplicate entries.
  */
 function mergeAuthMethods(existing: AuthMethod[], incoming: AuthMethod[]): AuthMethod[] {
   const merged = new Map<string, AuthMethod>();
@@ -66,9 +71,18 @@ function mergeAuthMethods(existing: AuthMethod[], incoming: AuthMethod[]): AuthM
   const nowIso = new Date().toISOString();
   for (const m of incoming) {
     const key = authMethodKey(m);
-    if (!merged.has(key)) {
-      merged.set(key, { ...m, linked_at: nowIso });
+    if (merged.has(key)) continue;
+
+    if (m.identifier) {
+      const blankKey = authMethodKey({ provider: m.provider, identifier: null });
+      const blank = merged.get(blankKey);
+      if (blank) {
+        merged.delete(blankKey);
+        merged.set(key, { ...m, linked_at: blank.linked_at ?? nowIso });
+        continue;
+      }
     }
+    merged.set(key, { ...m, linked_at: nowIso });
   }
   return Array.from(merged.values());
 }
@@ -77,6 +91,19 @@ function authMethodsChanged(existing: AuthMethod[], merged: AuthMethod[]): boole
   if (existing.length !== merged.length) return true;
   const existingKeys = new Set(existing.map(authMethodKey));
   return merged.some(m => !existingKeys.has(authMethodKey(m)));
+}
+
+/**
+ * Classify the unique violation a failed INSERT raised, so the caller can
+ * tell "somebody else created my row" from "the username/email I picked was
+ * claimed in the moment between my availability check and my INSERT".
+ */
+function uniqueViolationTarget(err: any): 'id' | 'username' | 'email' | null {
+  const detail = `${err?.constraint ?? ''} ${err?.message ?? ''}`;
+  if (detail.includes('users_pkey')) return 'id';
+  if (detail.includes('idx_users_email_lower')) return 'email';
+  if (detail.includes('users_username_key') || detail.includes('username')) return 'username';
+  return null;
 }
 
 type UsernameResolution = { ok: true; username: string } | { ok: false; status: number; error: string };
@@ -212,23 +239,41 @@ export async function syncUser(
   try {
     await db.users.create(newUser);
   } catch (err) {
-    // Create race: another concurrent request may have created the row
-    // between our `get` check and this `create` call. Fall through to the
-    // update path instead of surfacing a 500.
-    console.error('[syncUser] create failed, checking for a create race:', err);
+    // Every check above (row id, username availability, email ownership) is a
+    // read followed by a write, so a concurrent request can invalidate any of
+    // them in between. Recover rather than turning a sign-in into a 500.
+    console.error('[syncUser] create failed, recovering:', err);
+
     const raced = await db.users.get(stackUser.id);
     if (raced) {
+      // Another request created our row first — adopt it.
       return syncExistingUser(raced, stackUser, email, emailToWrite, opts);
     }
-    return { ok: false, status: 500, error: 'Failed to sync user' };
+
+    const target = uniqueViolationTarget(err);
+    if (target !== 'username' && target !== 'email') {
+      return { ok: false, status: 500, error: 'Failed to sync user' };
+    }
+    if (target === 'username' && usernameSelectedFlag) {
+      // The human typed this name; renaming them behind their back would be
+      // worse than telling them it just went.
+      return { ok: false, status: 400, error: `Username "${opts!.username!.trim()}" is already taken` };
+    }
+
+    // Retry once with a shape nobody else can be holding: a username derived
+    // from this Stack Auth id, and no email (the row that won the race owns
+    // it — `npm run users:merge` is what reunites the two afterwards).
+    if (target === 'username') newUser.username = derivePlaceholderUsername(stackUser.id);
+    if (target === 'email') newUser.email = undefined;
+
+    try {
+      await db.users.create(newUser);
+    } catch (retryErr) {
+      console.error('[syncUser] create retry failed:', retryErr);
+      return { ok: false, status: 500, error: 'Failed to sync user' };
+    }
   }
 
-  // db.users.create writes username_selected as `${user.username_selected || true}`,
-  // i.e. it coerces `false` to `true`. Fix it up when the username was not
-  // explicitly chosen by the human.
-  if (!usernameSelectedFlag) {
-    await db.users.update(stackUser.id, { username_selected: false });
-  }
   await db.users.update(stackUser.id, { last_seen_at: nowIso });
 
   const created = await db.users.get(stackUser.id);

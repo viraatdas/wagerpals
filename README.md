@@ -277,6 +277,33 @@ eas submit --platform all
 4. **Database Changes**: Update `lib/schema.sql` and create migration script
 5. **Testing**: Test on both web and mobile before deploying
 
+## Automated Tests
+
+### Identity / multi-auth consolidation
+
+```bash
+npm run test:auth              # ~35s
+npm run test:auth -- --keep-db # leave the throwaway database behind to poke at it
+```
+
+`scripts/test-auth-consolidation.ts` is an end-to-end test of "one human, one
+account". It drives the real `app/api/users` route handlers, so `lib/auth`
+(web cookie session, mobile `Authorization: Bearer`, `x-stack-auth` header),
+`lib/sync-user`, `lib/db` and Postgres' unique indexes are all exercised for
+real; only Stack Auth itself is replaced, by `scripts/testing/stack-auth-stub.ts`.
+It covers email sign-up, adding Google to the same account, choosing a
+username, a second unlinked Stack account on the same email (the email is
+never stolen), 401/403 guards, identity fields not leaking to other callers,
+unverified emails, the create race, `scripts/merge-duplicate-users.ts` (dry
+run, `--apply`, and idempotent re-run) and tombstoned accounts.
+
+It never touches your application database: it `CREATE DATABASE`s a throwaway
+`wagerpals_authtest_*`, applies `lib/schema.sql` to it, refuses to run unless
+`SELECT current_database()` confirms it is on that throwaway, and drops it
+afterwards even when tests fail. Requirements: `POSTGRES_URL` in `.env.local`
+with permission to create databases (set `TEST_ADMIN_POSTGRES_URL` to use a
+different server, e.g. a local Postgres), and Node 22.15+.
+
 ## Push Notifications
 
 The system supports two types of push notifications:

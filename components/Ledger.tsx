@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Bet, Comment, EscrowHold, Transaction } from '@/lib/types';
+import { Bet, Comment, EscrowHold, EscrowHoldStatus, Transaction } from '@/lib/types';
 import { formatTimestamp, formatAmount } from '@/lib/utils';
 import ConfirmationModal from './ConfirmationModal';
 import Toast, { ToastType } from './Toast';
@@ -16,15 +16,28 @@ interface LedgerProps {
   isPublic?: boolean;
   paymentType?: 'none' | 'cash';
   eventId?: string;
+  /**
+   * Settling or cancelling an event moves money without changing the bet list,
+   * so the wallet panel needs the status to know when to refetch.
+   */
+  eventStatus?: string;
+  /**
+   * Escrow status of every bet in this event, keyed by bet id, from
+   * GET /api/events?id=. The viewer's wallet summary only carries the viewer's
+   * own holds, so without this the escrow chips would appear on their bets and
+   * nobody else's — reading as if other players had no money at stake.
+   */
+  escrowByBet?: Record<string, EscrowHoldStatus>;
 }
 
 type LedgerEntry = (Bet & { type: 'bet' }) | (Comment & { type: 'comment' });
 
+/** Mirrors the payload of GET /api/wallet (see lib/payments.ts getWalletSummary). */
 interface WalletSummary {
   wallet: { user_id: string; balance: number; currency: string };
   escrow_held_total: number;
   available: number;
-  transactions: Transaction[];
+  transactions?: Transaction[];
   event?: {
     escrow_held: number;
     holds: EscrowHold[];
@@ -39,13 +52,35 @@ const TRANSACTION_LABELS: Record<string, { label: string; color: string }> = {
   escrow_release: { label: 'Stake returned', color: 'text-green-700' },
   payout: { label: 'Winnings', color: 'text-green-700' },
   refund: { label: 'Refunded', color: 'text-green-700' },
+  deposit: { label: 'Deposit', color: 'text-green-700' },
+  withdrawal: { label: 'Withdrawal', color: 'text-red-600' },
 };
 
 function getTransactionLabel(type: string): { label: string; color: string } {
   return TRANSACTION_LABELS[type] || { label: type.replace(/_/g, ' '), color: 'text-muted' };
 }
 
-export default function Ledger({ bets, comments = [], currentUserId, onBetDeleted, onCommentDeleted, isPublic = false, paymentType = 'none', eventId }: LedgerProps) {
+const HOLD_CHIPS: Record<EscrowHoldStatus, { label: string; className: string }> = {
+  held: { label: 'Escrowed', className: 'text-amber-700 bg-amber-50 border-amber-200' },
+  released: { label: 'Settled', className: 'text-gray-600 bg-gray-50 border-gray-200' },
+  refunded: { label: 'Refunded', className: 'text-green-700 bg-green-50 border-green-200' },
+};
+
+/** Chips render on everyone's bets, so the tooltip has to name whose stake it is. */
+function holdChipTitle(status: EscrowHoldStatus, isOwnBet: boolean, username: string): string {
+  const stake = isOwnBet ? 'your stake' : `@${username}'s stake`;
+  const Stake = isOwnBet ? 'Your stake' : stake;
+  switch (status) {
+    case 'held':
+      return `${Stake} is held until this event is resolved or cancelled.`;
+    case 'released':
+      return `This event was resolved and ${stake} left escrow.`;
+    case 'refunded':
+      return `This event was cancelled and ${stake} was returned.`;
+  }
+}
+
+export default function Ledger({ bets, comments = [], currentUserId, onBetDeleted, onCommentDeleted, isPublic = false, paymentType = 'none', eventId, eventStatus, escrowByBet }: LedgerProps) {
   const [deletingBets, setDeletingBets] = useState<Set<string>>(new Set());
   const [deletingComments, setDeletingComments] = useState<Set<string>>(new Set());
   const [betToDelete, setBetToDelete] = useState<string | null>(null);
@@ -53,10 +88,18 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
+  const [walletError, setWalletError] = useState(false);
+  const [walletReloadKey, setWalletReloadKey] = useState(0);
+
+  const showWallet = paymentType === 'cash' && Boolean(currentUserId) && Boolean(eventId);
+  // `bets` is a fresh array on every parent refetch, so key the effect off the
+  // ids rather than the array identity to avoid refetching on every render.
+  const betSignature = useMemo(() => bets.map(b => b.id).join(','), [bets]);
 
   useEffect(() => {
-    if (paymentType !== 'cash' || !currentUserId || !eventId) {
+    if (!showWallet) {
       setWalletSummary(null);
+      setWalletError(false);
       return;
     }
 
@@ -64,18 +107,22 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
     setWalletLoading(true);
 
     fetch(`/api/wallet?userId=${currentUserId}&eventId=${eventId}`, {
-      headers: { 'x-stack-user-id': currentUserId },
+      headers: { 'x-stack-user-id': currentUserId as string },
     })
       .then((response) => {
         if (!response.ok) throw new Error('Failed to fetch wallet');
         return response.json();
       })
       .then((data) => {
-        if (!cancelled) setWalletSummary(data);
+        if (cancelled) return;
+        setWalletSummary(data);
+        setWalletError(false);
       })
       .catch((error) => {
         console.error('Failed to fetch wallet summary:', error);
-        if (!cancelled) setWalletSummary(null);
+        if (cancelled) return;
+        setWalletSummary(null);
+        setWalletError(true);
       })
       .finally(() => {
         if (!cancelled) setWalletLoading(false);
@@ -84,8 +131,22 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUserId, eventId, paymentType, bets.length, bets.map(b => b.id).join(',')]);
+    // eventStatus / betSignature / walletReloadKey are not read in the body —
+    // they are the refetch triggers (settlement, a new bet, manual retry).
+  }, [showWallet, currentUserId, eventId, eventStatus, betSignature, walletReloadKey]);
+
+  const reloadWallet = useCallback(() => setWalletReloadKey(k => k + 1), []);
+
+  // Escrow status per bet for EVERY player. The event payload is the source of
+  // truth; the viewer's own holds are layered on top so a signed-in player
+  // still sees their chips if an older event response predates escrow_by_bet.
+  const holdStatusByBetId = useMemo(() => {
+    const map = new Map<string, EscrowHoldStatus>(Object.entries(escrowByBet ?? {}));
+    for (const hold of walletSummary?.event?.holds ?? []) {
+      if (hold.bet_id) map.set(hold.bet_id, hold.status);
+    }
+    return map;
+  }, [escrowByBet, walletSummary]);
 
   // Combine bets and comments
   const entries: LedgerEntry[] = [
@@ -210,9 +271,19 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
         loading={commentToDelete !== null && deletingComments.has(commentToDelete)}
       />
       
-      {paymentType === 'cash' && currentUserId && eventId && (
-        walletLoading ? (
+      {showWallet && (
+        walletLoading && !walletSummary ? (
           <div className="skeleton h-24 rounded-2xl mb-4" />
+        ) : walletError ? (
+          <div className="glass rounded-2xl p-4 mb-4 border-amber-200 flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+            <p className="text-sm text-muted">Couldn&apos;t load your wallet for this event.</p>
+            <button
+              onClick={reloadWallet}
+              className="text-sm font-medium text-brand-2 hover:underline self-start min-[420px]:self-auto"
+            >
+              Try again
+            </button>
+          </div>
         ) : walletSummary ? (
           <div className="glass-strong rounded-2xl p-4 mb-4">
             <div className="flex items-center justify-between mb-3">
@@ -282,6 +353,8 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
           entries.map((entry) => {
             if (entry.type === 'bet') {
               const bet = entry;
+              const holdStatus = holdStatusByBetId.get(bet.id);
+              const holdChip = holdStatus ? HOLD_CHIPS[holdStatus] : null;
               return (
                 <div
                   key={`bet-${bet.id}`}
@@ -303,6 +376,14 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
                             Late
                           </span>
                         )}
+                        {holdChip && holdStatus && (
+                          <span
+                            className={`chip ${holdChip.className}`}
+                            title={holdChipTitle(holdStatus, bet.user_id === currentUserId, bet.username)}
+                          >
+                            {holdChip.label}
+                          </span>
+                        )}
                       </div>
                       {bet.note && (
                         <p className="text-sm text-muted mt-2 italic">
@@ -314,6 +395,8 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
                       <span className="text-xs text-muted-2 tabular-nums">
                         {formatTimestamp(bet.timestamp)}
                       </span>
+                      {/* Cash bets have money escrowed against them, so they
+                          cannot be deleted — the escrow chip above says why. */}
                       {paymentType !== 'cash' && (
                         <button
                           onClick={() => handleDeleteBet(bet.id)}
