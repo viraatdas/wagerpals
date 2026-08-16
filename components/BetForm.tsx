@@ -33,6 +33,8 @@ export default function BetForm({
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<{ message: string; code?: string; shortfall?: number } | null>(null);
+  // Presentational only: shows a brief landed-stake confirmation after a successful submit.
+  const [justPlaced, setJustPlaced] = useState<{ side: string; amount: number } | null>(null);
 
   const isCash = paymentType === 'cash';
   const isFixedStake = isCash && typeof stakeAmount === 'number' && stakeAmount > 0;
@@ -61,6 +63,13 @@ export default function BetForm({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCash, userId]);
+
+  // Clear the transient confirmation a couple seconds after it lands.
+  useEffect(() => {
+    if (!justPlaced) return;
+    const t = setTimeout(() => setJustPlaced(null), 3200);
+    return () => clearTimeout(t);
+  }, [justPlaced]);
 
   const effectiveStake = isFixedStake ? (stakeAmount as number) : parseFloat(amount) || 0;
   const insufficientFunds = isCash && typeof balance === 'number' && effectiveStake > 0 && balance < effectiveStake;
@@ -107,6 +116,7 @@ export default function BetForm({
         return;
       }
 
+      setJustPlaced({ side: selectedSide, amount: submittedAmount });
       setAmount('');
       setNote('');
       setError(null);
@@ -139,24 +149,18 @@ export default function BetForm({
     !!insufficientFunds;
 
   return (
-    <form onSubmit={handleSubmit} className="glass rounded-2xl p-4 sm:p-6 relative overflow-hidden animate-rise">
-      <h3 className="font-display text-lg font-semibold text-foreground mb-4 border-b border-gray-200 pb-3 relative">
-        Place Your <span className="text-gradient">Bet</span>
-      </h3>
+    <form id="bet-form" onSubmit={handleSubmit} className="card rounded-2xl p-4 sm:p-6 relative overflow-hidden animate-rise">
+      <div className="section-head mb-4">
+        <h3 className="eyebrow">Place your bet</h3>
+      </div>
 
       <div className="space-y-5 sm:space-y-6 relative">
         <div>
-          <label className="block text-sm font-medium text-muted mb-3">
-            Pick a side
-          </label>
+          <span className="field-label">Pick a side</span>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {sides.map((side, i) => {
               const selected = selectedSide === side;
-              const tone = i % 2 === 0 ? 'mint' : 'rose';
-              const selectedClasses =
-                tone === 'mint'
-                  ? 'border-green-600 bg-green-50 text-green-700'
-                  : 'border-red-600 bg-red-50 text-red-700';
+              const tone = i % 2 === 0 ? 'tone-yes' : 'tone-no';
               return (
                 <button
                   key={side}
@@ -165,23 +169,32 @@ export default function BetForm({
                     setSelectedSide(side);
                     clearError();
                   }}
-                  className={`relative px-4 py-3.5 rounded-xl font-semibold border transition-all break-words ${
+                  aria-pressed={selected}
+                  className={`press relative px-4 py-4 rounded-xl font-semibold text-left break-words border-2 transition-colors ${
                     selected
-                      ? selectedClasses
+                      ? `${tone} tone-surface`
                       : 'border-gray-200 bg-white text-foreground hover:bg-gray-50 hover:border-gray-300'
                   }`}
                 >
-                  <span className="flex items-center justify-center gap-2">
-                    <span
-                      className={`h-2 w-2 rounded-full transition-all ${
-                        selected
-                          ? tone === 'mint'
-                            ? 'bg-green-600'
-                            : 'bg-red-600'
-                          : 'bg-gray-300'
-                      }`}
-                    />
-                    {side}
+                  <span className="flex items-center justify-between gap-2">
+                    <span className={`flex items-center gap-2 min-w-0 ${selected ? 'tone-text' : ''}`}>
+                      <span className="tone-dot" style={!selected ? { background: '#d1d5db' } : undefined} />
+                      <span className="truncate">{side}</span>
+                    </span>
+                    {selected && (
+                      <svg
+                        className="tone-text w-4 h-4 shrink-0"
+                        viewBox="0 0 20 20"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M4 10l4 4 8-8" />
+                      </svg>
+                    )}
                   </span>
                 </button>
               );
@@ -190,13 +203,13 @@ export default function BetForm({
         </div>
 
         {isCash && (
-          <div className="flex items-center justify-between text-sm bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-            <span className="text-muted font-medium">Wallet balance</span>
+          <div className="panel flex items-center justify-between text-sm px-4 py-3">
+            <span className="eyebrow">Wallet balance</span>
             <div className="flex items-center gap-3">
-              <span className="tabular-nums font-semibold text-foreground">
+              <span className="numeral text-lg text-foreground">
                 {typeof balance === 'number' ? `$${balance.toFixed(2)}` : '—'}
               </span>
-              <Link href="/profile" className="text-brand-2 hover:underline text-sm font-medium">
+              <Link href="/profile" className="press text-accent hover:underline text-sm font-medium">
                 Add funds
               </Link>
             </div>
@@ -205,17 +218,15 @@ export default function BetForm({
 
         {isFixedStake ? (
           <div>
-            <label className="block text-sm font-medium text-muted mb-3">
-              Fixed stake
-            </label>
-            <div className="w-full flex items-center justify-between bg-gray-50 border border-gray-300 text-foreground rounded-xl px-3 py-2.5">
-              <span className="text-muted font-medium">Stake</span>
-              <span className="tabular-nums font-semibold">${(stakeAmount as number).toFixed(2)}</span>
+            <span className="field-label">Fixed stake</span>
+            <div className="panel w-full flex items-center justify-between px-3 py-2.5">
+              <span className="text-muted font-medium text-sm">Stake</span>
+              <span className="numeral text-xl text-foreground">${(stakeAmount as number).toFixed(2)}</span>
             </div>
           </div>
         ) : (
           <div>
-            <label htmlFor="amount" className="block text-sm font-medium text-muted mb-3">
+            <label htmlFor="amount" className="field-label">
               Amount ({currencyLabel})
             </label>
             <input
@@ -229,13 +240,13 @@ export default function BetForm({
               min="0.01"
               step="0.01"
               max={isCash ? '500' : undefined}
-              className="w-full bg-white border border-gray-300 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2.5 tabular-nums focus:outline-none focus:border-brand-2 focus:ring-2 focus:ring-brand-2/20 transition"
+              className={`input numeral text-2xl ${error && error.code !== 'INSUFFICIENT_FUNDS' ? 'input-invalid' : ''}`}
               inputMode="decimal"
               placeholder="10.00"
               required
             />
             {isCash && (
-              <p className="text-sm text-muted-2 font-light mt-2">
+              <p className="field-hint mt-2">
                 Your stake is held in escrow until the event resolves.
               </p>
             )}
@@ -243,7 +254,7 @@ export default function BetForm({
         )}
 
         <div>
-          <label htmlFor="note" className="block text-sm font-medium text-muted mb-3">
+          <label htmlFor="note" className="field-label">
             Note (optional)
           </label>
           <textarea
@@ -251,19 +262,19 @@ export default function BetForm({
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={2}
-            className="w-full bg-white border border-gray-300 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-brand-2 focus:ring-2 focus:ring-brand-2/20 transition"
+            className="input resize-none"
             placeholder="Your prediction or reasoning..."
           />
         </div>
 
         {error && error.code !== 'INSUFFICIENT_FUNDS' && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">
+          <div className="tone-no tone-surface border rounded-xl p-3 text-sm tone-text">
             {error.message}
           </div>
         )}
 
         {(insufficientFunds || error?.code === 'INSUFFICIENT_FUNDS') && (
-          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-sm flex items-center justify-between gap-3 flex-wrap">
+          <div className="tone-pending tone-surface border rounded-xl p-3 text-sm tone-text flex items-center justify-between gap-3 flex-wrap">
             <span>
               You need $
               {(
@@ -271,16 +282,25 @@ export default function BetForm({
               ).toFixed(2)}{' '}
               more to place this bet.
             </span>
-            <Link href="/profile" className="btn-primary px-4 py-2 text-sm">
+            <Link href="/profile" className="btn-primary press px-4 py-2 text-sm">
               Add funds
             </Link>
+          </div>
+        )}
+
+        {justPlaced && (
+          <div className="tone-yes tone-surface border rounded-xl p-3 text-sm animate-bet-land flex items-center justify-between gap-3">
+            <span className="tone-text font-medium">Bet placed on {justPlaced.side}</span>
+            <span className="numeral tone-text text-lg">
+              {isPublic && !isCash ? `${justPlaced.amount.toFixed(2)} pts` : `$${justPlaced.amount.toFixed(2)}`}
+            </span>
           </div>
         )}
 
         <button
           type="submit"
           disabled={submitDisabled}
-          className="btn-primary w-full py-3 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+          className="btn-primary press w-full py-3 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
         >
           {submitLabel}
         </button>

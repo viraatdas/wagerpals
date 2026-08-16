@@ -1,16 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Space_Grotesk } from "next/font/google";
+import { Inter, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/Header";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import MobileAppBanner from "@/components/MobileAppBanner";
 import { ClientProviders } from "@/components/ClientProviders";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const spaceGrotesk = Space_Grotesk({
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+// Display face. Wide, slightly quirky grotesque — gives headlines and the
+// wordmark a voice that Inter alone can't carry, while staying legible at
+// data-dense sizes. Variable weight so .display-* / .market-title can ask
+// for 650 without loading another file.
+const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
   variable: "--font-display",
+  display: "swap",
 });
 
 const APP_TITLE = "WagerPals - Polymarket for friends";
@@ -77,14 +81,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
+    <html lang="en" className={`${inter.variable} ${bricolage.variable}`}>
       <body className="font-sans antialiased text-foreground">
         <ClientProviders>
           <ServiceWorkerRegistration />
+          <a href="#main" className="skip-link">
+            Skip to content
+          </a>
           <div className="min-h-screen flex flex-col">
             <MobileAppBanner />
             <Header />
-            <main className="flex-1">
+            <main id="main" className="flex-1">
               {children}
             </main>
           </div>

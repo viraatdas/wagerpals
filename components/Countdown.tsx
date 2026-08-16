@@ -4,10 +4,14 @@ import { useEffect, useState, memo } from 'react';
 
 interface CountdownProps {
   endTime: number;
+  /** Optional presentational variant. Defaults preserve existing call sites. */
+  variant?: 'inline' | 'pill';
 }
 
-function Countdown({ endTime }: CountdownProps) {
+function Countdown({ endTime, variant = 'inline' }: CountdownProps) {
   const [timeLeft, setTimeLeft] = useState('');
+  const [isUrgent, setIsUrgent] = useState(false);
+  const [isEnded, setIsEnded] = useState(false);
 
   useEffect(() => {
     const updateCountdown = () => {
@@ -16,8 +20,13 @@ function Countdown({ endTime }: CountdownProps) {
 
       if (diff <= 0) {
         setTimeLeft('Event ended');
+        setIsUrgent(false);
+        setIsEnded(true);
         return 0;
       }
+
+      setIsEnded(false);
+      setIsUrgent(diff <= 60 * 60 * 1000);
 
       const days = Math.floor(diff / (1000 * 60 * 60 * 24));
       const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -47,8 +56,20 @@ function Countdown({ endTime }: CountdownProps) {
     return () => clearInterval(timer);
   }, [endTime]);
 
-  return <span className="tabular-nums">{timeLeft}</span>;
+  const toneClass = isEnded ? 'tone-pending tone-text' : isUrgent ? 'tone-pending tone-text animate-urgent' : '';
+
+  if (variant === 'pill') {
+    return (
+      <span className={`pill ${isEnded ? 'tone-pending' : isUrgent ? 'tone-pending' : 'tone-yes'} ${isUrgent ? 'animate-urgent' : ''}`}>
+        <span className="tone-dot" />
+        <span className="tabular-nums">{timeLeft}</span>
+      </span>
+    );
+  }
+
+  return (
+    <span className={`tabular-nums ${toneClass}`}>{timeLeft}</span>
+  );
 }
 
 export default memo(Countdown);
-

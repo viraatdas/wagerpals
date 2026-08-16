@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { validateUsername } from '@/lib/utils';
 
 interface UsernameModalProps {
@@ -10,11 +10,18 @@ interface UsernameModalProps {
 export default function UsernameModal({ onSubmit }: UsernameModalProps) {
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const titleId = useId();
+  const inputId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setUsername(value);
-    
+
     // Real-time validation
     if (value.trim().length > 0) {
       const validation = validateUsername(value);
@@ -27,12 +34,12 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const validation = validateUsername(username);
-    
+
     if (!validation.valid) {
       setError(validation.error || 'Invalid username');
       return;
     }
-    
+
     if (username.trim()) {
       try {
         setError(null);
@@ -45,31 +52,37 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white border border-gray-200 shadow-xl rounded-xl max-w-md w-full p-8 animate-slide-up relative overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="card-focal animate-sheet max-w-md w-full p-8 relative overflow-hidden"
+      >
         <div className="text-center mb-6 relative">
-          <h2 className="font-display text-3xl font-semibold text-foreground mb-2">
-            Welcome to <span className="text-gradient">WagerPals</span>
+          <h2 id={titleId} className="display-2">
+            Welcome to WagerPals
           </h2>
-          <p className="text-muted">Pick your username to continue</p>
-          <p className="text-sm text-muted-2 mt-2">
+          <p className="text-muted mt-2">Pick your username to continue</p>
+          <p className="text-sm text-muted mt-2">
             This is how friends will find you. You can change it later.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="relative">
           <div className="mb-6">
+            <label htmlFor={inputId} className="field-label">
+              Username
+            </label>
             <input
+              id={inputId}
+              ref={inputRef}
               type="text"
               inputMode="text"
               value={username}
               onChange={handleChange}
               onClick={(e) => e.currentTarget.focus()}
               onTouchStart={(e) => e.currentTarget.focus()}
-              className={`w-full px-4 py-3 text-lg bg-white border text-foreground placeholder:text-muted-2 rounded-xl outline-none transition ${
-                error
-                  ? 'border-red-400 focus:ring-2 focus:ring-red-200'
-                  : 'border-gray-300 focus:border-brand-2 focus:ring-2 focus:ring-brand-2/20'
-              }`}
+              className={`input text-lg ${error ? 'input-invalid' : ''}`}
               placeholder="your username"
               autoFocus
               autoComplete="off"
@@ -77,13 +90,18 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
               autoCapitalize="off"
               spellCheck="false"
               required
+              aria-invalid={!!error}
+              aria-describedby={error ? `${inputId}-error` : `${inputId}-hint`}
             />
-            {error && (
-              <p className="text-red-600 text-sm mt-2">{error}</p>
+            {error ? (
+              <p id={`${inputId}-error`} className="tone-no tone-text text-sm font-medium mt-2">
+                {error}
+              </p>
+            ) : (
+              <p id={`${inputId}-hint`} className="field-hint mt-2">
+                Letters, numbers, and underscores only.
+              </p>
             )}
-            <p className="text-xs text-muted-2 mt-2">
-              Letters, numbers, and underscores only
-            </p>
           </div>
 
           <button
@@ -95,11 +113,10 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
           </button>
         </form>
 
-        <p className="text-xs text-muted-2 text-center mt-6 relative">
+        <p className="field-hint text-center mt-6 relative">
           You&apos;re signed in — email and Google with the same address share one account.
         </p>
       </div>
     </div>
   );
 }
-

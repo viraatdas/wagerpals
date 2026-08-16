@@ -3,10 +3,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
+type Phase = 'idle' | 'loading' | 'done';
+
 export default function NavigationProgress() {
   const pathname = usePathname();
-  const [active, setActive] = useState(false);
-  const timeoutRef = useRef<number | null>(null);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const timersRef = useRef<number[]>([]);
+
+  const clearTimers = () => {
+    timersRef.current.forEach((id) => window.clearTimeout(id));
+    timersRef.current = [];
+  };
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
@@ -18,7 +25,8 @@ export default function NavigationProgress() {
       if (url.origin !== window.location.origin) return;
       if (url.pathname === window.location.pathname && url.search === window.location.search) return;
 
-      setActive(true);
+      clearTimers();
+      setPhase('loading');
     };
 
     document.addEventListener('click', handleClick, true);
@@ -26,20 +34,30 @@ export default function NavigationProgress() {
   }, []);
 
   useEffect(() => {
-    setActive(true);
-    if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-    timeoutRef.current = window.setTimeout(() => setActive(false), 450);
+    clearTimers();
+    // Route settled: snap the bar the rest of the way to full, hold briefly,
+    // then reset — reads as "arrived", not just "timed out".
+    setPhase('loading');
+    timersRef.current = [
+      window.setTimeout(() => setPhase('done'), 160),
+      window.setTimeout(() => setPhase('idle'), 480),
+    ];
 
-    return () => {
-      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-    };
+    return clearTimers;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   return (
-    <div
-      className={`fixed left-0 right-0 top-0 z-[100] h-0.5 bg-brand-gradient origin-left transition-transform duration-300 ${
-        active ? 'scale-x-100' : 'scale-x-0'
-      }`}
-    />
+    <div className="pointer-events-none fixed left-0 right-0 top-0 z-[100] h-0.5 overflow-hidden" aria-hidden="true">
+      <div
+        className={`h-full origin-left bg-brand-gradient transition-transform ease-out-expo ${
+          phase === 'loading'
+            ? 'scale-x-[0.7] duration-slower'
+            : phase === 'done'
+            ? 'scale-x-100 duration-fast'
+            : 'scale-x-0 duration-instant'
+        }`}
+      />
+    </div>
   );
 }

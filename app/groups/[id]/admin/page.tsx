@@ -31,14 +31,14 @@ export default function GroupAdminPage() {
       const response = await fetch(`/api/groups?id=${params.id}`);
       if (!response.ok) throw new Error('Failed to fetch group');
       const data = await response.json();
-      
+
       // Check if user is admin
       const userMember = data.members.find((m: any) => m.user_id === uid);
       if (userMember?.role !== 'admin') {
         router.push(`/groups/${params.id}`);
         return;
       }
-      
+
       setGroup(data);
     } catch (error) {
       console.error('Failed to fetch group:', error);
@@ -49,7 +49,7 @@ export default function GroupAdminPage() {
 
   const handleMemberAction = async (action: string, targetUserId: string) => {
     if (!user) return;
-    
+
     setProcessing(true);
     try {
       const response = await fetch('/api/groups/members', {
@@ -141,25 +141,36 @@ export default function GroupAdminPage() {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8 mobile-page">
-        <div className="space-y-4">
-          <div className="skeleton h-8 w-1/2 rounded-xl" />
-          <div className="skeleton h-32 rounded-2xl" />
-          <div className="skeleton h-20 rounded-2xl" />
+      <div className="page-shell mobile-page">
+        <div className="space-y-4 mb-8">
+          <div className="skeleton h-3 w-24 rounded-full" />
+          <div className="skeleton h-9 w-1/2 rounded-xl" />
         </div>
+        <div className="skeleton h-32 rounded-2xl mb-8" />
+        <div className="skeleton h-40 rounded-2xl" />
       </div>
     );
   }
 
   if (!group) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8 mobile-page">
-        <div className="glass-subtle rounded-3xl text-center py-12 px-6">
-          <p className="text-center text-muted">Group not found</p>
+      <div className="page-shell mobile-page">
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <p className="empty-state-title">Group not found</p>
+          <p className="empty-state-body">This group may have been deleted, or the link is incorrect.</p>
+          <Link href="/" className="btn-primary press">Go home</Link>
         </div>
       </div>
     );
   }
+
+  const pendingRequests: any[] = Array.isArray(group.pending_requests) ? group.pending_requests : [];
+  const members: any[] = Array.isArray(group.members) ? group.members : [];
 
   return (
     <>
@@ -169,183 +180,225 @@ export default function GroupAdminPage() {
         message={toast?.message || ''}
         type={toast?.type || 'info'}
       />
-      <div className="max-w-4xl mx-auto px-4 py-8 mobile-page animate-rise">
-        <div className="mb-6">
+      <div className="page-shell mobile-page animate-rise">
+        <div className="mb-8">
           <Link
             href={`/groups/${params.id}`}
-            className="inline-block text-brand-2 hover:text-brand-1 transition-colors mb-2"
+            className="press inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-foreground transition-colors mb-3"
           >
-            ← Back to Group
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Back to group
           </Link>
-        <h1 className="text-2xl sm:text-3xl font-display font-semibold text-foreground break-words leading-tight">
-          Manage {group.name}
-        </h1>
-        <p className="text-muted">Group Code: <span className="font-mono text-foreground">{group.id}</span></p>
-      </div>
+          <span className="eyebrow block mb-2">
+            Group <span className="font-mono normal-case tracking-normal">{group.id}</span>
+          </span>
+          <h1 className="display-2 break-words">{group.name}</h1>
+        </div>
 
-      <section className="mb-8">
-        <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-brand-2/60 pb-2">
-          Paid Group Settings
-        </h2>
-        <div className="glass rounded-2xl p-4 mt-2 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <p className="text-foreground">
-                Status: <span className="font-semibold text-brand-2">{group.is_public ? 'Free points' : 'Paid wallet betting'}</span>
-              </p>
-              <p className="text-sm text-muted">
-                Paid groups require wallet funds before members can place bets.
-              </p>
+        {/* Focal point: pending join requests */}
+        {pendingRequests.length > 0 ? (
+          <section className="card rail-top tone-pending p-5 sm:p-6 mb-10">
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <span className="eyebrow tone-text">Pending requests</span>
+              <span className="pill tone-pending pill-solid">{pendingRequests.length}</span>
             </div>
-            <button
-              onClick={() => handleGroupSettings({ is_public: !group.is_public })}
-              disabled={processing}
-              className="btn-primary w-full sm:w-auto text-sm disabled:opacity-50"
-            >
-              {group.is_public ? 'Enable Paid Betting' : 'Use Free Points'}
-            </button>
+            <p className="text-sm text-muted mb-5">
+              These people asked to join {group.name}. Approve to let them in, or decline to turn them away.
+            </p>
+            <ul className="divide-y divide-hairline stagger-rows">
+              {pendingRequests.map((member: any) => (
+                <li
+                  key={member.user_id}
+                  className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-foreground truncate">{member.username}</p>
+                    <p className="text-xs text-muted">
+                      Requested {new Date(member.joined_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <button
+                      onClick={() => handleMemberAction('approve', member.user_id)}
+                      disabled={processing}
+                      aria-label={`Approve ${member.username}`}
+                      className="btn-quiet-success press disabled:opacity-50"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => handleMemberAction('decline', member.user_id)}
+                      disabled={processing}
+                      aria-label={`Decline ${member.username}`}
+                      className="btn-quiet-danger press disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : (
+          <div className="empty-state mb-10">
+            <div className="empty-state-icon">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="empty-state-title">No pending requests</p>
+            <p className="empty-state-body">Nobody is waiting to join right now. Invite more people to grow the group.</p>
+            <Link href={`/groups/${params.id}`} className="btn-primary press">Invite more people</Link>
           </div>
+        )}
 
-          {!group.is_public && (
-            <div>
-              <p className="text-foreground mb-2">
-                Resolver: <span className="font-medium text-green-700">@{group.resolver?.username || 'Not set'}</span>
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {group.members.map((member: any) => (
-                  <button
-                    key={member.user_id}
-                    onClick={() => handleGroupSettings({ resolver_user_id: member.user_id })}
-                    disabled={processing || group.resolver?.user_id === member.user_id}
-                    className={`px-3 py-2 rounded-xl text-sm border break-all transition-colors ${
-                      group.resolver?.user_id === member.user_id
-                        ? 'bg-green-50 border-green-300 text-green-700'
-                        : 'bg-gray-50 border-gray-200 text-muted hover:border-brand-2/40 hover:text-foreground'
-                    } disabled:cursor-not-allowed`}
-                  >
-                    @{member.username}
-                  </button>
-                ))}
+        <section className="mb-10">
+          <div className="section-head mb-5">
+            <span className="eyebrow">Group settings</span>
+          </div>
+          <div className="card p-5 sm:p-6 space-y-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm text-foreground">
+                  Status: <span className="font-semibold text-foreground">{group.is_public ? 'Free points' : 'Paid wallet betting'}</span>
+                </p>
+                <p className="text-sm text-muted">
+                  Paid groups require wallet funds before members can place bets.
+                </p>
               </div>
+              <button
+                onClick={() => handleGroupSettings({ is_public: !group.is_public })}
+                disabled={processing}
+                className="btn-primary press w-full sm:w-auto text-sm disabled:opacity-50"
+              >
+                {group.is_public ? 'Enable paid betting' : 'Use free points'}
+              </button>
+            </div>
+
+            {!group.is_public && (
+              <div className="pt-1 border-t border-hairline">
+                <p className="text-sm text-foreground mt-4 mb-3">
+                  Resolver: <span className="font-semibold text-foreground">@{group.resolver?.username || 'Not set'}</span>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {members.map((member: any) => {
+                    const isResolver = group.resolver?.user_id === member.user_id;
+                    return (
+                      <button
+                        key={member.user_id}
+                        onClick={() => handleGroupSettings({ resolver_user_id: member.user_id })}
+                        disabled={processing || isResolver}
+                        aria-label={isResolver ? `${member.username} is the current resolver` : `Make ${member.username} the resolver`}
+                        className={`press pill disabled:cursor-not-allowed ${isResolver ? 'pill-solid tone-accent' : 'tone-neutral'}`}
+                      >
+                        @{member.username}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="mb-10">
+          <div className="section-head mb-5">
+            <span className="eyebrow">Members ({members.length})</span>
+          </div>
+          {members.length > 0 ? (
+            <div className="card overflow-hidden">
+              <ul className="divide-y divide-hairline stagger-rows">
+                {members.map((member: any) => (
+                  <li
+                    key={member.user_id}
+                    className="flex flex-col gap-3 px-4 py-4 sm:px-5 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-hairline bg-surface-sunken text-xs font-semibold text-muted">
+                        {(member.username || '?').trim().charAt(0).toUpperCase() || '?'}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{member.username}</p>
+                        <div className="mt-0.5 flex items-center gap-1.5">
+                          {member.role === 'admin' && <span className="pill tone-accent">Admin</span>}
+                          {member.user_id === group.created_by && <span className="pill tone-info">Creator</span>}
+                          {member.role !== 'admin' && member.user_id !== group.created_by && (
+                            <span className="text-xs text-muted">Member</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {member.user_id !== group.created_by && member.user_id !== user.id && (
+                      <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row shrink-0">
+                        {member.role === 'member' ? (
+                          <button
+                            onClick={() => handleMemberAction('promote', member.user_id)}
+                            disabled={processing}
+                            aria-label={`Promote ${member.username} to admin`}
+                            className="btn-glass press text-sm disabled:opacity-50"
+                          >
+                            Promote to admin
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleMemberAction('demote', member.user_id)}
+                            disabled={processing}
+                            aria-label={`Demote ${member.username} to member`}
+                            className="btn-glass press text-sm disabled:opacity-50"
+                          >
+                            Demote to member
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            if (confirm(`Remove ${member.username} from the group?`)) {
+                              handleMemberAction('remove', member.user_id);
+                            }
+                          }}
+                          disabled={processing}
+                          aria-label={`Remove ${member.username} from group`}
+                          className="btn-quiet-danger press disabled:opacity-50"
+                        >
+                          Remove from group
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-state-icon">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-3.998-4.2" />
+                </svg>
+              </div>
+              <p className="empty-state-title">No members yet</p>
+              <p className="empty-state-body">Invite people to this group to see them here.</p>
+              <Link href={`/groups/${params.id}`} className="btn-primary press">Invite more people</Link>
             </div>
           )}
-        </div>
-      </section>
-
-      {group.pending_requests && group.pending_requests.length > 0 && (
-        <section className="mb-8">
-          <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-brand-2/60 pb-2">
-            Pending Requests
-          </h2>
-          <div className="space-y-3 mt-6 stagger">
-            {group.pending_requests.map((member: any) => (
-              <div
-                key={member.user_id}
-                className="glass rounded-2xl p-4 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center"
-              >
-                <div className="min-w-0">
-                  <p className="text-foreground break-all">{member.username}</p>
-                  <p className="text-sm text-muted">
-                    Requested: {new Date(member.joined_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                  <button
-                    onClick={() => handleMemberAction('approve', member.user_id)}
-                    disabled={processing}
-                    className="px-4 py-2 rounded-full text-sm font-semibold text-green-700 bg-green-50 border border-green-300 hover:bg-green-100 disabled:opacity-50 transition-colors"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => handleMemberAction('decline', member.user_id)}
-                    disabled={processing}
-                    className="px-4 py-2 rounded-full text-sm font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-50 transition-colors"
-                  >
-                    Decline
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
         </section>
-      )}
 
-      <section>
-        <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-gray-300 pb-2">
-          Members ({group.members.length})
-        </h2>
-        <div className="space-y-3 mt-6 stagger">
-          {group.members.map((member: any) => (
-            <div
-              key={member.user_id}
-              className="glass rounded-2xl p-4 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center"
+        {user.id === group.created_by && (
+          <section className="card tone-no rail p-5 sm:p-6">
+            <p className="eyebrow tone-text mb-2">Danger zone</p>
+            <h2 className="text-lg font-display font-semibold text-foreground mb-2">Delete group</h2>
+            <p className="text-sm text-muted mb-4">
+              This permanently removes the group, events, bets, comments, and memberships. This cannot be undone.
+            </p>
+            <button
+              onClick={handleDeleteGroup}
+              disabled={deleting}
+              className="btn-danger press disabled:opacity-50"
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="min-w-0">
-                  <p className="text-foreground break-all">{member.username}</p>
-                  <p className="text-sm text-muted">
-                    {member.role === 'admin' ? '👑 Admin' : 'Member'}
-                  </p>
-                </div>
-              </div>
-              {member.user_id !== group.created_by && member.user_id !== user.id && (
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                  {member.role === 'member' ? (
-                    <button
-                      onClick={() => handleMemberAction('promote', member.user_id)}
-                      disabled={processing}
-                      className="btn-primary text-sm disabled:opacity-50"
-                    >
-                      Promote to Admin
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleMemberAction('demote', member.user_id)}
-                      disabled={processing}
-                      className="btn-glass text-sm disabled:opacity-50"
-                    >
-                      Demote
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      if (confirm(`Remove ${member.username} from the group?`)) {
-                        handleMemberAction('remove', member.user_id);
-                      }
-                    }}
-                    disabled={processing}
-                    className="px-4 py-2 rounded-full text-sm font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-50 transition-colors"
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
-              {member.user_id === group.created_by && (
-                <span className="chip text-sky-700 border-sky-200 bg-sky-50 w-fit">
-                  Creator
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {user.id === group.created_by && (
-        <section className="mt-8 glass rounded-2xl p-4 border-red-200">
-          <h2 className="text-xl font-display font-semibold text-red-600 mb-2">Delete Group</h2>
-          <p className="text-sm text-muted mb-4">
-            This permanently removes the group, events, bets, comments, and memberships.
-          </p>
-          <button
-            onClick={handleDeleteGroup}
-            disabled={deleting}
-            className="px-4 py-2 rounded-full text-sm font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-50 transition-colors"
-          >
-            {deleting ? 'Deleting...' : 'Delete Group'}
-          </button>
-        </section>
-      )}
+              {deleting ? 'Deleting group…' : 'Delete this group'}
+            </button>
+          </section>
+        )}
       </div>
     </>
   );

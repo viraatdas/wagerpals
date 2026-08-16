@@ -7,6 +7,7 @@ import { useUser } from '@stackframe/stack';
 import PushNotificationPrompt from '@/components/PushNotificationPrompt';
 import UsernameModal from '@/components/UsernameModal';
 import Toast, { ToastType } from '@/components/Toast';
+import Logo from '@/components/Logo';
 import { Group } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,7 @@ export default function Home() {
       router.push('/auth/signin');
       return;
     }
-    
+
     // Create/update returns the user row, so avoid an extra username lookup on first load.
     createOrUpdateUser().then(async (userData) => {
       if (userData) {
@@ -45,7 +46,7 @@ export default function Home() {
 
   const checkUsernameSelected = async () => {
     if (!user) return;
-    
+
     try {
       const response = await fetch(`/api/users?id=${user.id}`);
       if (response.ok) {
@@ -62,7 +63,7 @@ export default function Home() {
 
   const checkAndHandlePendingInvite = async () => {
     if (!user) return;
-    
+
     // Check if there's a pending group invite (localStorage so it survives a
     // magic-link sign-in that lands in a different tab). Fall back to the old
     // sessionStorage key for links opened before this change.
@@ -79,15 +80,15 @@ export default function Home() {
 
   const createOrUpdateUser = async () => {
     if (!user) return;
-    
+
     try {
       // Generate initial username from displayName or email
       let initialUsername = user.displayName || user.primaryEmail?.split('@')[0] || 'User';
-      
+
       const response = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           id: user.id,
           username: initialUsername,
           // Don't set username_selected - let the user choose their username
@@ -105,12 +106,12 @@ export default function Home() {
 
   const handleUsernameSubmit = async (username: string) => {
     if (!user) return;
-    
+
     try {
       const response = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           id: user.id,
           username: username,
           username_selected: true,
@@ -187,7 +188,7 @@ export default function Home() {
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
         setToast({ message: 'Join request submitted! Waiting for admin approval.', type: 'success' });
         setShowJoinModal(false);
@@ -204,17 +205,22 @@ export default function Home() {
     }
   };
 
+  // Presentation-only derived stats — built solely from data already in scope.
+  const groupCount = groups.length;
+  const publicGroupCount = groups.filter((g) => g.is_public).length;
+  const totalMembers = groups.reduce((sum, g) => sum + (g.member_count || 0), 0);
+
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8 mobile-page">
-        <div className="space-y-4">
-          <div className="skeleton h-32 rounded-3xl" />
-          <div className="skeleton h-6 w-32 rounded-lg" />
-          <div className="grid gap-3">
-            <div className="skeleton h-20 rounded-2xl" />
-            <div className="skeleton h-20 rounded-2xl" />
-            <div className="skeleton h-20 rounded-2xl" />
-          </div>
+      <div className="page-shell mobile-page">
+        <div className="skeleton h-40 rounded-3xl mb-8" />
+        <div className="section-head mb-4">
+          <div className="skeleton-line w-28" />
+        </div>
+        <div className="grid gap-3">
+          <div className="skeleton h-20 rounded-2xl" />
+          <div className="skeleton h-20 rounded-2xl" />
+          <div className="skeleton h-20 rounded-2xl" />
         </div>
       </div>
     );
@@ -237,15 +243,22 @@ export default function Home() {
 
       {showCreateModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="glass-strong rounded-3xl p-6 max-w-md w-full animate-fade-in">
-            <h2 className="text-2xl font-display font-semibold text-foreground mb-4">Create a Group</h2>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-group-title"
+            className="card-focal animate-sheet p-6 max-w-md w-full"
+          >
+            <h2 id="create-group-title" className="display-3 mb-4">Create a Group</h2>
             <form onSubmit={handleCreateGroup}>
+              <label className="field-label" htmlFor="create-group-name">Group name</label>
               <input
+                id="create-group-name"
                 type="text"
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 placeholder="Group name"
-                className="w-full bg-gray-50 border border-gray-200 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2 focus:outline-none focus:bg-white focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition mb-6"
+                className="input mb-6"
                 required
               />
               <div className="flex gap-3">
@@ -271,16 +284,23 @@ export default function Home() {
 
       {showJoinModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="glass-strong rounded-3xl p-6 max-w-md w-full animate-fade-in">
-            <h2 className="text-2xl font-display font-semibold text-foreground mb-4">Join a Group</h2>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="join-group-title"
+            className="card-focal animate-sheet p-6 max-w-md w-full"
+          >
+            <h2 id="join-group-title" className="display-3 mb-4">Join a Group</h2>
             <form onSubmit={handleJoinGroup}>
+              <label className="field-label" htmlFor="join-group-code">Group code</label>
               <input
+                id="join-group-code"
                 type="text"
                 value={groupCode}
                 onChange={(e) => setGroupCode(e.target.value)}
                 placeholder="Enter 6-digit group code"
                 maxLength={6}
-                className="w-full bg-gray-50 border border-gray-200 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2 focus:outline-none focus:bg-white focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition mb-6 text-center text-2xl tracking-widest"
+                className="input mb-6 text-center text-2xl tracking-widest numeral"
                 required
               />
               <div className="flex gap-3">
@@ -303,17 +323,15 @@ export default function Home() {
           </div>
         </div>
       )}
-      
-      {/* Hero Section */}
-      <div className="relative overflow-hidden bg-gradient-to-b from-background-2 to-background">
-        <div className="relative max-w-4xl mx-auto px-4 py-10 sm:py-14 animate-rise">
-          <div className="flex items-center gap-3 mb-3">
-            <img src="/icons/icon-192x192.svg" alt="" className="w-11 h-11 rounded-2xl ring-1 ring-black/[0.06] animate-floaty" />
-            <h1 className="text-4xl sm:text-5xl font-display font-semibold text-foreground">
-              WagerPals
-            </h1>
+
+      {/* Hero */}
+      <div className="hero-field">
+        <div className="relative page-shell pb-10 sm:pb-14">
+          <div className="flex items-center gap-3 mb-4">
+            <Logo variant="mark" animate="mount" className="w-11 h-11 rounded-2xl" />
           </div>
-          <p className="text-muted text-lg mb-6 max-w-lg">
+          <h1 className="display-1 mb-3">WagerPals</h1>
+          <p className="lede mb-7">
             Bet on anything with friends. Real stakes, real fun.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -330,21 +348,38 @@ export default function Home() {
               Join Group
             </button>
           </div>
+
+          {groupCount > 0 && (
+            <div className="mt-9 grid grid-cols-3 gap-4 max-w-md">
+              <div>
+                <div className="eyebrow mb-1">Groups</div>
+                <div className="stat-value numeral">{groupCount}</div>
+              </div>
+              <div>
+                <div className="eyebrow mb-1">Members</div>
+                <div className="stat-value numeral">{totalMembers}</div>
+              </div>
+              <div>
+                <div className="eyebrow mb-1">Public</div>
+                <div className="stat-value numeral">{publicGroupCount}</div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-8 mobile-page">
+      <div className="page-shell mobile-page pt-8">
         {groups.length > 0 ? (
-          <div className="animate-rise">
-            <h2 className="text-lg font-display font-semibold text-foreground mb-4">
-              Your Groups
-            </h2>
-            <div className="grid gap-3 stagger">
+          <div>
+            <div className="section-head mb-4">
+              <h2 className="eyebrow">Your Groups</h2>
+            </div>
+            <div className="grid gap-3 stagger-rows">
               {groups.map((group) => (
                 <Link
                   key={group.id}
                   href={`/groups/${group.id}`}
-                  className="glass glass-hover rounded-2xl p-5 cursor-pointer group"
+                  className="card card-interactive press block rounded-2xl p-5 min-w-0"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
@@ -356,17 +391,17 @@ export default function Home() {
                         {group.name.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <h3 className="text-base font-semibold text-foreground truncate group-hover:text-brand-2 transition-colors">
+                        <h3 className="market-title text-base truncate">
                           {group.name}
                         </h3>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-2">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted mt-0.5">
                           <span>{group.member_count} members</span>
                           <span className="w-1 h-1 rounded-full bg-gray-300" />
-                          <span className="font-mono">{group.id}</span>
+                          <span className="font-mono truncate">{group.id}</span>
                           {group.is_admin && (
                             <>
                               <span className="w-1 h-1 rounded-full bg-gray-300" />
-                              <span className="text-brand-2">Admin</span>
+                              <span className="tone-text tone-accent">Admin</span>
                             </>
                           )}
                         </div>
@@ -374,15 +409,11 @@ export default function Home() {
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-2">
                       {group.is_public ? (
-                        <span className="chip text-sky-700 bg-sky-50 border-sky-200">
-                          Public
-                        </span>
+                        <span className="pill tone-info">Public</span>
                       ) : (
-                        <span className="chip">
-                          Private
-                        </span>
+                        <span className="pill tone-neutral">Private</span>
                       )}
-                      <svg className="w-4 h-4 text-muted-2 group-hover:text-brand-2 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-4 h-4 text-muted-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
@@ -392,16 +423,30 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          <div className="glass-subtle rounded-3xl text-center py-12 px-6 animate-rise">
-            <div className="text-5xl mb-4">🎲</div>
-            <h2 className="text-xl font-display font-semibold text-foreground mb-2">No groups yet</h2>
-            <p className="text-muted mb-6">Create a group and invite your friends to start wagering</p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="btn-primary"
-            >
-              Create Your First Group
-            </button>
+          <div className="empty-state">
+            <div className="empty-state-icon">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6-3a4 4 0 10-4-4" />
+              </svg>
+            </div>
+            <h2 className="empty-state-title">No groups yet</h2>
+            <p className="empty-state-body">
+              Create a group and invite your friends to start wagering, or join one with a code someone shared with you.
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row mt-2">
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="btn-primary"
+              >
+                Create Your First Group
+              </button>
+              <button
+                onClick={() => setShowJoinModal(true)}
+                className="btn-glass"
+              >
+                Join a Group
+              </button>
+            </div>
           </div>
         )}
       </div>

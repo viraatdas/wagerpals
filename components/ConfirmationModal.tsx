@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useId, useRef } from 'react';
 
 export type ConfirmationType = 'danger' | 'warning' | 'success';
 
@@ -16,6 +16,46 @@ interface ConfirmationModalProps {
   loading?: boolean;
 }
 
+const TONE_BY_TYPE: Record<ConfirmationType, string> = {
+  danger: 'tone-no',
+  warning: 'tone-pending',
+  success: 'tone-yes',
+};
+
+const CONFIRM_CLASS_BY_TYPE: Record<ConfirmationType, string> = {
+  danger: 'btn-danger',
+  warning: 'btn-primary',
+  success: 'btn-success',
+};
+
+const ICON_BY_TYPE: Record<ConfirmationType, JSX.Element> = {
+  danger: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-7 w-7">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9.5 4h5a1 1 0 011 1v2h-7V5a1 1 0 011-1z"
+      />
+    </svg>
+  ),
+  warning: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-7 w-7">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 9v4m0 4h.01M10.29 3.86l-8.18 14.14A1 1 0 003 19.5h18a1 1 0 00.89-1.5L13.71 3.86a1 1 0 00-1.72 0z"
+      />
+    </svg>
+  ),
+  success: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-7 w-7">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+    </svg>
+  ),
+};
+
 export default function ConfirmationModal({
   isOpen,
   onClose,
@@ -27,6 +67,9 @@ export default function ConfirmationModal({
   type = 'danger',
   loading = false,
 }: ConfirmationModalProps) {
+  const titleId = useId();
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen && !loading) {
@@ -37,6 +80,7 @@ export default function ConfirmationModal({
     if (isOpen) {
       document.addEventListener('keydown', handleEscape);
       document.body.style.overflow = 'hidden';
+      confirmRef.current?.focus();
     }
 
     return () => {
@@ -47,28 +91,7 @@ export default function ConfirmationModal({
 
   if (!isOpen) return null;
 
-  const typeStyles = {
-    danger: {
-      icon: '🗑️',
-      iconBg: 'bg-red-50 border border-red-200',
-      iconColor: 'text-red-600',
-      confirmBg: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-300',
-    },
-    warning: {
-      icon: '⚠️',
-      iconBg: 'bg-amber-50 border border-amber-200',
-      iconColor: 'text-amber-600',
-      confirmBg: 'bg-amber-600 text-white hover:bg-amber-700 focus:ring-amber-300',
-    },
-    success: {
-      icon: '✓',
-      iconBg: 'bg-green-50 border border-green-200',
-      iconColor: 'text-green-600',
-      confirmBg: 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-300',
-    },
-  };
-
-  const styles = typeStyles[type];
+  const tone = TONE_BY_TYPE[type];
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -76,24 +99,30 @@ export default function ConfirmationModal({
       <div
         className="fixed inset-0 bg-black/40 transition-opacity"
         onClick={loading ? undefined : onClose}
+        aria-hidden="true"
       />
 
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative bg-white border border-gray-200 shadow-xl rounded-xl max-w-md w-full transform transition-all animate-slide-up overflow-hidden">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          className="card-focal animate-sheet relative w-full max-w-md overflow-hidden"
+        >
           {/* Icon */}
           <div className="flex items-center justify-center pt-6">
-            <div className={`${styles.iconBg} ${styles.iconColor} rounded-full w-16 h-16 flex items-center justify-center`}>
-              <span className="text-3xl">{styles.icon}</span>
+            <div className={`${tone} tone-surface tone-text flex h-16 w-16 items-center justify-center rounded-full border`}>
+              {ICON_BY_TYPE[type]}
             </div>
           </div>
 
           {/* Content */}
           <div className="px-6 py-4 text-center">
-            <h3 className="font-display text-xl font-semibold text-foreground mb-2">
+            <h3 id={titleId} className="display-3">
               {title}
             </h3>
-            <p className="text-muted">
+            <p className="mt-2 text-muted">
               {message}
             </p>
           </div>
@@ -103,14 +132,15 @@ export default function ConfirmationModal({
             <button
               onClick={onClose}
               disabled={loading}
-              className="btn-glass flex-1 px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-0"
+              className="btn-glass flex-1 px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {cancelText}
             </button>
             <button
+              ref={confirmRef}
               onClick={onConfirm}
               disabled={loading}
-              className={`flex-1 px-4 py-2.5 rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none focus:outline-none focus:ring-2 focus:ring-offset-0 ${styles.confirmBg}`}
+              className={`${CONFIRM_CLASS_BY_TYPE[type]} flex-1 px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none`}
             >
               {loading ? 'Processing...' : confirmText}
             </button>
@@ -120,4 +150,3 @@ export default function ConfirmationModal({
     </div>
   );
 }
-

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react';
 import type { CommentWithMeta, CommentReactionSummary } from '@/lib/types';
 import {
   MAX_COMMENT_LENGTH,
@@ -46,15 +46,70 @@ interface ToastState {
 // Static Tailwind class lookup — indentation cannot grow past a renderable
 // depth of MAX_COMMENT_DEPTH - 1 (0, 1, 2). Tailwind statically scans source
 // for class names, so these must be literal strings, never built at runtime.
+// Depth 1 and depth 2 use progressively larger offsets (still modest at the
+// 375px breakpoint) so the two nesting levels stay visually distinct without
+// ever forcing the connector rail off, per the "Market Ledger" spec.
 const DEPTH_INDENT_CLASSES = [
   '',
-  'ml-3 sm:ml-6 pl-3 border-l-2 border-gray-200',
-  'ml-3 sm:ml-6 pl-3 border-l-2 border-gray-200',
+  'ml-2 sm:ml-5 pl-3 sm:pl-4 border-l-2 border-hairline',
+  'ml-4 sm:ml-9 pl-2.5 sm:pl-4 border-l-2 border-hairline',
 ];
 
 function depthClass(depth: number): string {
   const idx = Math.min(depth, MAX_COMMENT_DEPTH - 1, DEPTH_INDENT_CLASSES.length - 1);
   return DEPTH_INDENT_CLASSES[Math.max(0, idx)];
+}
+
+// Same static-literal constraint as DEPTH_INDENT_CLASSES above: avatars
+// shrink one notch per nesting level so hierarchy reads from size, not from
+// extra colour.
+const AVATAR_SIZE_CLASSES = ['w-9 h-9 text-sm', 'w-7 h-7 text-xs', 'w-6 h-6 text-[11px]'];
+
+function avatarSizeClass(depth: number): string {
+  const idx = Math.min(depth, AVATAR_SIZE_CLASSES.length - 1);
+  return AVATAR_SIZE_CLASSES[Math.max(0, idx)];
+}
+
+// Small fixed palette of tone classes used purely as decorative avatar tint —
+// deliberately excludes tone-yes/tone-no since those are reserved for real
+// YES/NO and WIN/LOSS signal elsewhere in the app.
+const AVATAR_TONES = ['tone-accent', 'tone-info', 'tone-gold', 'tone-pending', 'tone-neutral'] as const;
+
+function avatarTone(username: string): (typeof AVATAR_TONES)[number] {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = (hash + username.charCodeAt(i) * (i + 1)) % AVATAR_TONES.length;
+  }
+  return AVATAR_TONES[hash] ?? AVATAR_TONES[0];
+}
+
+function Avatar({ username, depth }: { username: string; depth: number }) {
+  const label = username || '?';
+  const tone = avatarTone(label);
+  const initial = label.trim().charAt(0).toUpperCase() || '?';
+  return (
+    <span
+      aria-hidden="true"
+      className={`${tone} tone-surface ${avatarSizeClass(
+        depth
+      )} inline-flex shrink-0 items-center justify-center rounded-full border font-semibold`}
+    >
+      <span className="tone-text">{initial}</span>
+    </span>
+  );
+}
+
+function CommentSkeletonRow() {
+  return (
+    <div className="flex gap-3 py-3.5" aria-hidden="true">
+      <div className="skeleton h-9 w-9 shrink-0 rounded-full" />
+      <div className="min-w-0 flex-1 space-y-2 pt-1">
+        <div className="skeleton-line w-28" />
+        <div className="skeleton-line w-full max-w-md" />
+        <div className="skeleton-line w-2/3 max-w-sm" />
+      </div>
+    </div>
+  );
 }
 
 async function safeJson(res: Response): Promise<any> {
@@ -105,6 +160,7 @@ interface ThreadActions {
   resolveMemberIdByUsername: (usernameLower: string) => string | undefined;
   now: number;
   pendingIds: Set<string>;
+  justLandedIds: Set<string>;
   collapsedIds: Set<string>;
   toggleCollapse: (id: string) => void;
   expandedChildrenIds: Set<string>;
@@ -134,7 +190,7 @@ function ReactionRow({ comment, actions }: { comment: CommentWithMeta; actions: 
   const visibleReactions = comment.reactions.filter((r) => r.count > 0);
 
   return (
-    <div className="flex items-center gap-1.5 flex-wrap mt-2">
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
       {visibleReactions.map((r: CommentReactionSummary) => {
         const key = `${comment.id}:${r.emoji}`;
         const isActive = !!actions.currentUserId && r.user_ids.includes(actions.currentUserId);
@@ -149,9 +205,10 @@ function ReactionRow({ comment, actions }: { comment: CommentWithMeta; actions: 
               type="button"
               disabled={!actions.canWrite || isBusy}
               title={namesText || 'No reactions yet'}
-              aria-label={`${r.emoji} reaction, ${r.count} ${r.count === 1 ? 'person' : 'people'}${namesText ? `: ${namesText}` : ''}`}
-              className={`chip transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-                isActive ? 'border-brand-2 text-brand-2 bg-brand-2/5' : ''
+              aria-label={`React with ${r.emoji}, ${r.count} ${r.count === 1 ? 'reaction' : 'reactions'}`}
+              aria-pressed={isActive}
+              className={`pill press disabled:cursor-not-allowed disabled:opacity-60 ${
+                isActive ? 'tone-accent pill-solid' : 'tone-neutral'
               }`}
               onClick={() => actions.toggleReaction(comment, r.emoji)}
             >
@@ -159,7 +216,7 @@ function ReactionRow({ comment, actions }: { comment: CommentWithMeta; actions: 
               <span className="tabular-nums">{r.count}</span>
             </button>
 
-            {/* Separate, always-enabled affordance: the chip itself is a pure
+            {/* Separate, always-enabled affordance: the pill itself is a pure
                 toggle (clicking it must never also open a panel), and `title`
                 is unreachable on touch — so who-reacted gets its own control,
                 which read-only viewers can use too. */}
@@ -167,20 +224,20 @@ function ReactionRow({ comment, actions }: { comment: CommentWithMeta; actions: 
               type="button"
               aria-label={`Who reacted with ${r.emoji}${namesText ? `: ${namesText}` : ''}`}
               aria-expanded={isPanelOpen}
-              className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-background-2 border border-gray-200 text-[8px] leading-none text-muted-2 hover:text-brand-2 flex items-center justify-center"
+              className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-hairline bg-surface text-[8px] leading-none text-muted hover:text-accent-hover"
               onClick={() => actions.toggleReactionPanel(key)}
             >
               <span aria-hidden="true">?</span>
             </button>
 
             {isPanelOpen && (
-              <div className="absolute z-10 top-full left-0 mt-1 glass-strong rounded-xl px-3 py-2 text-xs text-muted min-w-[140px] shadow-elev-3">
+              <div className="card absolute left-0 top-full z-10 mt-1 min-w-[140px] px-3 py-2 text-xs text-muted">
                 {shown.length > 0 ? (
                   <ul>
                     {shown.map((name, i) => (
                       <li key={i}>{name}</li>
                     ))}
-                    {extra > 0 && <li className="text-muted-2">+{extra} more</li>}
+                    {extra > 0 && <li className="text-muted">+{extra} more</li>}
                   </ul>
                 ) : (
                   <span>No reactions yet</span>
@@ -198,24 +255,21 @@ function ReactionRow({ comment, actions }: { comment: CommentWithMeta; actions: 
             aria-label="Add reaction"
             aria-haspopup="menu"
             aria-expanded={isPickerOpen}
-            className="chip"
+            className="pill tone-neutral press"
             onClick={() => (isPickerOpen ? actions.closeReactionPicker() : actions.openReactionPicker(comment.id))}
           >
             <span aria-hidden="true">+</span>
           </button>
 
           {isPickerOpen && (
-            <div
-              role="menu"
-              className="absolute z-10 top-full left-0 mt-1 glass-strong rounded-xl p-1.5 flex gap-1 shadow-elev-3"
-            >
+            <div role="menu" className="card absolute left-0 top-full z-10 mt-1 flex gap-1 p-1.5">
               {ALLOWED_REACTION_EMOJI.map((emoji) => (
                 <button
                   key={emoji}
                   type="button"
                   role="menuitem"
                   aria-label={`React with ${emoji}`}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-background-2 text-lg"
+                  className="press flex h-8 w-8 items-center justify-center rounded-lg text-lg hover:bg-surface-sunken"
                   onClick={() => {
                     actions.toggleReaction(comment, emoji);
                     actions.closeReactionPicker();
@@ -237,6 +291,7 @@ function CommentNodeItem({ node, actions }: { node: CommentNode<CommentWithMeta>
   const isRoot = depth === 0;
   const isDeleted = !!comment.deleted_at;
   const isPending = actions.pendingIds.has(comment.id);
+  const justLanded = actions.justLandedIds.has(comment.id);
   const isCollapsed = isRoot && actions.collapsedIds.has(comment.id);
   const descendantCount = isRoot ? countDescendants(node) : 0;
   const isAuthor = !!actions.currentUserId && actions.currentUserId === comment.user_id;
@@ -254,130 +309,148 @@ function CommentNodeItem({ node, actions }: { node: CommentNode<CommentWithMeta>
   const hiddenCount = showLimited ? children.length - visibleChildren.length : 0;
 
   return (
-    <li className={`${depthClass(depth)} list-none`}>
-      <div className={`glass rounded-2xl p-3 sm:p-4 transition-opacity ${isPending ? 'opacity-60' : ''}`}>
-        {isDeleted ? (
-          <p className="text-sm text-muted-2 italic">Comment deleted</p>
-        ) : (
-          <>
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              <span className="font-semibold text-foreground break-all text-sm">@{comment.username}</span>
-              <time
-                dateTime={new Date(comment.timestamp).toISOString()}
-                title={new Date(comment.timestamp).toLocaleString()}
-                className="text-xs text-muted-2 tabular-nums"
-              >
-                {formatRelativeTime(comment.timestamp, actions.now)}
-              </time>
-              {comment.edited_at && <span className="text-xs text-muted-2">(edited)</span>}
-              {isPending && <span className="chip">Sending…</span>}
-            </div>
+    <li className={`list-none ${depthClass(depth)}`}>
+      <div
+        className={`flex gap-2.5 sm:gap-3 ${isRoot ? 'py-3' : 'py-2.5'} transition-opacity ${
+          isPending ? 'opacity-60' : ''
+        } ${justLanded ? 'animate-bet-land' : ''}`}
+      >
+        <Avatar username={comment.username} depth={depth} />
 
-            {isEditOpen ? (
+        <div className="min-w-0 flex-1">
+          {isDeleted ? (
+            <div className="tone-neutral tone-surface inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1.5">
+              <span className="tone-dot" aria-hidden="true" />
+              <p className="tone-text truncate text-xs italic sm:text-sm">Comment deleted</p>
+            </div>
+          ) : (
+            <>
+              <div className="mb-0.5 flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <span className="break-words text-sm font-medium text-foreground [overflow-wrap:anywhere]">
+                  @{comment.username}
+                </span>
+                <time
+                  dateTime={new Date(comment.timestamp).toISOString()}
+                  title={new Date(comment.timestamp).toLocaleString()}
+                  className="text-xs tabular-nums text-muted"
+                >
+                  {formatRelativeTime(comment.timestamp, actions.now)}
+                </time>
+                {comment.edited_at && <span className="text-xs text-muted">· edited</span>}
+                {isPending && <span className="pill tone-pending">Sending…</span>}
+              </div>
+
+              {isEditOpen ? (
+                <CommentForm
+                  members={actions.members}
+                  initialContent={comment.content}
+                  submitLabel="Save"
+                  pendingLabel="Saving…"
+                  compact
+                  autoFocus
+                  maxLength={MAX_COMMENT_LENGTH}
+                  onSubmit={(content) => actions.submitEdit(comment, content)}
+                  onCancel={actions.closeEdit}
+                />
+              ) : (
+                <p className="max-w-[65ch] whitespace-pre-wrap break-words text-sm text-foreground [overflow-wrap:anywhere]">
+                  {segments.map((seg, i) =>
+                    seg.type === 'mention' ? (
+                      <span
+                        key={i}
+                        className="tone-accent tone-surface tone-text break-words rounded border px-1 py-0.5 font-medium [overflow-wrap:anywhere]"
+                        title={seg.value}
+                      >
+                        {seg.value}
+                      </span>
+                    ) : (
+                      <span key={i}>{seg.value}</span>
+                    )
+                  )}
+                </p>
+              )}
+
+              {!isPending && <ReactionRow comment={comment} actions={actions} />}
+
+              {!isPending && !isEditOpen && (canReply || canEdit || canDelete) && (
+                <div className="mt-1.5 flex items-center gap-3">
+                  {canReply && (
+                    <button
+                      type="button"
+                      className="press text-xs font-medium text-muted hover:text-accent-hover"
+                      onClick={() => actions.openReply(comment.id)}
+                    >
+                      Reply
+                    </button>
+                  )}
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className="press text-xs font-medium text-muted hover:text-accent-hover"
+                      onClick={() => actions.openEdit(comment.id)}
+                    >
+                      Edit
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      className="btn-quiet-danger disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => actions.requestDelete(comment)}
+                    >
+                      {isDeleting ? 'Deleting…' : 'Delete'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {isReplyOpen && (
+            <div className="mt-2">
               <CommentForm
                 members={actions.members}
-                initialContent={comment.content}
-                submitLabel="Save"
-                pendingLabel="Saving…"
+                submitLabel="Reply"
+                pendingLabel="Replying…"
+                placeholder={`Reply to @${comment.username}…`}
+                replyingToUsername={comment.username}
                 compact
                 autoFocus
                 maxLength={MAX_COMMENT_LENGTH}
-                onSubmit={(content) => actions.submitEdit(comment, content)}
-                onCancel={actions.closeEdit}
+                onSubmit={(content) => actions.submitReply(comment.id, content)}
+                onCancel={actions.closeReply}
               />
-            ) : (
-              <p className="text-sm text-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                {segments.map((seg, i) =>
-                  seg.type === 'mention' ? (
-                    <span key={i} className="text-brand-2 font-medium" title={seg.value}>
-                      {seg.value}
-                    </span>
-                  ) : (
-                    <span key={i}>{seg.value}</span>
-                  )
-                )}
-              </p>
-            )}
+            </div>
+          )}
 
-            {!isPending && <ReactionRow comment={comment} actions={actions} />}
-
-            {!isPending && !isEditOpen && (canReply || canEdit || canDelete) && (
-              <div className="flex items-center gap-3 mt-2">
-                {canReply && (
-                  <button
-                    type="button"
-                    className="text-xs text-muted-2 hover:text-brand-2 font-medium"
-                    onClick={() => actions.openReply(comment.id)}
-                  >
-                    Reply
-                  </button>
-                )}
-                {canEdit && (
-                  <button
-                    type="button"
-                    className="text-xs text-muted-2 hover:text-brand-2 font-medium"
-                    onClick={() => actions.openEdit(comment.id)}
-                  >
-                    Edit
-                  </button>
-                )}
-                {canDelete && (
-                  <button
-                    type="button"
-                    disabled={isDeleting}
-                    className="text-xs text-muted-2 hover:text-red-600 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={() => actions.requestDelete(comment)}
-                  >
-                    {isDeleting ? 'Deleting…' : 'Delete'}
-                  </button>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
-        {isReplyOpen && (
-          <div className="mt-3">
-            <CommentForm
-              members={actions.members}
-              submitLabel="Reply"
-              pendingLabel="Replying…"
-              placeholder={`Reply to @${comment.username}…`}
-              compact
-              autoFocus
-              maxLength={MAX_COMMENT_LENGTH}
-              onSubmit={(content) => actions.submitReply(comment.id, content)}
-              onCancel={actions.closeReply}
-            />
-          </div>
-        )}
-
-        {isRoot && descendantCount > 0 && (
-          <div className={isDeleted ? 'mt-1' : 'mt-2'}>
-            <button
-              type="button"
-              aria-expanded={!isCollapsed}
-              className="text-xs text-muted-2 hover:text-brand-2 font-medium"
-              onClick={() => actions.toggleCollapse(comment.id)}
-            >
-              {isCollapsed
-                ? `${descendantCount} ${descendantCount === 1 ? 'reply' : 'replies'}`
-                : 'Hide replies'}
-            </button>
-          </div>
-        )}
+          {isRoot && descendantCount > 0 && (
+            <div className={isDeleted ? 'mt-1' : 'mt-1.5'}>
+              <button
+                type="button"
+                aria-expanded={!isCollapsed}
+                className="press text-xs font-medium text-muted hover:text-accent-hover"
+                onClick={() => actions.toggleCollapse(comment.id)}
+              >
+                {isCollapsed
+                  ? `${descendantCount} ${descendantCount === 1 ? 'reply' : 'replies'}`
+                  : 'Hide replies'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {children.length > 0 && !isCollapsed && (
-        <ul className="mt-2 space-y-2">
+        <ul className="space-y-0.5">
           {visibleChildren.map((child) => (
             <CommentNodeItem key={child.comment.id} node={child} actions={actions} />
           ))}
           {hiddenCount > 0 && (
-            <li className={`${depthClass(depth + 1)} list-none`}>
+            <li className={`list-none ${depthClass(depth + 1)}`}>
               <button
                 type="button"
-                className="text-xs text-brand-2 hover:underline font-medium"
+                className="press py-1.5 text-xs font-medium text-accent hover:underline"
                 onClick={() => actions.expandChildren(comment.id)}
               >
                 Show all {children.length} replies
@@ -409,6 +482,9 @@ export default function CommentThread({
   const [error, setError] = useState<string | null>(null);
 
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  // Presentational only: ids that just resolved from optimistic -> confirmed,
+  // kept around just long enough to play the "landing" animation once.
+  const [justLandedIds, setJustLandedIds] = useState<Set<string>>(new Set());
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [expandedChildrenIds, setExpandedChildrenIds] = useState<Set<string>>(new Set());
   const [replyOpenId, setReplyOpenId] = useState<string | null>(null);
@@ -428,6 +504,9 @@ export default function CommentThread({
   const abortRef = useRef<AbortController | null>(null);
   const tempCounterRef = useRef(0);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const landTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  const composerId = useId();
 
   const canWrite = !!currentUserId && (canComment ?? true);
 
@@ -436,6 +515,29 @@ export default function CommentThread({
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
+  }, []);
+
+  // Presentational helper: flag a newly-confirmed comment so it plays the
+  // "bet landing" animation once, then clears itself. Purely additive state —
+  // does not touch the optimistic-update/rollback logic above it.
+  const markJustLanded = useCallback((id: string) => {
+    setJustLandedIds((prev) => new Set(prev).add(id));
+    const t = setTimeout(() => {
+      setJustLandedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      landTimeoutsRef.current.delete(t);
+    }, 700);
+    landTimeoutsRef.current.add(t);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      landTimeoutsRef.current.forEach((t) => clearTimeout(t));
+      landTimeoutsRef.current.clear();
+    };
   }, []);
 
   const fetchComments = useCallback(
@@ -654,6 +756,7 @@ export default function CommentThread({
           next.delete(tempId);
           return next;
         });
+        markJustLanded(created.id);
       } catch (err) {
         setComments((prev) => prev.filter((c) => c.id !== tempId));
         setPendingIds((prev) => {
@@ -665,7 +768,7 @@ export default function CommentThread({
         throw err instanceof Error ? err : new Error('Failed to post comment');
       }
     },
-    [currentUserId, currentUsername, eventId]
+    [currentUserId, currentUsername, eventId, markJustLanded]
   );
 
   const submitReply = useCallback(
@@ -707,6 +810,7 @@ export default function CommentThread({
           return next;
         });
         setReplyOpenId(null);
+        markJustLanded(created.id);
       } catch (err) {
         setComments((prev) => prev.filter((c) => c.id !== tempId));
         setPendingIds((prev) => {
@@ -718,7 +822,7 @@ export default function CommentThread({
         throw err instanceof Error ? err : new Error('Failed to post reply');
       }
     },
-    [currentUserId, currentUsername, eventId]
+    [currentUserId, currentUsername, eventId, markJustLanded]
   );
 
   const submitEdit = useCallback(async (comment: CommentWithMeta, content: string) => {
@@ -861,6 +965,7 @@ export default function CommentThread({
     resolveMemberIdByUsername,
     now,
     pendingIds,
+    justLandedIds,
     collapsedIds,
     toggleCollapse,
     expandedChildrenIds,
@@ -885,6 +990,8 @@ export default function CommentThread({
     pickerRef,
   };
 
+  const remainingCount = Math.max(0, totalCount - comments.length);
+
   return (
     <div>
       <Toast
@@ -906,6 +1013,11 @@ export default function CommentThread({
         loading={deleteTarget !== null && deletingIds.has(deleteTarget.id)}
       />
 
+      <div className="section-head mb-3">
+        <span className="eyebrow">Comments</span>
+        {totalCount > 0 && <span className="numeral shrink-0 text-sm text-muted">{totalCount}</span>}
+      </div>
+
       {canWrite && (
         <div className="mb-4">
           <CommentForm
@@ -914,42 +1026,60 @@ export default function CommentThread({
             pendingLabel="Posting…"
             placeholder="Add a comment…  (@ to mention)"
             maxLength={MAX_COMMENT_LENGTH}
+            textareaId={composerId}
             onSubmit={handleTopLevelSubmit}
           />
         </div>
       )}
 
       {hasMore && (
-        <div className="mb-3 text-center">
+        <div className="mb-3 flex justify-center">
           <button
             type="button"
             disabled={loadingMore}
-            className="btn-glass text-sm px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-glass text-sm px-4 py-2 disabled:cursor-not-allowed disabled:opacity-50"
             onClick={handleLoadEarlier}
           >
-            {loadingMore ? 'Loading…' : 'Load earlier comments'}
+            {loadingMore ? 'Loading…' : `Load earlier comments${remainingCount > 0 ? ` · ${remainingCount}` : ''}`}
           </button>
         </div>
       )}
       <div ref={sentinelRef} className="h-px" aria-hidden="true" />
 
       {loading ? (
-        <div className="space-y-3">
-          <div className="skeleton h-20 rounded-2xl" />
-          <div className="skeleton h-20 rounded-2xl" />
-          <div className="skeleton h-20 rounded-2xl" />
+        <div role="status" aria-label="Loading comments" className="divide-y divide-hairline">
+          <CommentSkeletonRow />
+          <CommentSkeletonRow />
+          <CommentSkeletonRow />
         </div>
       ) : error ? (
-        <div className="glass rounded-2xl p-4 text-center">
-          <p className="text-sm text-red-600 mb-3">{error}</p>
+        <div className="card tone-no p-4 text-center">
+          <p className="tone-text mb-3 text-sm">{error}</p>
           <button type="button" className="btn-glass text-sm px-4 py-2" onClick={() => fetchComments()}>
             Retry
           </button>
         </div>
       ) : tree.length === 0 ? (
-        <p className="text-muted-2 text-center py-8">No comments yet — start the conversation.</p>
+        <div className="empty-state">
+          <div className="empty-state-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+            </svg>
+          </div>
+          <p className="empty-state-title">No one has said anything yet.</p>
+          <p className="empty-state-body">Be the first to weigh in on this market — your take could shape how the group calls it.</p>
+          {canWrite && (
+            <button
+              type="button"
+              className="btn-glass text-sm px-4 py-2"
+              onClick={() => document.getElementById(composerId)?.focus()}
+            >
+              Write the first comment
+            </button>
+          )}
+        </div>
       ) : (
-        <ul className="space-y-3">
+        <ul className="divide-y divide-hairline">
           {tree.map((node) => (
             <CommentNodeItem key={node.comment.id} node={node} actions={actions} />
           ))}

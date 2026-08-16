@@ -161,17 +161,17 @@ export default function PushNotificationPrompt() {
   }
 
   return (
-    <div className="fixed bottom-24 left-4 right-4 max-w-sm glass-strong rounded-3xl p-4 z-50 animate-slide-up sm:bottom-4 sm:left-auto">
-      <div className="flex items-start">
-        <div className="flex-shrink-0 w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
-          <span className="text-xl">🔔</span>
+    <div className="card animate-sheet fixed bottom-24 left-4 right-4 z-50 max-w-sm p-4 sm:bottom-4 sm:left-auto">
+      <div className="flex items-start gap-3">
+        <div className="tone-accent tone-surface flex h-10 w-10 flex-none items-center justify-center rounded-2xl border">
+          <svg className="tone-text h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
         </div>
-        <div className="ml-3 flex-1">
-          <h3 className="text-lg font-display font-semibold text-foreground">
-            Want notifications?
-          </h3>
+        <div className="min-w-0 flex-1">
+          <p className="market-title text-base">Stay in the loop</p>
           <p className="mt-1 text-sm text-muted">
-            Get push notifications for new bets!
+            Get a nudge the moment a friend books a bet.
           </p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <button

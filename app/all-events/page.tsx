@@ -61,43 +61,54 @@ export default function AllEventsPage() {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto px-4 py-8 mobile-page">
-        <div className="space-y-4">
-          <div className="skeleton h-9 w-56 rounded-xl" />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="skeleton h-56 rounded-3xl" />
-            <div className="skeleton h-56 rounded-3xl" />
-            <div className="skeleton h-56 rounded-3xl" />
-          </div>
+      <div className="page-shell mobile-page">
+        <div className="skeleton-line w-24 mb-4" />
+        <div className="skeleton h-9 w-56 rounded-xl mb-2" />
+        <div className="skeleton-line w-64 mb-8" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="skeleton h-56 rounded-2xl" />
+          <div className="skeleton h-56 rounded-2xl" />
+          <div className="skeleton h-56 rounded-2xl" />
         </div>
       </div>
     );
   }
 
+  const totalEvents = groupedEvents.reduce((sum, { events }) => sum + events.length, 0);
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 mobile-page animate-rise">
+    <div className="page-shell mobile-page animate-rise">
       <div className="mb-8">
         <Link
           href="/"
-          className="inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-foreground transition-colors mb-3"
+          className="inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-foreground transition-colors mb-3 press"
         >
           ← Back to Groups
         </Link>
-        <h1 className="font-display text-3xl sm:text-4xl font-semibold text-foreground mb-2">
-          All Events
-        </h1>
-        <p className="text-base sm:text-lg text-muted">
-          Events from all your groups
+        <div className="eyebrow mb-2">Your Markets</div>
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <h1 className="display-2">All Events</h1>
+          {totalEvents > 0 && (
+            <span className="numeral stat-value tone-text tone-accent">{totalEvents}</span>
+          )}
+        </div>
+        <p className="lede mt-2">
+          Every event across all the groups you belong to, grouped by group.
         </p>
       </div>
 
       {groupedEvents.length === 0 ? (
-        <div className="glass rounded-3xl text-center py-14 px-6 animate-fade-in">
-          <p className="text-muted mb-5">No events in any of your groups yet.</p>
-          <Link
-            href="/create"
-            className="btn-primary"
-          >
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h2 className="empty-state-title">No events in any of your groups yet</h2>
+          <p className="empty-state-body">
+            Once a group you're in lists a market, it'll show up here. Start one yourself to get things moving.
+          </p>
+          <Link href="/create" className="btn-primary mt-2">
             Create Event
           </Link>
         </div>
@@ -107,13 +118,11 @@ export default function AllEventsPage() {
 
           return (
             <section key={group.id} className="mb-12">
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center mb-4">
-                <h2 className="font-display text-xl sm:text-2xl font-semibold text-foreground pb-2 inline-block break-words border-b-2 border-brand-2/50">
-                  {group.name}
-                </h2>
+              <div className="section-head mb-4 min-w-0">
+                <h2 className="eyebrow truncate min-w-0 max-w-[60%]">{group.name}</h2>
                 <Link
                   href={`/groups/${group.id}`}
-                  className="w-fit text-sm font-medium text-brand-2 hover:text-foreground transition-colors"
+                  className="w-fit shrink-0 text-sm font-medium tone-text tone-accent press whitespace-nowrap"
                 >
                   View Group →
                 </Link>
@@ -121,8 +130,8 @@ export default function AllEventsPage() {
 
               {ongoing.length > 0 && (
                 <div className="mb-6">
-                  <h3 className="text-lg font-medium text-muted mb-3">Ongoing</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
+                  <h3 className="eyebrow mb-3 opacity-70">Ongoing</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-rows">
                     {ongoing.map((event) => (
                       <EventCard key={event.id} event={event} />
                     ))}
@@ -132,8 +141,8 @@ export default function AllEventsPage() {
 
               {ended.length > 0 && (
                 <div>
-                  <h3 className="text-lg font-medium text-muted mb-3">Ended</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
+                  <h3 className="eyebrow mb-3 opacity-70">Ended</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-rows">
                     {ended.map((event) => (
                       <EventCard key={event.id} event={event} />
                     ))}

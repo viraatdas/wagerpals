@@ -13,16 +13,11 @@ type EventState = 'ongoing' | 'ended' | 'resolved';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const stateChipClasses: Record<EventState, string> = {
-  ongoing: 'bg-green-50 border-green-200 text-green-700',
-  ended: 'bg-amber-50 border-amber-200 text-amber-700',
-  resolved: 'bg-gray-50 border-gray-200 text-gray-500',
-};
-
-const stateDotClasses: Record<EventState, string> = {
-  ongoing: 'bg-green-600',
-  ended: 'bg-amber-600',
-  resolved: 'bg-gray-400',
+// Tone-system mapping — live = tone-yes, awaiting resolution = tone-pending, resolved = tone-neutral.
+const stateTone: Record<EventState, string> = {
+  ongoing: 'tone-yes',
+  ended: 'tone-pending',
+  resolved: 'tone-neutral',
 };
 
 const stateLabels: Record<EventState, string> = {
@@ -134,12 +129,11 @@ export default function CalendarPage() {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto px-4 py-8 mobile-page">
-        <div className="space-y-4">
-          <div className="skeleton h-9 w-56 rounded-xl" />
-          <div className="skeleton h-[420px] rounded-3xl" />
-          <div className="skeleton h-28 rounded-3xl" />
-        </div>
+      <div className="page-shell mobile-page">
+        <div className="skeleton-line mb-2 h-8 w-56" />
+        <div className="skeleton-line mb-8 h-4 w-72" />
+        <div className="skeleton h-[420px] rounded-[var(--radius-panel)]" />
+        <div className="skeleton mt-4 h-28 rounded-[var(--radius-panel)]" />
       </div>
     );
   }
@@ -159,42 +153,45 @@ export default function CalendarPage() {
   });
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 mobile-page animate-rise">
+    <div className="page-shell mobile-page animate-rise">
       <div className="mb-8">
         <Link
           href="/"
-          className="inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-foreground transition-colors mb-3"
+          className="press mb-3 inline-flex items-center gap-1 text-sm font-medium text-muted transition-colors hover:text-foreground"
         >
           ← Back to Groups
         </Link>
-        <h1 className="font-display text-3xl sm:text-4xl font-semibold text-foreground mb-2">
-          Event <span className="text-gradient">Calendar</span>
-        </h1>
-        <p className="text-base sm:text-lg text-muted font-light">
-          Betting deadlines across all your groups
-        </p>
+        <p className="eyebrow mb-2">Schedule</p>
+        <h1 className="display-1 mb-2">Event Calendar</h1>
+        <p className="lede">Betting deadlines across all your groups.</p>
       </div>
 
       {events.length === 0 ? (
-        <div className="glass rounded-3xl text-center py-14 px-6 animate-fade-in">
-          <p className="text-muted mb-5 font-light">No events yet.</p>
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <p className="empty-state-title">No events yet</p>
+          <p className="empty-state-body">
+            Events you create or join will show up on this calendar by their betting deadline.
+          </p>
           <Link href="/create" className="btn-primary">
             Create Event
           </Link>
         </div>
       ) : (
         <>
-          <div className="glass rounded-3xl p-3 sm:p-6">
+          <div className="card p-3 sm:p-6">
             {/* Toolbar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-5">
-              <h2 className="font-display text-xl sm:text-2xl font-semibold text-foreground">
-                {monthLabel}
-              </h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 sm:mb-5">
+              <h2 className="display-3">{monthLabel}</h2>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => goToMonth(-1)}
                   aria-label="Previous month"
-                  className="no-min-size inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-muted hover:text-foreground hover:bg-gray-50 transition-colors"
+                  className="btn-glass no-min-size h-9 w-9 p-0"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -202,14 +199,15 @@ export default function CalendarPage() {
                 </button>
                 <button
                   onClick={goToToday}
-                  className="no-min-size inline-flex h-9 items-center justify-center rounded-full border border-gray-200 bg-white px-4 text-sm font-medium text-muted hover:text-foreground hover:bg-gray-50 transition-colors"
+                  aria-label="Go to current month and select today"
+                  className="btn-glass no-min-size h-9 px-4 text-sm"
                 >
                   Today
                 </button>
                 <button
                   onClick={() => goToMonth(1)}
                   aria-label="Next month"
-                  className="no-min-size inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-muted hover:text-foreground hover:bg-gray-50 transition-colors"
+                  className="btn-glass no-min-size h-9 w-9 p-0"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -219,12 +217,9 @@ export default function CalendarPage() {
             </div>
 
             {/* Weekday header */}
-            <div className="grid grid-cols-7 gap-1 sm:gap-1.5 mb-1 sm:mb-1.5">
+            <div className="mb-1 grid grid-cols-7 gap-1 sm:mb-1.5 sm:gap-1.5">
               {WEEKDAYS.map((day) => (
-                <div
-                  key={day}
-                  className="text-center text-[11px] sm:text-xs font-semibold uppercase tracking-wide text-muted-2 py-1"
-                >
+                <div key={day} className="eyebrow py-1 text-center">
                   {day}
                 </div>
               ))}
@@ -237,7 +232,6 @@ export default function CalendarPage() {
                 const inMonth = date.getMonth() === viewMonth;
                 const isToday = key === todayKey;
                 const isSelected = key === selectedKey;
-                const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                 const dayEvents = eventsByDay.get(key) ?? [];
 
                 return (
@@ -245,11 +239,12 @@ export default function CalendarPage() {
                     key={key}
                     role="button"
                     tabIndex={0}
-                    aria-label={date.toLocaleDateString('en-US', {
+                    aria-pressed={isSelected}
+                    aria-label={`${date.toLocaleDateString('en-US', {
                       weekday: 'long',
                       month: 'long',
                       day: 'numeric',
-                    })}
+                    })}${isToday ? ' (today)' : ''}${isSelected ? ' (selected)' : ''}`}
                     onClick={() => setSelectedKey(key)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
@@ -257,49 +252,54 @@ export default function CalendarPage() {
                         setSelectedKey(key);
                       }
                     }}
-                    className={`cursor-pointer rounded-xl sm:rounded-2xl border p-1 sm:p-1.5 min-h-[56px] sm:min-h-[104px] transition-colors ${
+                    className={`relative min-h-[56px] cursor-pointer rounded-lg border p-1 transition-colors sm:min-h-[104px] sm:rounded-xl sm:p-1.5 ${
                       isSelected
-                        ? 'border-blue-300 bg-blue-50 ring-1 ring-blue-500/40'
-                        : isToday
-                          ? 'border-blue-200 bg-blue-50/60 hover:bg-blue-50'
-                          : `border-gray-200 ${isWeekend ? 'bg-gray-100/70' : 'bg-gray-50'} hover:bg-gray-100`
-                    } ${inMonth ? '' : 'opacity-40'}`}
+                        ? 'tone-accent tone-surface border-2'
+                        : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-sunken)]'
+                    } ${inMonth ? '' : 'opacity-45'}`}
                   >
+                    {isSelected && (
+                      <span
+                        className="tone-dot tone-accent absolute right-1.5 top-1.5"
+                        aria-hidden="true"
+                      />
+                    )}
                     <span
-                      className={`inline-flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-full text-[11px] sm:text-xs font-semibold tabular-nums ${
+                      className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums sm:h-6 sm:w-6 sm:text-xs ${
                         isToday
-                          ? 'bg-blue-600 text-white'
+                          ? 'bg-[var(--color-accent)] text-white'
                           : inMonth
                             ? 'text-foreground'
-                            : 'text-muted-2'
-                      }`}
+                            : 'text-muted'
+                      } ${isSelected && !isToday ? 'font-bold' : ''}`}
                     >
                       {date.getDate()}
                     </span>
 
                     {/* Event chips — desktop/tablet */}
                     {dayEvents.length > 0 && (
-                      <div className="hidden sm:flex flex-col gap-1 mt-1 min-w-0">
-                        {dayEvents.slice(0, 3).map((event) => (
-                          <Link
-                            key={event.id}
-                            href={`/events/${event.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            title={event.title}
-                            className={`no-min-size block truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4 transition-opacity hover:opacity-80 ${
-                              stateChipClasses[getEventState(event, now)]
-                            }`}
-                          >
-                            {event.title}
-                          </Link>
-                        ))}
+                      <div className="mt-1 hidden min-w-0 flex-col gap-1 sm:flex">
+                        {dayEvents.slice(0, 3).map((event) => {
+                          const tone = stateTone[getEventState(event, now)];
+                          return (
+                            <Link
+                              key={event.id}
+                              href={`/events/${event.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              title={event.title}
+                              className={`${tone} tone-surface tone-text no-min-size block truncate rounded-md border px-1.5 py-0.5 text-[11px] font-medium leading-4 transition-opacity hover:opacity-80`}
+                            >
+                              {event.title}
+                            </Link>
+                          );
+                        })}
                         {dayEvents.length > 3 && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedKey(key);
                             }}
-                            className="no-min-size text-left text-[11px] font-medium text-muted-2 hover:text-foreground transition-colors px-1.5"
+                            className="no-min-size px-1.5 text-left text-[11px] font-medium text-muted transition-colors hover:text-foreground"
                           >
                             +{dayEvents.length - 3} more
                           </button>
@@ -309,17 +309,15 @@ export default function CalendarPage() {
 
                     {/* Event dots — mobile */}
                     {dayEvents.length > 0 && (
-                      <div className="flex sm:hidden flex-wrap items-center gap-0.5 mt-1">
+                      <div className="mt-1 flex flex-wrap items-center gap-0.5 sm:hidden">
                         {dayEvents.slice(0, 4).map((event) => (
                           <span
                             key={event.id}
-                            className={`h-1.5 w-1.5 rounded-full ${
-                              stateDotClasses[getEventState(event, now)]
-                            }`}
+                            className={`${stateTone[getEventState(event, now)]} tone-dot`}
                           />
                         ))}
                         {dayEvents.length > 4 && (
-                          <span className="text-[9px] leading-none text-muted-2">
+                          <span className="text-[9px] leading-none text-muted">
                             +{dayEvents.length - 4}
                           </span>
                         )}
@@ -331,41 +329,36 @@ export default function CalendarPage() {
             </div>
 
             {/* Legend */}
-            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-2">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-green-600" /> Live
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-amber-600" /> Awaiting resolution
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-gray-400" /> Resolved
-              </span>
+            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted">
+              {(['ongoing', 'ended', 'resolved'] as EventState[]).map((s) => (
+                <span key={s} className="inline-flex items-center gap-1.5">
+                  <span className={`${stateTone[s]} tone-dot`} /> {stateLabels[s]}
+                </span>
+              ))}
             </div>
           </div>
 
           {/* Selected day detail */}
-          <div key={selectedKey} className="glass rounded-3xl p-5 sm:p-6 mt-4 animate-fade-in">
-            <h3 className="font-display text-lg sm:text-xl font-semibold text-foreground mb-1">
-              {selectedLabel}
-            </h3>
+          <div key={selectedKey} className="card animate-sheet mt-4 p-5 sm:p-6">
+            <div className="section-head mb-3">
+              <span className="eyebrow">{selectedLabel}</span>
+            </div>
             {selectedEvents.length === 0 ? (
-              <p className="text-sm text-muted font-light">No events on this day.</p>
+              <p className="text-sm text-muted">No events on this day.</p>
             ) : (
-              <div className="space-y-2.5 mt-3">
+              <div className="space-y-2.5">
                 {selectedEvents.map((event) => {
                   const state = getEventState(event, now);
+                  const tone = stateTone[state];
                   return (
                     <Link
                       key={event.id}
                       href={`/events/${event.id}`}
-                      className="glass-subtle group flex items-center justify-between gap-3 rounded-2xl p-3.5 hover:border-gray-300 transition-colors"
+                      className="card-interactive press flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--color-border)] p-3.5"
                     >
                       <div className="min-w-0">
-                        <div className="font-medium text-foreground truncate group-hover:text-brand-2 transition-colors">
-                          {event.title}
-                        </div>
-                        <div className="text-xs text-muted-2 mt-0.5 truncate">
+                        <div className="truncate font-medium text-foreground">{event.title}</div>
+                        <div className="mt-0.5 truncate text-xs text-muted">
                           {event.group_name} ·{' '}
                           {new Date(event.end_time).toLocaleTimeString('en-US', {
                             hour: 'numeric',
@@ -373,9 +366,7 @@ export default function CalendarPage() {
                           })}
                         </div>
                       </div>
-                      <span className={`chip flex-shrink-0 ${stateChipClasses[state]}`}>
-                        {stateLabels[state]}
-                      </span>
+                      <span className={`${tone} pill flex-none`}>{stateLabels[state]}</span>
                     </Link>
                   );
                 })}

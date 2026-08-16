@@ -9,6 +9,8 @@ import Toast, { ToastType } from './Toast';
 
 interface LedgerProps {
   bets: Bet[];
+  // Dead: comments now render in their own component (CommentThread). Kept
+  // on the type for call-site compatibility; no UI is built around them.
   comments?: Comment[];
   currentUserId?: string;
   onBetDeleted?: () => void;
@@ -30,14 +32,11 @@ interface LedgerProps {
   escrowByBet?: Record<string, EscrowHoldStatus>;
 }
 
-type LedgerEntry = (Bet & { type: 'bet' }) | (Comment & { type: 'comment' });
-
-/** Mirrors the payload of GET /api/wallet (see lib/payments.ts getWalletSummary). */
 interface WalletSummary {
   wallet: { user_id: string; balance: number; currency: string };
   escrow_held_total: number;
   available: number;
-  transactions?: Transaction[];
+  transactions: Transaction[];
   event?: {
     escrow_held: number;
     holds: EscrowHold[];
@@ -47,23 +46,23 @@ interface WalletSummary {
   };
 }
 
-const TRANSACTION_LABELS: Record<string, { label: string; color: string }> = {
-  escrow_hold: { label: 'Stake escrowed', color: 'text-red-600' },
-  escrow_release: { label: 'Stake returned', color: 'text-green-700' },
-  payout: { label: 'Winnings', color: 'text-green-700' },
-  refund: { label: 'Refunded', color: 'text-green-700' },
-  deposit: { label: 'Deposit', color: 'text-green-700' },
-  withdrawal: { label: 'Withdrawal', color: 'text-red-600' },
+const TRANSACTION_LABELS: Record<string, { label: string; tone: string }> = {
+  escrow_hold: { label: 'Stake escrowed', tone: 'tone-pending' },
+  escrow_release: { label: 'Stake returned', tone: 'tone-yes' },
+  payout: { label: 'Winnings', tone: 'tone-gold' },
+  refund: { label: 'Refunded', tone: 'tone-yes' },
+  deposit: { label: 'Deposit', tone: 'tone-yes' },
+  withdrawal: { label: 'Withdrawal', tone: 'tone-no' },
 };
 
-function getTransactionLabel(type: string): { label: string; color: string } {
-  return TRANSACTION_LABELS[type] || { label: type.replace(/_/g, ' '), color: 'text-muted' };
+function getTransactionLabel(type: string): { label: string; tone: string } {
+  return TRANSACTION_LABELS[type] || { label: type.replace(/_/g, ' '), tone: 'tone-neutral' };
 }
 
-const HOLD_CHIPS: Record<EscrowHoldStatus, { label: string; className: string }> = {
-  held: { label: 'Escrowed', className: 'text-amber-700 bg-amber-50 border-amber-200' },
-  released: { label: 'Settled', className: 'text-gray-600 bg-gray-50 border-gray-200' },
-  refunded: { label: 'Refunded', className: 'text-green-700 bg-green-50 border-green-200' },
+const HOLD_CHIPS: Record<EscrowHoldStatus, { label: string; tone: string }> = {
+  held: { label: 'Escrowed', tone: 'tone-pending' },
+  released: { label: 'Settled', tone: 'tone-neutral' },
+  refunded: { label: 'Refunded', tone: 'tone-yes' },
 };
 
 /** Chips render on everyone's bets, so the tooltip has to name whose stake it is. */
@@ -80,24 +79,21 @@ function holdChipTitle(status: EscrowHoldStatus, isOwnBet: boolean, username: st
   }
 }
 
-export default function Ledger({ bets, comments = [], currentUserId, onBetDeleted, onCommentDeleted, isPublic = false, paymentType = 'none', eventId, eventStatus, escrowByBet }: LedgerProps) {
+export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = false, paymentType = 'none', eventId, eventStatus, escrowByBet }: LedgerProps) {
   const [deletingBets, setDeletingBets] = useState<Set<string>>(new Set());
-  const [deletingComments, setDeletingComments] = useState<Set<string>>(new Set());
   const [betToDelete, setBetToDelete] = useState<string | null>(null);
-  const [commentToDelete, setCommentToDelete] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState(false);
   const [walletReloadKey, setWalletReloadKey] = useState(0);
 
-  const showWallet = paymentType === 'cash' && Boolean(currentUserId) && Boolean(eventId);
-  // `bets` is a fresh array on every parent refetch, so key the effect off the
-  // ids rather than the array identity to avoid refetching on every render.
-  const betSignature = useMemo(() => bets.map(b => b.id).join(','), [bets]);
+  // Settling an event changes the money without changing the bet list, so the
+  // bet ids alone are not a sufficient refetch trigger.
+  const betSignature = bets.map((b) => b.id).join(',');
 
   useEffect(() => {
-    if (!showWallet) {
+    if (paymentType !== 'cash' || !currentUserId || !eventId) {
       setWalletSummary(null);
       setWalletError(false);
       return;
@@ -105,24 +101,24 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
 
     let cancelled = false;
     setWalletLoading(true);
+    setWalletError(false);
 
     fetch(`/api/wallet?userId=${currentUserId}&eventId=${eventId}`, {
-      headers: { 'x-stack-user-id': currentUserId as string },
+      headers: { 'x-stack-user-id': currentUserId },
     })
       .then((response) => {
         if (!response.ok) throw new Error('Failed to fetch wallet');
         return response.json();
       })
       .then((data) => {
-        if (cancelled) return;
-        setWalletSummary(data);
-        setWalletError(false);
+        if (!cancelled) setWalletSummary(data);
       })
       .catch((error) => {
         console.error('Failed to fetch wallet summary:', error);
-        if (cancelled) return;
-        setWalletSummary(null);
-        setWalletError(true);
+        if (!cancelled) {
+          setWalletSummary(null);
+          setWalletError(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setWalletLoading(false);
@@ -133,9 +129,10 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
     };
     // eventStatus / betSignature / walletReloadKey are not read in the body —
     // they are the refetch triggers (settlement, a new bet, manual retry).
-  }, [showWallet, currentUserId, eventId, eventStatus, betSignature, walletReloadKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId, eventId, paymentType, eventStatus, betSignature, walletReloadKey]);
 
-  const reloadWallet = useCallback(() => setWalletReloadKey(k => k + 1), []);
+  const reloadWallet = useCallback(() => setWalletReloadKey((k) => k + 1), []);
 
   // Escrow status per bet for EVERY player. The event payload is the source of
   // truth; the viewer's own holds are layered on top so a signed-in player
@@ -148,11 +145,16 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
     return map;
   }, [escrowByBet, walletSummary]);
 
-  // Combine bets and comments
-  const entries: LedgerEntry[] = [
-    ...bets.map(bet => ({ ...bet, type: 'bet' as const })),
-    ...comments.map(comment => ({ ...comment, type: 'comment' as const }))
-  ].sort((a, b) => b.timestamp - a.timestamp);
+  // Newest first.
+  const sortedBets = [...bets].sort((a, b) => b.timestamp - a.timestamp);
+
+  // Best-effort side → tone mapping (Ledger only receives raw bets, not the
+  // event's side_a/side_b) — first side seen reads as "yes", second as "no".
+  const uniqueSides = Array.from(new Set(bets.map((b) => b.side)));
+  const toneForSide = (side: string) => {
+    const idx = uniqueSides.indexOf(side);
+    return idx === 0 ? 'tone-yes' : idx === 1 ? 'tone-no' : 'tone-neutral';
+  };
 
   const handleDeleteBet = async (betId: string) => {
     setBetToDelete(betId);
@@ -191,54 +193,11 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
     }
   };
 
-  const handleDeleteComment = async (commentId: string) => {
-    setCommentToDelete(commentId);
-  };
-
-  const confirmDeleteComment = async () => {
-    if (!commentToDelete) return;
-
-    setCommentToDelete(null);
-    setDeletingComments(prev => new Set(prev).add(commentToDelete));
-
-    try {
-      const response = await fetch(`/api/comments?id=${commentToDelete}`, {
-        method: 'DELETE',
-        headers: currentUserId ? { 'x-stack-user-id': currentUserId } : undefined,
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete comment');
-      }
-
-      if (onCommentDeleted) {
-        onCommentDeleted();
-      }
-      setToast({ message: 'Comment deleted successfully', type: 'success' });
-    } catch (error: any) {
-      console.error('Failed to delete comment:', error);
-      setToast({ message: `Failed to delete comment: ${error.message}`, type: 'error' });
-    } finally {
-      setDeletingComments(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(commentToDelete);
-        return newSet;
-      });
-    }
-  };
-
   const getBetDetails = (betId: string) => {
     const bet = bets.find(b => b.id === betId);
     if (!bet) return '';
     const currency = isPublic ? 'pts' : '$';
     return `@${bet.username}'s ${currency}${bet.amount.toFixed(2)} bet on ${bet.side}`;
-  };
-
-  const getCommentDetails = (commentId: string) => {
-    const comment = comments.find(c => c.id === commentId);
-    if (!comment) return '';
-    return `@${comment.username}'s comment`;
   };
 
   return (
@@ -259,197 +218,155 @@ export default function Ledger({ bets, comments = [], currentUserId, onBetDelete
         type="danger"
         loading={betToDelete !== null && deletingBets.has(betToDelete)}
       />
-      
-      <ConfirmationModal
-        isOpen={commentToDelete !== null}
-        onClose={() => setCommentToDelete(null)}
-        onConfirm={confirmDeleteComment}
-        title="Delete Comment"
-        message={`Are you sure you want to delete ${commentToDelete ? getCommentDetails(commentToDelete) : 'this comment'}? This action cannot be undone.`}
-        confirmText="Delete"
-        type="danger"
-        loading={commentToDelete !== null && deletingComments.has(commentToDelete)}
-      />
-      
-      {showWallet && (
-        walletLoading && !walletSummary ? (
-          <div className="skeleton h-24 rounded-2xl mb-4" />
+
+      {paymentType === 'cash' && currentUserId && eventId && (
+        walletLoading ? (
+          <div className="card rounded-2xl p-4 mb-4 space-y-3">
+            <div className="skeleton-line w-1/3" />
+            <div className="skeleton-line w-full" />
+            <div className="skeleton-line w-2/3" />
+          </div>
         ) : walletError ? (
-          <div className="glass rounded-2xl p-4 mb-4 border-amber-200 flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
+          <div className="card rounded-2xl p-4 mb-4 flex flex-col gap-2 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
             <p className="text-sm text-muted">Couldn&apos;t load your wallet for this event.</p>
             <button
               onClick={reloadWallet}
-              className="text-sm font-medium text-brand-2 hover:underline self-start min-[420px]:self-auto"
+              className="btn-quiet press text-sm font-medium self-start min-[420px]:self-auto"
             >
               Try again
             </button>
           </div>
         ) : walletSummary ? (
-          <div className="glass-strong rounded-2xl p-4 mb-4">
+          <div className="card rounded-2xl p-4 mb-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-medium text-foreground">Your Wallet</h3>
-              <Link href="/profile" className="text-brand-2 hover:underline text-sm font-medium">
+              <h3 className="eyebrow">Your wallet</h3>
+              <Link href="/profile" className="press text-accent hover:underline text-sm font-medium">
                 Add funds
               </Link>
             </div>
             <div className="grid grid-cols-1 min-[420px]:grid-cols-3 gap-3">
               <div>
-                <div className="text-xs text-muted-2 mb-1">Wallet balance</div>
-                <div className="text-lg font-semibold text-foreground tabular-nums">
+                <div className="eyebrow mb-1">Balance</div>
+                <div className="numeral text-foreground text-xl">
                   ${walletSummary.wallet.balance.toFixed(2)}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-2 mb-1">In escrow (this event)</div>
-                <div className="text-lg font-semibold text-amber-700 tabular-nums">
+                <div className="eyebrow mb-1">In escrow</div>
+                <div className="numeral tone-text tone-pending text-xl">
                   ${(walletSummary.event?.escrow_held ?? 0).toFixed(2)}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-muted-2 mb-1">Event pot</div>
-                <div className="text-lg font-semibold text-brand-2 tabular-nums">
+                <div className="eyebrow mb-1">Event pot</div>
+                <div className="numeral tone-text tone-accent text-xl">
                   ${(walletSummary.event?.pot ?? 0).toFixed(2)}
                 </div>
               </div>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-gray-200">
-              <h4 className="text-xs font-semibold text-muted-2 uppercase tracking-wide mb-2">
-                Settled history
-              </h4>
-              {walletSummary.event && walletSummary.event.transactions.length > 0 ? (
-                <div className="space-y-1.5">
-                  {walletSummary.event.transactions.map((t) => {
-                    const { label, color } = getTransactionLabel(t.type);
-                    return (
-                      <div key={t.id} className="flex items-center justify-between gap-2 text-sm">
-                        <span className={color}>{label}</span>
-                        <div className="flex items-center gap-2">
-                          <span className={`font-medium tabular-nums ${color}`}>
-                            {formatAmount(t.amount)}
+            <div className="rule mt-4 mb-3" />
+            <h4 className="eyebrow mb-2">Settled history</h4>
+            {walletSummary.event && walletSummary.event.transactions.length > 0 ? (
+              <div className="space-y-1.5">
+                {walletSummary.event.transactions.map((t) => {
+                  const { label, tone } = getTransactionLabel(t.type);
+                  return (
+                    <div key={t.id} className={`flex items-center justify-between gap-2 text-sm ${tone}`}>
+                      <span className="tone-text truncate min-w-0">{label}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="numeral tone-text text-sm">
+                          {formatAmount(t.amount)}
+                        </span>
+                        {t.created_at && (
+                          <span className="text-xs text-muted tabular-nums">
+                            {formatTimestamp(new Date(t.created_at).getTime())}
                           </span>
-                          {t.created_at && (
-                            <span className="text-xs text-muted-2 tabular-nums">
-                              {formatTimestamp(new Date(t.created_at).getTime())}
-                            </span>
-                          )}
-                        </div>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-2">No settled activity yet.</p>
-              )}
-            </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted">No settled activity yet.</p>
+            )}
           </div>
         ) : null
       )}
 
-      <div className="space-y-3">
-        {entries.length === 0 ? (
-          <p className="text-muted-2 text-center py-8">No entries yet. Be the first!</p>
-        ) : (
-          entries.map((entry) => {
-            if (entry.type === 'bet') {
-              const bet = entry;
+      {sortedBets.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 6h16M4 12h16M4 18h7" />
+            </svg>
+          </div>
+          <p className="empty-state-title">No bets yet</p>
+          <p className="empty-state-body">
+            The ledger fills in as soon as someone stakes a claim. Pick a side and place the first bet.
+          </p>
+          <a href="#bet-form" className="btn-primary press px-4 py-2 text-sm">
+            Place the first bet
+          </a>
+        </div>
+      ) : (
+        <div className="card rounded-2xl overflow-hidden">
+          <div className="stagger-rows">
+            {sortedBets.map((bet) => {
               const holdStatus = holdStatusByBetId.get(bet.id);
               const holdChip = holdStatus ? HOLD_CHIPS[holdStatus] : null;
               return (
-                <div
-                  key={`bet-${bet.id}`}
-                  className={`glass rounded-2xl p-4 ${
-                    bet.is_late ? 'border-amber-300' : ''
-                  }`}
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-foreground break-all">@{bet.username}</span>
-                        <span className="text-muted-2">→</span>
-                        <span className="text-muted break-words">{bet.side}</span>
-                        <span className="font-semibold text-foreground tabular-nums">
-                          {paymentType !== 'cash' && isPublic ? `${bet.amount.toFixed(2)} pts` : `$${bet.amount.toFixed(2)}`}
-                        </span>
-                        {bet.is_late && (
-                          <span className="chip text-amber-700 bg-amber-50 border-amber-200">
-                            Late
-                          </span>
-                        )}
-                        {holdChip && holdStatus && (
-                          <span
-                            className={`chip ${holdChip.className}`}
-                            title={holdChipTitle(holdStatus, bet.user_id === currentUserId, bet.username)}
-                          >
-                            {holdChip.label}
-                          </span>
-                        )}
-                      </div>
-                      {bet.note && (
-                        <p className="text-sm text-muted mt-2 italic">
-                          "{bet.note}"
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between gap-2 sm:justify-end">
-                      <span className="text-xs text-muted-2 tabular-nums">
-                        {formatTimestamp(bet.timestamp)}
-                      </span>
-                      {/* Cash bets have money escrowed against them, so they
-                          cannot be deleted — the escrow chip above says why. */}
-                      {paymentType !== 'cash' && (
-                        <button
-                          onClick={() => handleDeleteBet(bet.id)}
-                          disabled={deletingBets.has(bet.id)}
-                          className="text-xs text-muted-2 hover:text-red-600 font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Delete bet"
-                        >
-                          {deletingBets.has(bet.id) ? 'Deleting...' : 'Delete'}
-                        </button>
-                      )}
-                    </div>
+              <div
+                key={bet.id}
+                className="flex flex-col gap-1.5 px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className={`tone-dot ${toneForSide(bet.side)}`} />
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                    <span className="font-semibold text-foreground truncate max-w-[45%] shrink-0">@{bet.username}</span>
+                    <span className="text-muted shrink-0 text-xs">on</span>
+                    <span className="text-muted truncate min-w-0 flex-1">{bet.side}</span>
                   </div>
+                  {bet.is_late && <span className="pill tone-pending shrink-0">Late</span>}
+                  {holdChip && holdStatus && (
+                    <span
+                      className={`pill ${holdChip.tone} shrink-0`}
+                      title={holdChipTitle(holdStatus, bet.user_id === currentUserId, bet.username)}
+                    >
+                      {holdChip.label}
+                    </span>
+                  )}
+                  <span className="numeral text-foreground text-base shrink-0">
+                    {paymentType !== 'cash' && isPublic ? `${bet.amount.toFixed(2)} pts` : `$${bet.amount.toFixed(2)}`}
+                  </span>
                 </div>
-              );
-            } else {
-              const comment = entry;
-              return (
-                <div
-                  key={`comment-${comment.id}`}
-                  className="glass rounded-2xl p-4 border-sky-200"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-2">
-                        <span className="font-semibold text-foreground break-all">@{comment.username}</span>
-                        <span className="chip text-sky-700 bg-sky-50 border-sky-200">
-                          💬 Comment
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted break-words">
-                        {comment.content}
-                      </p>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 sm:justify-end">
-                      <span className="text-xs text-muted-2 tabular-nums">
-                        {formatTimestamp(comment.timestamp)}
-                      </span>
+                <div className="flex items-center justify-between gap-2 pl-[1.1875rem]">
+                  <span className="text-xs text-muted italic truncate min-w-0">
+                    {bet.note ? `"${bet.note}"` : ''}
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-muted tabular-nums">
+                      {formatTimestamp(bet.timestamp)}
+                    </span>
+                    {paymentType !== 'cash' && (
                       <button
-                        onClick={() => handleDeleteComment(comment.id)}
-                        disabled={deletingComments.has(comment.id)}
-                        className="text-xs text-muted-2 hover:text-red-600 font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Delete comment"
+                        onClick={() => handleDeleteBet(bet.id)}
+                        disabled={deletingBets.has(bet.id)}
+                        className="btn-quiet-danger press disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete bet"
                       >
-                        {deletingComments.has(comment.id) ? 'Deleting...' : 'Delete'}
+                        {deletingBets.has(bet.id) ? 'Deleting...' : 'Delete'}
                       </button>
-                    </div>
+                    )}
                   </div>
                 </div>
+              </div>
               );
-            }
-          })
-        )}
-      </div>
+            })}
+          </div>
+        </div>
+      )}
     </>
   );
 }

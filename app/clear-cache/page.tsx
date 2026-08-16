@@ -8,65 +8,79 @@ import { useRouter } from 'next/navigation';
 
 export default function ClearCachePage() {
   const [status, setStatus] = useState<string>('Clearing cache...');
+  const [failed, setFailed] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    const clearCache = async () => {
-      try {
-        // Unregister all service workers
-        if ('serviceWorker' in navigator) {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          for (const registration of registrations) {
-            await registration.unregister();
-          }
+  const clearCache = async () => {
+    setFailed(false);
+    setStatus('Clearing cache...');
+    try {
+      // Unregister all service workers
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+          await registration.unregister();
         }
-
-        // Clear all caches
-        if ('caches' in window) {
-          const cacheNames = await caches.keys();
-          await Promise.all(
-            cacheNames.map((cacheName) => caches.delete(cacheName))
-          );
-        }
-
-        // Clear local storage
-        localStorage.clear();
-        
-        // Clear session storage
-        sessionStorage.clear();
-
-        setStatus('✅ Cache cleared successfully! Redirecting...');
-        
-        // Wait a bit then redirect to home
-        setTimeout(() => {
-          window.location.href = '/';
-        }, 2000);
-      } catch (error) {
-        console.error('Error clearing cache:', error);
-        setStatus('❌ Error clearing cache. Please try manually refreshing.');
       }
-    };
 
+      // Clear all caches
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(
+          cacheNames.map((cacheName) => caches.delete(cacheName))
+        );
+      }
+
+      // Clear local storage
+      localStorage.clear();
+
+      // Clear session storage
+      sessionStorage.clear();
+
+      setStatus('Cache cleared successfully. Redirecting…');
+
+      // Wait a bit then redirect to home
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 2000);
+    } catch (error) {
+      console.error('Error clearing cache:', error);
+      setStatus('Error clearing cache. Please try again or refresh manually.');
+      setFailed(true);
+    }
+  };
+
+  useEffect(() => {
     clearCache();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-16 animate-rise">
-      <div className="glass-strong rounded-3xl p-8 text-center">
-        <h1 className="font-display text-3xl font-semibold text-foreground mb-4">
-          Cache Management
-        </h1>
-        <p className="text-xl text-muted mb-8">{status}</p>
+    <div className="page-shell-narrow animate-rise">
+      <div className="card p-6 sm:p-8 text-center">
+        <p className="eyebrow mb-2">Utility</p>
+        <h1 className="display-2 mb-3">Cache Management</h1>
+        <p
+          className={`lede mx-auto mb-6 ${failed ? 'tone-no tone-text' : 'text-muted'}`}
+        >
+          {status}
+        </p>
 
-        <div className="text-sm text-muted-2 space-y-2 glass-subtle rounded-2xl p-5 text-left">
-          <p className="text-muted">This page will:</p>
-          <ul className="list-disc list-inside space-y-1">
+        <div className="panel p-5 text-left mb-6">
+          <p className="field-label mb-2">This page clears, on load:</p>
+          <ul className="list-disc list-inside space-y-1 text-sm text-muted">
             <li>Unregister service workers</li>
             <li>Clear browser caches</li>
             <li>Clear local storage</li>
             <li>Clear session storage</li>
           </ul>
         </div>
+
+        {failed && (
+          <button onClick={clearCache} className="btn-danger px-5 py-2.5">
+            Try clearing again
+          </button>
+        )}
       </div>
     </div>
   );

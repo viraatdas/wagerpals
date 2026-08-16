@@ -16,40 +16,34 @@ export default function ResolutionBanner({ event, netResults, isPublic = false }
   const sortedResults = [...netResults].sort((a, b) => b.net - a.net);
 
   return (
-    <div className="glass-strong border border-green-200 rounded-2xl p-6 mb-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="card-focal tone-win rail p-6 mb-6 animate-reveal">
+      <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
         <div>
-          <h3 className="text-xl font-display font-semibold text-foreground inline-flex items-center gap-2">
-            <span className="text-green-600">✓</span> Event Resolved
-          </h3>
-          <p className="text-muted mt-2">
-            Winning side: <span className="font-semibold text-green-700">{event.resolution.winning_side}</span>
+          <span className="eyebrow tone-text tone-win">Event resolved</span>
+          <p className="display-3 mt-1">
+            <span className="numeral tone-text">{event.resolution.winning_side}</span> won
           </p>
         </div>
-        <div className="chip chip-yes">
-          Final
-        </div>
+        <span className="pill pill-solid tone-win shrink-0">Final</span>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="rule mb-5" />
+
+      <div className="grid md:grid-cols-2 gap-6">
         <div>
-          <h4 className="text-sm font-semibold text-muted mb-2 pb-2 border-b border-gray-200">Net Results</h4>
+          <div className="section-head mb-3">
+            <h4 className="eyebrow">Net results</h4>
+          </div>
           <div className="space-y-1.5">
             {sortedResults.map((result) => (
               <div
                 key={result.user_id}
-                className="flex justify-between items-center py-2 px-3 glass-subtle rounded-xl"
+                className={`flex justify-between items-center gap-3 py-2 px-3 rounded-xl panel ${
+                  result.net > 0 ? 'tone-gold' : result.net < 0 ? 'tone-loss' : 'tone-neutral'
+                }`}
               >
-                <span className="text-foreground">@{result.username}</span>
-                <span
-                  className={`font-semibold tabular-nums ${
-                    result.net > 0
-                      ? 'text-green-700'
-                      : result.net < 0
-                      ? 'text-red-700'
-                      : 'text-muted'
-                  }`}
-                >
+                <span className="text-foreground truncate min-w-0">@{result.username}</span>
+                <span className="numeral tone-text text-base shrink-0">
                   {formatAmount(result.net, isPublic)}
                 </span>
               </div>
@@ -59,18 +53,22 @@ export default function ResolutionBanner({ event, netResults, isPublic = false }
 
         {payments.length > 0 && (
           <div>
-            <h4 className="text-sm font-semibold text-muted mb-2 pb-2 border-b border-gray-200">Payments</h4>
+            <div className="section-head mb-3">
+              <h4 className="eyebrow">Payments</h4>
+            </div>
             <div className="space-y-1.5">
               {payments.map((payment, i) => (
                 <div
                   key={i}
-                  className="py-2 px-3 glass-subtle rounded-xl text-sm text-muted"
+                  className="panel py-2 px-3 rounded-xl text-sm text-muted"
                 >
-                  <span className="font-medium text-foreground">{payment.from}</span>
+                  <span className="font-medium text-foreground break-words">{payment.from}</span>
                   {' → '}
-                  <span className="font-medium text-foreground">{payment.to}</span>
+                  <span className="font-medium text-foreground break-words">{payment.to}</span>
                   {': '}
-                  <span className="font-semibold text-green-700 tabular-nums">{isPublic ? `${payment.amount.toFixed(2)} pts` : `$${payment.amount.toFixed(2)}`}</span>
+                  <span className="numeral tone-text tone-gold text-base">
+                    {isPublic ? `${payment.amount.toFixed(2)} pts` : `$${payment.amount.toFixed(2)}`}
+                  </span>
                 </div>
               ))}
             </div>
@@ -80,4 +78,3 @@ export default function ResolutionBanner({ event, netResults, isPublic = false }
     </div>
   );
 }
-

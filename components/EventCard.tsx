@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { formatTimeLeft } from '@/lib/utils';
 import { EventWithStats } from '@/lib/types';
 
@@ -17,84 +18,86 @@ export default function EventCard({ event, isPublic = false }: EventCardProps) {
   const statsA = event.side_stats[event.side_a] || { count: 0, total: 0 };
   const statsB = event.side_stats[event.side_b] || { count: 0, total: 0 };
   const pool = statsA.total + statsB.total;
-  // Visual odds split — defaults to 50/50 when no money is in yet.
+  // Real odds split — defaults to 50/50 when no money is in yet.
   const pctA = pool > 0 ? Math.round((statsA.total / pool) * 100) : 50;
   const fmt = (n: number) => (isPublic ? `${n.toFixed(0)} pts` : `$${n.toFixed(2)}`);
 
+  const winningSide = event.resolution?.winning_side;
+  const aWins = isResolved && winningSide === event.side_a;
+  const bWins = isResolved && winningSide === event.side_b;
+  const leaderTone = isResolved ? (aWins ? 'tone-win' : bWins ? 'tone-win' : 'tone-neutral') : pctA >= 50 ? 'tone-yes' : 'tone-no';
+
+  // Presentational-only: animate the split bar in from 50/50 on mount.
+  const [displayPctA, setDisplayPctA] = useState(50);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setDisplayPctA(pctA));
+    return () => cancelAnimationFrame(raf);
+  }, [pctA]);
+
   return (
     <Link href={`/events/${event.id}`} className="group block">
-      <div className="glass glass-hover rounded-2xl p-5 relative overflow-hidden">
+      <div className={`card card-interactive rail-top ${leaderTone} rounded-2xl p-5 relative overflow-hidden`}>
         {/* top row: status + people */}
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between gap-2 mb-3">
           {isResolved ? (
-            <span className="chip chip-yes">✓ Resolved</span>
+            <span className="pill tone-win">
+              <span className="tone-dot" /> Resolved
+            </span>
           ) : isEnded ? (
-            <span className="chip">⏳ Ended</span>
+            <span className="pill tone-pending">
+              <span className="tone-dot" /> Ended
+            </span>
           ) : (
-            <span className="chip chip-live">
-              <span className="live-dot" /> Ends in {timeLeft}
+            <span className="pill tone-yes">
+              <span className="tone-dot" /> Ends in {timeLeft}
             </span>
           )}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 shrink-0">
             <span className="text-xs font-medium text-muted">
-              👥 {event.total_participants} {event.total_participants === 1 ? 'player' : 'players'}
+              {event.total_participants} {event.total_participants === 1 ? 'player' : 'players'}
             </span>
             {typeof event.comment_count === 'number' && event.comment_count > 0 && (
-              <span className="text-xs font-medium text-muted">💬 {event.comment_count}</span>
+              <span className="text-xs font-medium text-muted">
+                💬 {event.comment_count}
+              </span>
             )}
           </div>
         </div>
 
-        <h3 className="font-display text-lg font-semibold text-foreground leading-snug break-words mb-1 group-hover:text-brand-2 transition-colors">
+        <h3 className="market-title text-lg break-words mb-1 group-hover:text-accent transition-colors">
           {event.title}
         </h3>
 
         {isResolved && event.resolution && (
           <p className="text-sm text-muted mb-3">
-            Winner:{' '}
-            <span className="font-semibold text-green-700">{event.resolution.winning_side}</span>
+            Winner: <span className="font-semibold tone-text tone-win">{event.resolution.winning_side}</span>
           </p>
         )}
 
-        {/* odds split bar */}
+        {/* odds split bar — the signature market chrome */}
         <div className="mt-4 mb-3">
-          <div className="h-2.5 w-full rounded-full overflow-hidden flex bg-gray-100">
-            <div
-              className="h-full bg-green-600 transition-[width] duration-500"
-              style={{ width: `${pctA}%` }}
-            />
-            <div
-              className="h-full bg-red-600 transition-[width] duration-500"
-              style={{ width: `${100 - pctA}%` }}
-            />
+          <div className="odds-track">
+            <div className="odds-fill odds-fill-yes" style={{ width: `${displayPctA}%` }} />
+            <div className="odds-fill odds-fill-no" style={{ width: `${100 - displayPctA}%` }} />
           </div>
         </div>
 
         {/* sides */}
         <div className="grid grid-cols-2 gap-2.5">
           {[
-            { side: event.side_a, stats: statsA, tone: 'mint' as const, pct: pctA },
-            { side: event.side_b, stats: statsB, tone: 'rose' as const, pct: 100 - pctA },
-          ].map(({ side, stats, tone, pct }) => (
+            { side: event.side_a, stats: statsA, tone: 'tone-yes', pct: pctA, wins: aWins },
+            { side: event.side_b, stats: statsB, tone: 'tone-no', pct: 100 - pctA, wins: bWins },
+          ].map(({ side, stats, tone, pct, wins }) => (
             <div
               key={side}
-              className={`rounded-xl p-3 min-w-0 border ${
-                tone === 'mint'
-                  ? 'bg-green-50 border-green-200'
-                  : 'bg-red-50 border-red-200'
-              }`}
+              className={`tone-surface border rounded-xl p-3 min-w-0 ${isResolved && !wins ? 'opacity-60' : ''} ${isResolved && wins ? 'tone-win' : tone}`}
             >
               <div className="flex items-center justify-between gap-2 mb-0.5">
-                <span className="text-sm font-medium text-foreground break-words min-w-0">{side}</span>
-                <span
-                  className={`text-sm font-bold tabular-nums ${
-                    tone === 'mint' ? 'text-green-700' : 'text-red-700'
-                  }`}
-                >
-                  {pct}%
-                </span>
+                <span className="text-sm font-medium text-foreground break-words min-w-0 truncate">{side}</span>
+                {isResolved && wins && <span className="tone-text text-xs font-bold shrink-0">WON</span>}
               </div>
-              <div className="text-xs text-muted font-medium">
+              <div className="numeral tone-text text-2xl">{pct}%</div>
+              <div className="text-xs text-muted font-medium mt-0.5">
                 {stats.count} {stats.count === 1 ? 'bet' : 'bets'} · {fmt(stats.total)}
               </div>
             </div>

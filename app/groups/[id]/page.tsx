@@ -9,6 +9,11 @@ import { EventWithStats } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
+const getInitials = (name?: string) => {
+  const trimmed = (name || '').trim();
+  return trimmed ? trimmed[0].toUpperCase() : '?';
+};
+
 export default function GroupPage() {
   const params = useParams();
   const router = useRouter();
@@ -115,14 +120,24 @@ export default function GroupPage() {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto px-4 py-8 mobile-page">
-        <div className="space-y-4">
-          <div className="skeleton h-9 w-2/3 rounded-xl" />
-          <div className="skeleton h-24 rounded-2xl" />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="skeleton h-40 rounded-3xl" />
-            <div className="skeleton h-40 rounded-3xl" />
-            <div className="skeleton h-40 rounded-3xl" />
+      <div className="page-shell mobile-page">
+        <div className="card-focal p-5 sm:p-8 space-y-6">
+          <div className="space-y-3">
+            <div className="skeleton h-3 w-32 rounded-full" />
+            <div className="skeleton h-10 w-2/3 rounded-xl" />
+          </div>
+          <div className="flex flex-wrap gap-8">
+            <div className="skeleton h-10 w-16 rounded-lg" />
+            <div className="skeleton h-10 w-16 rounded-lg" />
+            <div className="skeleton h-10 w-16 rounded-lg" />
+          </div>
+        </div>
+        <div className="mt-10 space-y-4">
+          <div className="skeleton h-3 w-28 rounded-full" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="skeleton h-40 rounded-2xl" />
+            <div className="skeleton h-40 rounded-2xl" />
+            <div className="skeleton h-40 rounded-2xl" />
           </div>
         </div>
       </div>
@@ -131,105 +146,125 @@ export default function GroupPage() {
 
   if (!group) {
     return (
-      <div className="max-w-6xl mx-auto px-4 py-8 mobile-page">
-        <div className="glass-subtle rounded-3xl text-center py-12 px-6">
-          <p className="text-center text-muted">Group not found</p>
+      <div className="page-shell mobile-page">
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <p className="empty-state-title">Group not found</p>
+          <p className="empty-state-body">This group may have been deleted, or the invite link is incorrect.</p>
+          <Link href="/" className="btn-primary press">Go home</Link>
         </div>
       </div>
     );
   }
 
   const { trendingEvents, ongoingEvents, endedEvents } = categorizeEvents();
+  const members: any[] = Array.isArray(group.members) ? group.members : [];
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 mobile-page animate-rise">
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:justify-between md:items-start">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
-            <h1 className="text-3xl sm:text-4xl font-display font-semibold text-foreground break-words leading-tight">
-              {group.name}
-            </h1>
-            {isAdmin && (
-              <span className="chip text-brand-2 border-brand-2/30 bg-brand-2/10">
-                Admin
+    <div className="page-shell mobile-page animate-rise">
+      {/* Focal header */}
+      <div className="card-focal p-5 sm:p-8">
+        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="eyebrow">
+                Group <span className="font-mono normal-case tracking-normal">{group.id}</span>
               </span>
-            )}
-          </div>
-          <p className="text-base sm:text-lg text-muted">
-            Group Code: <span className="font-mono font-semibold text-foreground">{group.id}</span>
-            <span className="mx-2 text-muted-2">•</span>
-            {group.member_count} members
-          </p>
-          {!group.is_public && (
-            <div className="mt-4 glass rounded-2xl p-3 sm:p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0 space-y-1.5">
-                  <span className="chip chip-yes w-fit">
-                    Payments enabled
-                  </span>
-                  <p className="text-sm text-muted">
-                    Wallet: <span className="font-semibold text-green-700">${wallet?.balance?.toFixed(2) || '0.00'}</span>
-                  </p>
-                  {group.resolver && (
-                    <p className="text-sm text-muted break-all">
-                      Resolver: <span className="font-medium text-foreground">@{group.resolver.username || 'Unknown'}</span>
-                    </p>
-                  )}
-                </div>
-                <Link
-                  href="/profile?wallet=deposit#wallet"
-                  className="btn-primary w-full sm:w-auto text-sm"
-                >
-                  Deposit Funds
-                </Link>
-              </div>
+              {isAdmin && <span className="pill tone-accent">Admin</span>}
+              {group.is_public ? (
+                <span className="pill tone-info"><span className="tone-dot" />Free points</span>
+              ) : (
+                <span className="pill tone-yes"><span className="tone-dot" />Payments enabled</span>
+              )}
             </div>
-          )}
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <h1 className="display-2 break-words">{group.name}</h1>
+          </div>
+          <div className="flex flex-wrap gap-2 shrink-0">
             <button
               onClick={handleCopyInviteLink}
-              className="btn-glass w-full sm:w-auto text-sm"
+              className="btn-glass press text-sm w-full sm:w-auto"
             >
               {copied ? (
                 <>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  Link Copied!
+                  Link copied
                 </>
               ) : (
                 <>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                   </svg>
-                  Share Group
+                  Share group
                 </>
               )}
             </button>
             {isAdmin && (
               <Link
                 href={`/groups/${group.id}/admin`}
-                className="btn-glass w-full sm:w-auto text-sm"
+                className="btn-glass press text-sm w-full sm:w-auto text-center"
               >
-                Manage Group
+                Manage group
               </Link>
             )}
             <Link
               href="/create"
-              className="btn-primary w-full sm:w-auto text-sm"
+              className="btn-primary press text-sm w-full sm:w-auto text-center"
             >
-              Create Event
+              Create event
             </Link>
           </div>
         </div>
+
+        <div className="mt-8 flex flex-wrap gap-x-10 gap-y-4">
+          <div>
+            <p className="eyebrow mb-1">Members</p>
+            <p className="stat-value">{group.member_count}</p>
+          </div>
+          <div>
+            <p className="eyebrow mb-1">Events</p>
+            <p className="stat-value">{events.length}</p>
+          </div>
+          <div>
+            <p className="eyebrow mb-1">Live now</p>
+            <p className="stat-value">{trendingEvents.length + ongoingEvents.length}</p>
+          </div>
+        </div>
+
+        {!group.is_public && (
+          <div className="panel mt-6 p-4 sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 space-y-1">
+                <p className="eyebrow">Wallet balance</p>
+                <p className="numeral text-2xl text-foreground">${wallet?.balance?.toFixed(2) || '0.00'}</p>
+                {group.resolver && (
+                  <p className="text-sm text-muted truncate">
+                    Resolver <span className="font-medium text-foreground">@{group.resolver.username || 'Unknown'}</span>
+                  </p>
+                )}
+              </div>
+              <Link
+                href="/profile?wallet=deposit#wallet"
+                className="btn-primary press w-full sm:w-auto text-sm text-center"
+              >
+                Deposit funds
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
 
       {trendingEvents.length > 0 && (
-        <section className="mb-12">
-          <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-red-300 pb-2">
-            🔥 Trending
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6 stagger">
+        <section className="mt-10">
+          <div className="section-head mb-5">
+            <span className="eyebrow-accent eyebrow">Trending</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-rows">
             {trendingEvents.map((event) => (
               <EventCard key={event.id} event={event} />
             ))}
@@ -238,11 +273,11 @@ export default function GroupPage() {
       )}
 
       {ongoingEvents.length > 0 && (
-        <section className="mb-12">
-          <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-brand-2/60 pb-2">
-            Ongoing Bets
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6 stagger">
+        <section className="mt-10">
+          <div className="section-head mb-5">
+            <span className="eyebrow">Ongoing bets</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-rows">
             {ongoingEvents.map((event) => (
               <EventCard key={event.id} event={event} />
             ))}
@@ -251,11 +286,11 @@ export default function GroupPage() {
       )}
 
       {endedEvents.length > 0 && (
-        <section className="mb-12">
-          <h2 className="text-xl sm:text-2xl font-display font-semibold text-foreground mb-4 inline-block border-b-2 border-gray-300 pb-2">
-            Ended Bets
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6 stagger">
+        <section className="mt-10">
+          <div className="section-head mb-5">
+            <span className="eyebrow">Ended bets</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-rows">
             {endedEvents.map((event) => (
               <EventCard key={event.id} event={event} />
             ))}
@@ -264,16 +299,57 @@ export default function GroupPage() {
       )}
 
       {events.length === 0 && (
-        <div className="glass-subtle rounded-3xl text-center py-12 px-6">
-          <p className="text-muted mb-4">No events yet. Create the first one!</p>
-          <Link
-            href="/create"
-            className="btn-primary"
-          >
-            Create Event
-          </Link>
+        <div className="mt-10 empty-state">
+          <div className="empty-state-icon">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+            </svg>
+          </div>
+          <p className="empty-state-title">No events yet</p>
+          <p className="empty-state-body">This group hasn&apos;t made a bet yet. Create the group&apos;s first event to get things moving.</p>
+          <Link href="/create" className="btn-primary press">Create the first event</Link>
         </div>
       )}
+
+      {/* Member roster */}
+      <section className="mt-10">
+        <div className="section-head mb-5">
+          <span className="eyebrow">Members</span>
+        </div>
+        {members.length > 0 ? (
+          <div className="card overflow-hidden">
+            <ul className="divide-y divide-hairline">
+              {members.map((member: any) => (
+                <li key={member.user_id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-hairline bg-surface-sunken text-xs font-semibold text-muted">
+                    {getInitials(member.username)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                    {member.username}
+                  </span>
+                  {member.user_id === group.created_by && (
+                    <span className="pill tone-info shrink-0">Creator</span>
+                  )}
+                  {member.role === 'admin' && (
+                    <span className="pill tone-accent shrink-0">Admin</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <div className="empty-state-icon">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-3.998-4.2" />
+              </svg>
+            </div>
+            <p className="empty-state-title">No members yet</p>
+            <p className="empty-state-body">Share the invite link so friends can join this group.</p>
+            <button onClick={handleCopyInviteLink} className="btn-primary press">Share invite link</button>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

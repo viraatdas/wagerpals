@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import EventCard from '@/components/EventCard';
 import { EventWithStats } from '@/lib/types';
 
@@ -46,16 +47,17 @@ export default function Explore() {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto px-4 py-8 mobile-page">
-        <div className="h-9 w-56 skeleton rounded-xl mb-6" />
+      <div className="page-shell mobile-page">
+        <div className="eyebrow mb-2">Public Markets</div>
+        <div className="skeleton h-9 w-56 rounded-xl mb-6" />
         <div className="flex flex-wrap gap-2 mb-6">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-10 w-28 skeleton rounded-xl" />
+            <div key={i} className="skeleton h-10 w-28 rounded-full" />
           ))}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-48 skeleton rounded-3xl" />
+            <div key={i} className="skeleton h-56 rounded-2xl" />
           ))}
         </div>
       </div>
@@ -72,17 +74,24 @@ export default function Explore() {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 mobile-page animate-rise">
-      <h1 className="font-display text-2xl sm:text-3xl font-semibold text-foreground mb-6">
-        Explore Events
-      </h1>
+    <div className="page-shell mobile-page animate-rise">
+      <div className="mb-6">
+        <div className="eyebrow mb-2">Public Markets</div>
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <h1 className="display-2">Explore Events</h1>
+          <span className="numeral stat-value tone-text tone-accent">{filteredEvents.length}</span>
+        </div>
+        <p className="lede mt-2">
+          Every open market that any public group has listed — sorted your way.
+        </p>
+      </div>
 
       <div className="grid grid-cols-2 gap-2 mb-6 sm:flex sm:flex-wrap">
         {filters.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setFilter(key)}
-            className={`text-sm ${filter === key ? 'btn-primary' : 'btn-glass'}`}
+            className={`text-sm press ${filter === key ? 'btn-primary' : 'btn-glass'}`}
           >
             {label}
           </button>
@@ -90,14 +99,25 @@ export default function Explore() {
       </div>
 
       {filteredEvents.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-rows">
           {filteredEvents.map((event) => (
             <EventCard key={event.id} event={event} />
           ))}
         </div>
       ) : (
-        <div className="glass-subtle rounded-3xl p-12 text-center">
-          <p className="text-muted">No active events found</p>
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+            </svg>
+          </div>
+          <h2 className="empty-state-title">No active public markets</h2>
+          <p className="empty-state-body">
+            Nothing is open right now. Check back soon, or head to one of your groups and list a market yourself.
+          </p>
+          <Link href="/all-events" className="btn-primary mt-2">
+            View Your Events
+          </Link>
         </div>
       )}
     </div>

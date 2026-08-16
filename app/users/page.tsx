@@ -21,6 +21,20 @@ interface GroupMember {
   status: string;
 }
 
+function netTone(net: number): 'tone-win' | 'tone-loss' | 'tone-neutral' {
+  if (net > 0) return 'tone-win';
+  if (net < 0) return 'tone-loss';
+  return 'tone-neutral';
+}
+
+function netText(net: number): string {
+  return `${net > 0 ? '+' : ''}$${net.toFixed(2)}`;
+}
+
+function initialOf(name: string | undefined): string {
+  return (name || '?').charAt(0).toUpperCase();
+}
+
 export default function UsersPage() {
   const user = useUser({ or: "return-null" });
   const router = useRouter();
@@ -65,7 +79,7 @@ export default function UsersPage() {
       const response = await fetch(`/api/groups?userId=${user.id}`);
       const data = await response.json();
       setGroups(Array.isArray(data) ? data : []);
-      
+
       // Auto-select first group if available
       if (data.length > 0) {
         setSelectedGroupId(data[0].id);
@@ -83,16 +97,16 @@ export default function UsersPage() {
     try {
       const response = await fetch(`/api/groups/members?groupId=${selectedGroupId}`);
       const members = await response.json();
-      
+
       // Filter only active members
       const activeMembers = members.filter((m: GroupMember) => m.status === 'active');
       setGroupMembers(activeMembers);
-      
+
       // Fetch user details for all members
       const userDetailsPromises = activeMembers.map((member: GroupMember) =>
         fetch(`/api/users?id=${member.user_id}`).then(res => res.json())
       );
-      
+
       const userDetails = await Promise.all(userDetailsPromises);
       setUsers(userDetails.filter(u => u && !u.error));
     } catch (error) {
@@ -117,13 +131,19 @@ export default function UsersPage() {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8 mobile-page">
-        <div className="h-9 w-40 skeleton rounded-xl mb-2" />
-        <div className="h-5 w-56 skeleton rounded-lg mb-8" />
-        <div className="h-20 skeleton rounded-2xl mb-8" />
-        <div className="grid gap-4">
+      <div className="page-shell-narrow mobile-page">
+        <div className="skeleton-line mb-2 h-8 w-40" />
+        <div className="skeleton-line mb-8 h-4 w-56" />
+        <div className="skeleton h-16 rounded-[var(--radius-card)] mb-6" />
+        <div className="skeleton h-32 rounded-[var(--radius-panel)] mb-4" />
+        <div className="card overflow-hidden">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-28 skeleton rounded-2xl" />
+            <div key={i} className="flex items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 last:border-b-0">
+              <div className="skeleton h-6 w-6 rounded-full flex-none" />
+              <div className="skeleton h-8 w-8 rounded-[var(--radius-chip)] flex-none" />
+              <div className="skeleton-line flex-1" />
+              <div className="skeleton-line w-16 flex-none" />
+            </div>
           ))}
         </div>
       </div>
@@ -134,50 +154,58 @@ export default function UsersPage() {
     return null;
   }
 
+  const [first, second, third, ...rest] = sortedUsers;
+
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 mobile-page animate-rise">
-      <h1 className="font-display text-3xl font-semibold text-foreground mb-2">
-        Users
-      </h1>
-      <p className="text-muted mb-8">
-        View members from your groups
-      </p>
+    <div className="page-shell-narrow mobile-page animate-rise">
+      <p className="eyebrow mb-2">Leaderboard</p>
+      <h1 className="display-1 mb-2">Users</h1>
+      <p className="lede mb-8">View members from your groups, ranked by net.</p>
 
       {groups.length === 0 ? (
-        <div className="glass-subtle rounded-3xl p-12 text-center">
-          <p className="text-muted mb-4">You're not part of any groups yet</p>
-          <button
-            onClick={() => router.push('/')}
-            className="btn-primary"
-          >
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 100-8 4 4 0 000 8zm6 0a4 4 0 100-8" />
+            </svg>
+          </div>
+          <p className="empty-state-title">You&apos;re not part of any groups yet</p>
+          <p className="empty-state-body">
+            Join or create a group to see who&apos;s winning and who owes who.
+          </p>
+          <button onClick={() => router.push('/')} className="btn-primary">
             Go to Home
           </button>
         </div>
       ) : (
         <>
-          {/* Modern Group Selector */}
+          {/* Group selector */}
           <div className="mb-8">
-            <label className="block text-sm font-medium text-muted mb-3">
+            <label className="field-label" id="group-selector-label">
               Select Group
             </label>
-            <div className="relative group-dropdown">
+            <div className="group-dropdown relative">
               <button
+                type="button"
                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="w-full glass rounded-2xl px-6 py-4 flex items-center justify-between transition focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20"
+                aria-haspopup="listbox"
+                aria-expanded={dropdownOpen}
+                aria-labelledby="group-selector-label"
+                className="card press flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:border-[var(--color-border-strong)] sm:px-5 sm:py-4"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-brand-gradient rounded-xl flex items-center justify-center text-white font-semibold">
-                    {selectedGroup?.name.charAt(0).toUpperCase()}
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="tone-accent tone-surface flex h-10 w-10 flex-none items-center justify-center rounded-[var(--radius-control)] border text-sm font-bold tone-text">
+                    {initialOf(selectedGroup?.name)}
                   </div>
-                  <div className="text-left">
-                    <div className="font-medium text-foreground">{selectedGroup?.name}</div>
-                    <div className="text-sm text-muted-2">
+                  <div className="min-w-0 text-left">
+                    <div className="truncate font-medium text-foreground">{selectedGroup?.name}</div>
+                    <div className="text-xs text-muted">
                       {selectedGroup?.member_count} {selectedGroup?.member_count === 1 ? 'member' : 'members'}
                     </div>
                   </div>
                 </div>
                 <svg
-                  className={`w-5 h-5 text-muted-2 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
+                  className={`h-5 w-5 flex-none text-muted transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -186,130 +214,185 @@ export default function UsersPage() {
                 </svg>
               </button>
 
-              {/* Dropdown Menu */}
               {dropdownOpen && (
-                <div className="absolute z-10 w-full mt-2 glass-strong rounded-2xl overflow-hidden animate-fade-in">
-                  {groups.map((group) => (
-                    <button
-                      key={group.id}
-                      onClick={() => {
-                        setSelectedGroupId(group.id);
-                        setDropdownOpen(false);
-                      }}
-                      className={`w-full px-6 py-4 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left ${
-                        selectedGroupId === group.id ? 'bg-brand-2/10' : ''
-                      }`}
-                    >
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-semibold ${
-                        selectedGroupId === group.id
-                          ? 'bg-brand-gradient text-white'
-                          : 'bg-gray-100 text-muted'
-                      }`}>
-                        {group.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1">
-                        <div className="font-medium text-foreground">{group.name}</div>
-                        <div className="text-sm text-muted-2">
-                          {group.member_count} {group.member_count === 1 ? 'member' : 'members'}
+                <div
+                  role="listbox"
+                  aria-labelledby="group-selector-label"
+                  className="card animate-sheet absolute z-10 mt-2 w-full overflow-hidden p-1.5"
+                >
+                  {groups.map((group) => {
+                    const active = selectedGroupId === group.id;
+                    return (
+                      <button
+                        type="button"
+                        key={group.id}
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => {
+                          setSelectedGroupId(group.id);
+                          setDropdownOpen(false);
+                        }}
+                        className={`press flex w-full items-center gap-3 rounded-[var(--radius-control)] px-3 py-2.5 text-left transition-colors ${
+                          active ? 'tone-accent tone-surface' : 'hover:bg-[var(--color-surface-sunken)]'
+                        }`}
+                      >
+                        <div
+                          className={`flex h-9 w-9 flex-none items-center justify-center rounded-[var(--radius-chip)] text-xs font-bold ${
+                            active ? 'bg-[var(--color-accent)] text-white' : 'bg-[var(--color-surface-sunken)] text-muted'
+                          }`}
+                        >
+                          {initialOf(group.name)}
                         </div>
-                      </div>
-                      {selectedGroupId === group.id && (
-                        <svg className="w-5 h-5 text-brand-2" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </button>
-                  ))}
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-foreground">{group.name}</div>
+                          <div className="text-xs text-muted">
+                            {group.member_count} {group.member_count === 1 ? 'member' : 'members'}
+                          </div>
+                        </div>
+                        {active && (
+                          <svg className="h-4 w-4 flex-none tone-text" fill="currentColor" viewBox="0 0 20 20">
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Users List */}
+          {/* Leaderboard */}
           {loadingMembers ? (
-            <div className="grid gap-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-28 skeleton rounded-2xl" />
-              ))}
+            <div className="space-y-4">
+              <div className="skeleton h-32 rounded-[var(--radius-panel)]" />
+              <div className="card overflow-hidden">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 last:border-b-0">
+                    <div className="skeleton h-6 w-6 rounded-full flex-none" />
+                    <div className="skeleton h-8 w-8 rounded-[var(--radius-chip)] flex-none" />
+                    <div className="skeleton-line flex-1" />
+                    <div className="skeleton-line w-16 flex-none" />
+                  </div>
+                ))}
+              </div>
             </div>
           ) : users.length === 0 ? (
-            <div className="glass-subtle rounded-3xl p-12 text-center">
-              <p className="text-muted">No members in this group yet</p>
+            <div className="empty-state">
+              <div className="empty-state-icon">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              </div>
+              <p className="empty-state-title">No members in this group yet</p>
+              <p className="empty-state-body">
+                Invite friends to this group and their bets will show up on the leaderboard.
+              </p>
             </div>
           ) : (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm text-muted">
+            <div className="space-y-4">
+              <div className="section-head">
+                <span className="eyebrow">
                   {users.length} {users.length === 1 ? 'member' : 'members'}
-                </p>
+                </span>
               </div>
-              <div className="grid gap-4 stagger">
-                {sortedUsers.map((user, index) => {
-                  const rank = index + 1;
-                  const isTop = rank <= 3;
-                  const rankStyles =
-                    rank === 1
-                      ? 'bg-amber-100 text-amber-700'
-                      : rank === 2
-                      ? 'bg-gray-200 text-gray-600'
-                      : rank === 3
-                      ? 'bg-brand-2/10 text-brand-2'
-                      : 'bg-gray-100 text-muted-2';
-                  return (
-                  <div
-                    key={user.id}
-                    className={`glass glass-hover rounded-2xl p-6 ${
-                      isTop ? 'border-brand-2/30' : ''
-                    }`}
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold tabular-nums ${rankStyles}`}>
-                        {rank}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-3">
-                          <span className="text-2xl font-display font-semibold text-foreground break-words">
-                            @{user.username}
-                          </span>
-                          {user.streak > 0 && (
-                            <span className="chip chip-yes">
-                              🔥 {user.streak} streak
-                            </span>
-                          )}
-                        </div>
 
-                        <div className="grid grid-cols-3 gap-4 mt-4">
-                          <div>
-                            <div className="text-xs text-muted-2 mb-1">Total Bet</div>
-                            <div className="text-xl font-medium text-foreground tabular-nums">
-                              ${user.total_bet.toFixed(2)}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-muted-2 mb-1">Net Total</div>
-                            <div
-                              className={`text-xl font-medium tabular-nums ${
-                                user.net_total > 0
-                                  ? 'text-green-600'
-                                  : user.net_total < 0
-                                  ? 'text-red-600'
-                                  : 'text-muted'
-                              }`}
-                            >
-                              {user.net_total > 0 ? '+' : ''}${user.net_total.toFixed(2)}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-muted-2 mb-1">Win Streak</div>
-                            <div className="text-xl font-medium text-foreground tabular-nums">🔥 {user.streak}</div>
-                          </div>
-                        </div>
+              {/* Rank 1 — the focal point */}
+              {first && (
+                <div className="tone-gold card-focal hero-field rail-top relative overflow-hidden p-5 sm:p-7">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                      <div className="tone-surface flex h-12 w-12 flex-none items-center justify-center rounded-[var(--radius-control)] border text-lg font-bold tone-text sm:h-14 sm:w-14">
+                        {initialOf(first.username)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="eyebrow tone-text mb-1">Rank 1</p>
+                        <p className="market-title truncate text-xl text-foreground sm:text-2xl">
+                          @{first.username}
+                        </p>
+                        {first.streak > 0 && (
+                          <span className="pill mt-2 inline-flex">🔥 {first.streak} streak</span>
+                        )}
                       </div>
                     </div>
+                    <div className="flex-none text-right">
+                      <p className="eyebrow mb-1">Net</p>
+                      <p className="numeral tone-text text-3xl sm:text-4xl">{netText(first.net_total)}</p>
+                    </div>
                   </div>
-                  );
-                })}
-              </div>
+                  <div className="tone-surface mt-6 flex items-center gap-8 rounded-[var(--radius-control)] border px-4 py-3">
+                    <div>
+                      <p className="eyebrow mb-1">Total Bet</p>
+                      <p className="stat-value">${first.total_bet.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="eyebrow mb-1">Win Streak</p>
+                      <p className="stat-value">{first.streak}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Ranks 2-3 — reduced */}
+              {(second || third) && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[second, third].map((u, i) =>
+                    u ? (
+                      <div key={u.id} className={`${netTone(u.net_total)} card flex items-center justify-between gap-3 p-4`}>
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-9 w-9 flex-none items-center justify-center rounded-[var(--radius-chip)] bg-[var(--color-surface-sunken)] text-sm font-bold text-muted">
+                            {initialOf(u.username)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="eyebrow mb-0.5">Rank {i + 2}</p>
+                            <p className="truncate font-medium text-foreground">@{u.username}</p>
+                          </div>
+                        </div>
+                        <div className="flex-none text-right">
+                          <p className="numeral tone-text text-lg">{netText(u.net_total)}</p>
+                          {u.streak > 0 && <p className="mt-0.5 text-xs text-muted">🔥 {u.streak}</p>}
+                        </div>
+                      </div>
+                    ) : null
+                  )}
+                </div>
+              )}
+
+              {/* Rest — dense table */}
+              {rest.length > 0 && (
+                <div className="card overflow-hidden">
+                  {rest.map((u, i) => {
+                    const rank = i + 4;
+                    return (
+                      <div
+                        key={u.id}
+                        className={`${netTone(u.net_total)} flex items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 transition-colors last:border-b-0 hover:bg-[var(--color-surface-sunken)]`}
+                      >
+                        <span className="numeral w-6 flex-none text-sm text-muted">{rank}</span>
+                        <div className="flex h-8 w-8 flex-none items-center justify-center rounded-[var(--radius-chip)] bg-[var(--color-surface-sunken)] text-xs font-bold text-muted">
+                          {initialOf(u.username)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            @{u.username}
+                            {u.streak > 0 && <span className="ml-1.5 text-xs font-normal text-muted">🔥 {u.streak}</span>}
+                          </p>
+                        </div>
+                        <div className="flex-none text-right">
+                          <span className="numeral tone-text text-sm">{netText(u.net_total)}</span>
+                          <span className="ml-2 hidden text-xs text-muted sm:inline">
+                            bet ${u.total_bet.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </>
@@ -317,4 +400,3 @@ export default function UsersPage() {
     </div>
   );
 }
-

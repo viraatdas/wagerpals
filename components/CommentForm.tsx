@@ -19,6 +19,12 @@ export interface CommentFormProps {
   maxLength?: number; // default MAX_COMMENT_LENGTH from '@/lib/comments'
   disabled?: boolean;
   compact?: boolean; // tighter padding + 2 rows, used for replies/edits
+  // Presentational only: when set, renders a "Replying to @x" bar above the
+  // textarea. Does not affect submission, payloads, or validation.
+  replyingToUsername?: string | null;
+  // Presentational only: lets a caller (e.g. an empty-state "write the first
+  // comment" action) focus this specific textarea via document.getElementById.
+  textareaId?: string;
   onSubmit: (content: string) => Promise<void>; // rejects -> keep the text, show the error
   onCancel?: () => void; // when provided, render a Cancel button
 }
@@ -50,6 +56,8 @@ export default function CommentForm({
   maxLength = MAX_COMMENT_LENGTH,
   disabled = false,
   compact = false,
+  replyingToUsername = null,
+  textareaId,
   onSubmit,
   onCancel,
 }: CommentFormProps) {
@@ -74,6 +82,7 @@ export default function CommentForm({
   const candidates = mentionOpen ? getMentionCandidates(members, mentionQuery) : [];
   const popupOpen = mentionOpen && candidates.length > 0;
   const clampedHighlight = candidates.length > 0 ? Math.min(highlightIndex, candidates.length - 1) : 0;
+  const activeOptionId = popupOpen ? `${listboxId}-option-${clampedHighlight}` : undefined;
 
   // Reset the highlighted candidate whenever the query text changes.
   useEffect(() => {
@@ -99,6 +108,15 @@ export default function CommentForm({
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caretVersion]);
+
+  // Presentational only: let the textarea grow with its content instead of
+  // scrolling internally, up to the browser's natural sizing.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [content, compact]);
 
   function updateMentionState(el: HTMLTextAreaElement) {
     const caret = el.selectionStart ?? el.value.length;
@@ -196,12 +214,32 @@ export default function CommentForm({
   const remaining = maxLength - usedLength;
   const showCounter = remaining <= 200;
   const overLimit = usedLength >= maxLength;
+  const counterTone = overLimit || remaining <= 20 ? 'tone-no' : 'tone-pending';
   const submitDisabled = submitting || disabled || content.trim().length === 0;
 
   return (
-    <form onSubmit={handleSubmit} className={`glass rounded-2xl ${compact ? 'p-3' : 'p-4'}`}>
+    <form onSubmit={handleSubmit} className={`card ${compact ? 'p-3' : 'p-4'}`}>
+      {replyingToUsername && (
+        <div className="tone-info tone-surface mb-2.5 flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5">
+          <span className="tone-text min-w-0 truncate text-xs font-medium">
+            Replying to <span className="font-semibold">@{replyingToUsername}</span>
+          </span>
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              aria-label="Cancel reply"
+              className="press tone-text shrink-0 text-xs font-medium hover:opacity-70"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="relative mb-3">
         <textarea
+          id={textareaId}
           ref={textareaRef}
           value={content}
           onChange={handleChange}
@@ -216,29 +254,33 @@ export default function CommentForm({
           aria-autocomplete="list"
           aria-expanded={popupOpen}
           aria-controls={listboxId}
-          className="w-full bg-white border border-gray-300 text-foreground placeholder:text-muted-2 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:border-brand-2 focus:ring-2 focus:ring-brand-2/20 transition disabled:opacity-60 disabled:cursor-not-allowed"
+          aria-activedescendant={activeOptionId}
+          className={`input resize-none ${error ? 'input-invalid' : ''}`}
         />
 
         {popupOpen && (
           <div
             id={listboxId}
             role="listbox"
-            className="absolute left-0 right-0 z-20 mt-1 max-h-56 overflow-auto rounded-xl border border-gray-200 bg-white shadow-lg py-1"
+            className="card absolute left-0 right-0 z-20 mt-1 max-h-56 overflow-auto py-1 shadow-elev-3"
           >
             {candidates.map((member, i) => (
               <button
                 key={member.user_id}
+                id={`${listboxId}-option-${i}`}
                 type="button"
                 role="option"
                 aria-selected={i === clampedHighlight}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => acceptMention(member)}
-                className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left text-sm transition ${
-                  i === clampedHighlight ? 'bg-brand-2/10 text-brand-2' : 'text-foreground hover:bg-gray-50'
+                className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm transition ${
+                  i === clampedHighlight
+                    ? 'tone-accent tone-text bg-[var(--tone-fill)]'
+                    : 'text-foreground hover:bg-surface-sunken'
                 }`}
               >
                 <span className="font-medium">@{member.username}</span>
-                {member.role && <span className="text-xs text-muted-2">{member.role}</span>}
+                {member.role && <span className="text-xs text-muted">{member.role}</span>}
               </button>
             ))}
           </div>
@@ -246,16 +288,16 @@ export default function CommentForm({
       </div>
 
       {error && (
-        <p role="alert" className="text-xs text-red-600 mb-2">
+        <p role="alert" className="tone-no tone-text mb-2 text-xs">
           {error}
         </p>
       )}
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex flex-col gap-0.5 min-w-0">
-          {!compact && <span className="text-xs text-muted-2">@ to mention · ⌘⏎ to post</span>}
+          {!compact && <span className="field-hint">@ to mention · ⌘⏎ to post</span>}
           {showCounter && (
-            <span className={`text-xs tabular-nums ${overLimit ? 'text-red-600' : 'text-muted-2'}`}>
+            <span className={`${counterTone} tone-text text-xs font-medium tabular-nums`}>
               {usedLength}/{maxLength}
             </span>
           )}

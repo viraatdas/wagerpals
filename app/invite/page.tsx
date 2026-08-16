@@ -259,88 +259,144 @@ export default async function InvitePage({
         invite.sideA
       )}&sideB=${encodeURIComponent(invite.sideB)}${legacyParams}`;
 
+  // Presentation-only: a visitor who lands on /invite with no event id, no
+  // legacy pick, and none of the title/side query params filled in has
+  // nothing to see here — point them at making their own wager instead of
+  // rendering a fake "Side A vs Side B" card.
+  const isEmptyInvite =
+    !hasEvent &&
+    !invite.legacyPick &&
+    invite.title === DEFAULT_TITLE &&
+    invite.sideA === DEFAULT_SIDE_A &&
+    invite.sideB === DEFAULT_SIDE_B;
+
+  // Status tone: resolved markets take the winner's colour (or neutral if
+  // the winner isn't known), a closed-but-unresolved market is "pending" an
+  // outcome, and a still-open market is purely informational.
+  const statusTone = isResolved
+    ? invite.winningSide === invite.sideA
+      ? 'tone-yes'
+      : invite.winningSide === invite.sideB
+      ? 'tone-no'
+      : 'tone-neutral'
+    : invite.endTime && invite.endTime <= Date.now()
+    ? 'tone-pending'
+    : 'tone-info';
+
+  const hasBothCounts = typeof invite.sideACount === 'number' && typeof invite.sideBCount === 'number';
+  const totalCount = hasBothCounts ? (invite.sideACount as number) + (invite.sideBCount as number) : 0;
+  const sideAPct = hasBothCounts && totalCount > 0 ? Math.round(((invite.sideACount as number) / totalCount) * 100) : 50;
+
   return (
-    <div className="max-w-lg mx-auto px-4 py-12 animate-rise">
+    <div className="page-shell-narrow mobile-page animate-rise">
       {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="font-display text-3xl font-semibold text-foreground mb-1">
-          <span className="font-light">Wager</span>
-          <span className="text-gradient font-bold">Pals</span>
-        </h1>
-        <p className="text-muted">You&apos;ve been invited to a wager!</p>
+        <h1 className="display-2 mb-1">WagerPals</h1>
+        <p className="lede mx-auto">You&apos;ve been invited to a wager!</p>
       </div>
 
-      {/* Wager Card */}
-      <div className="glass-strong rounded-3xl p-8 mb-8">
-        <div className="flex justify-center mb-3">
-          <span className={`chip ${isResolved ? 'chip-yes' : ''}`}>{statusLabel}</span>
-        </div>
-
-        <h2 className="font-display text-2xl font-semibold text-foreground text-center mb-6">
-          {invite.title}
-        </h2>
-
-        <div className="flex items-center gap-4 mb-4">
-          <div className="flex-1 glass-subtle rounded-2xl p-4 text-center">
-            <p className="text-xs font-semibold text-muted-2 uppercase tracking-wide mb-1">
-              {invite.sideA}
-            </p>
-            {typeof invite.sideACount === 'number' && (
-              <p className="text-lg font-semibold text-green-700">
-                {invite.sideACount} {invite.sideACount === 1 ? 'backer' : 'backers'}
-              </p>
-            )}
+      {isEmptyInvite ? (
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <span className="text-2xl" aria-hidden="true">🎟️</span>
           </div>
-          <span className="text-sm font-bold text-muted-2">vs</span>
-          <div className="flex-1 glass-subtle rounded-2xl p-4 text-center">
-            <p className="text-xs font-semibold text-muted-2 uppercase tracking-wide mb-1">
-              {invite.sideB}
-            </p>
-            {typeof invite.sideBCount === 'number' && (
-              <p className="text-lg font-semibold text-red-600">
-                {invite.sideBCount} {invite.sideBCount === 1 ? 'backer' : 'backers'}
-              </p>
-            )}
-          </div>
+          <p className="empty-state-title">Nothing to invite to yet</p>
+          <p className="empty-state-body">
+            This link isn&apos;t tied to a wager. Start one with your group, then share that link instead.
+          </p>
+          <Link href="/create" className="btn-primary press mt-2">
+            Create an event
+          </Link>
         </div>
+      ) : (
+        <>
+          {/* Wager Card */}
+          <div className={`card-focal rail-top ${statusTone} p-8 mb-8`}>
+            <div className="flex justify-center mb-4">
+              <span className={`pill ${statusTone}`}>
+                <span className="tone-dot" aria-hidden="true" />
+                {statusLabel}
+              </span>
+            </div>
 
-        <p className="text-center text-sm text-muted-2">
-          {stakeText ||
-            (invite.legacyPick
-              ? `Suggested pick: ${invite.legacyPick}.`
-              : 'Open the app or the web to see the latest odds and place a bet.')}
-        </p>
-      </div>
+            <h2 className="market-title text-2xl text-center mb-6">{invite.title}</h2>
 
-      {/* Action Buttons */}
-      <div className="space-y-3">
-        <a href={openInAppHref} className="btn-glass block w-full py-4 rounded-2xl text-center text-lg">
-          Open in WagerPals
-        </a>
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 mb-4">
+              <div className="tone-yes tone-surface border rounded-2xl p-4 text-center min-w-0">
+                <p className="eyebrow mb-1 truncate">{invite.sideA}</p>
+                {typeof invite.sideACount === 'number' && (
+                  <p className="tone-text font-semibold">
+                    {invite.sideACount} {invite.sideACount === 1 ? 'backer' : 'backers'}
+                  </p>
+                )}
+              </div>
+              <span className="eyebrow">vs</span>
+              <div className="tone-no tone-surface border rounded-2xl p-4 text-center min-w-0">
+                <p className="eyebrow mb-1 truncate">{invite.sideB}</p>
+                {typeof invite.sideBCount === 'number' && (
+                  <p className="tone-text font-semibold">
+                    {invite.sideBCount} {invite.sideBCount === 1 ? 'backer' : 'backers'}
+                  </p>
+                )}
+              </div>
+            </div>
 
-        <a
-          href={APP_STORE_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn-primary block w-full py-4 rounded-2xl text-center text-lg"
-        >
-          Get WagerPals on the App Store
-        </a>
+            {hasBothCounts && (
+              <div className="odds-track mb-4">
+                <div className="odds-fill odds-fill-yes" style={{ width: `${sideAPct}%` }} />
+                <div className="odds-fill odds-fill-no" style={{ width: `${100 - sideAPct}%` }} />
+              </div>
+            )}
 
-        <Link href={openOnWebHref} className="btn-glass block w-full py-4 rounded-2xl text-center text-lg">
-          Open on the web
-        </Link>
-      </div>
+            <p className="text-center text-sm text-muted">
+              {stakeText ||
+                (invite.legacyPick
+                  ? `Suggested pick: ${invite.legacyPick}.`
+                  : 'Open the app or the web to see the latest odds and place a bet.')}
+            </p>
+          </div>
+
+          {/* Invite link — large, monospace, one-click-selectable so it can
+              be copied without any client-side JS on this server page. */}
+          {hasEvent && (
+            <div className="card p-5 mb-8">
+              <p className="field-label mb-2">Invite link</p>
+              <p className="select-all break-all font-mono text-sm text-foreground">{openInAppHref}</p>
+              <p className="field-hint mt-2">Tap the link to select it, then copy and share it anywhere.</p>
+            </div>
+          )}
+
+          {/* Action Buttons — equal-weight choices */}
+          <div className="space-y-3">
+            <a href={openInAppHref} className="btn-glass press block w-full py-4 text-center text-lg">
+              Open in WagerPals
+            </a>
+
+            <a
+              href={APP_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary on-accent press block w-full py-4 text-center text-lg"
+            >
+              Get WagerPals on the App Store
+            </a>
+
+            <Link href={openOnWebHref} className="btn-glass press block w-full py-4 text-center text-lg">
+              Open on the web
+            </Link>
+          </div>
+        </>
+      )}
 
       {/* Explainer for visitors without the app (which, by definition, is everyone here) */}
-      <p className="text-center text-xs text-muted-2 mt-8">
+      <p className="text-center text-xs text-muted mt-8">
         WagerPals is a lightweight place where friends create wagers and settle up together.{' '}
         <Link href="/" className="text-brand-2 hover:underline">
           Learn more
         </Link>
       </p>
       <noscript>
-        <p className="text-center text-xs text-muted-2 mt-2">
+        <p className="text-center text-xs text-muted mt-2">
           Don&apos;t have the app? Get it at {APP_STORE_URL}
         </p>
       </noscript>

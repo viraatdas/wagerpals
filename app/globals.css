@@ -420,11 +420,596 @@ input, select, textarea {
 }
 ::-webkit-scrollbar-thumb:hover { background: rgb(var(--surface) / 0.28); background-clip: content-box; }
 
+/* ============================================================
+   n8 — Flair layer: type scale, tone system, market chrome, motion
+   ------------------------------------------------------------
+   Additive only. Nothing above this line is redefined; the token
+   block in :root remains n1's. Everything here composes from
+   those tokens so the whole web surface reads as one system.
+   ============================================================ */
+
+/* ---------- Focus: one visible ring everywhere ---------- */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+/* Elements that sit on an accent fill get a light ring instead */
+.on-accent:focus-visible {
+  outline-color: #ffffff;
+}
+/* Skip link — first tab stop in the layout */
+.skip-link {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 100;
+  transform: translateY(-200%);
+  transition: transform var(--duration-fast) var(--ease-out);
+  background: var(--color-accent);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-elev-4);
+}
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+@layer components {
+  /* ==========================================================
+     1. TYPE — a confident scale with a real top end
+     ========================================================== */
+
+  /* Small uppercase label. The signature "market" label treatment.
+     Uses text-secondary (#6b7280 = 4.8:1 on white) so it passes AA. */
+  .eyebrow {
+    font-size: 0.6875rem;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+  }
+  .eyebrow-accent { color: var(--color-accent-hover); }
+
+  /* Page-level display headings. Fluid, tight, display face. */
+  .display-1 {
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-size: clamp(2rem, 1.4rem + 2.6vw, 3.25rem);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+  .display-2 {
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-size: clamp(1.625rem, 1.3rem + 1.4vw, 2.25rem);
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+  .display-3 {
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-size: clamp(1.25rem, 1.1rem + 0.7vw, 1.5rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-weight: 650;
+    color: var(--color-text);
+  }
+  /* The market question itself — the thing people actually read. */
+  .market-title {
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+    line-height: 1.2;
+    color: var(--color-text);
+    overflow-wrap: anywhere;
+  }
+  /* Big money / percentage figures. */
+  .numeral {
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+  .lede {
+    font-size: var(--text-lg);
+    line-height: 1.55;
+    color: var(--color-text-secondary);
+    max-width: 46ch;
+  }
+
+  /* ==========================================================
+     2. TONE — one semantic colour system, AA-safe
+     ------------------------------------------------------------
+     Set a tone on a wrapper, then use .pill / .tone-dot /
+     .tone-text / .tone-bar inside it. --tone-ink is always an
+     AA-passing text colour; --tone-solid is the saturated fill
+     used for bars and dots only.
+     ========================================================== */
+  .tone-yes, .tone-win {
+    --tone-ink: #15803d;
+    --tone-solid: var(--color-yes);
+    --tone-fill: rgba(22, 163, 74, 0.09);
+    --tone-line: rgba(22, 163, 74, 0.28);
+  }
+  .tone-no, .tone-loss {
+    --tone-ink: #b91c1c;
+    --tone-solid: var(--color-no);
+    --tone-fill: rgba(220, 38, 38, 0.08);
+    --tone-line: rgba(220, 38, 38, 0.26);
+  }
+  .tone-pending {
+    --tone-ink: #b45309;
+    --tone-solid: var(--color-pending);
+    --tone-fill: rgba(217, 119, 6, 0.09);
+    --tone-line: rgba(217, 119, 6, 0.28);
+  }
+  .tone-info {
+    --tone-ink: #0369a1;
+    --tone-solid: var(--color-info);
+    --tone-fill: rgba(2, 132, 199, 0.09);
+    --tone-line: rgba(2, 132, 199, 0.26);
+  }
+  .tone-accent {
+    --tone-ink: var(--color-accent-hover);
+    --tone-solid: var(--color-accent);
+    --tone-fill: var(--color-accent-fill);
+    --tone-line: rgba(37, 99, 235, 0.26);
+  }
+  /* Gold — lifted from the coin in the brand mark. Reserved for
+     money that has been WON. Never use it as a generic accent. */
+  .tone-gold {
+    --tone-ink: #92400e;
+    --tone-solid: #d97706;
+    --tone-fill: rgba(245, 158, 11, 0.12);
+    --tone-line: rgba(217, 119, 6, 0.3);
+  }
+  .tone-neutral {
+    /* Not --color-text-secondary: #6b7280 measures 4.48:1 on this tone's own
+       fill, a hair under AA. #646b78 clears it (4.97:1) at the same weight. */
+    --tone-ink: #646b78;
+    --tone-solid: var(--color-text-muted);
+    --tone-fill: rgb(var(--surface) / 0.04);
+    --tone-line: var(--color-border);
+  }
+
+  /* NOTE: .tone-text is deliberately declared at the END of this layer
+     (see "tone ink, declared last" below) so it wins the color cascade
+     against .display-* / .stat-value / .market-title when combined. */
+  .tone-surface {
+    background: var(--tone-fill, transparent);
+    border-color: var(--tone-line, var(--color-border));
+  }
+  .tone-dot {
+    display: inline-block;
+    width: 0.4375rem;
+    height: 0.4375rem;
+    border-radius: var(--radius-pill);
+    background: var(--tone-solid, currentColor);
+    flex: none;
+  }
+  /* Semantic pill. Composes with .tone-* on itself or an ancestor. */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    line-height: 1;
+    padding: 0.3125rem 0.625rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--tone-line, var(--color-border));
+    background: var(--tone-fill, rgb(var(--surface) / 0.04));
+    color: var(--tone-ink, var(--color-text-secondary));
+    white-space: nowrap;
+  }
+  .pill-solid {
+    border-color: transparent;
+    background: var(--tone-solid, var(--color-accent));
+    color: #fff;
+  }
+
+  /* ==========================================================
+     3. SURFACES — sharper cards, real hierarchy
+     ========================================================== */
+  .card {
+    position: relative;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-elev-2);
+  }
+  .card-interactive {
+    transition: transform var(--duration-base) var(--ease-out),
+      box-shadow var(--duration-base) var(--ease-out),
+      border-color var(--duration-base) var(--ease-out);
+  }
+  .card-interactive:hover {
+    transform: translateY(-2px);
+    border-color: var(--color-border-strong);
+    box-shadow: var(--shadow-elev-3);
+  }
+  .card-interactive:active { transform: translateY(0); }
+  /* The one card on a page that matters most. */
+  .card-focal {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-elev-4);
+  }
+  .panel {
+    background: var(--color-surface-sunken);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+  }
+  /* Thin coloured rail down the leading edge — marks the tone of a card. */
+  .rail {
+    position: relative;
+    overflow: hidden;
+  }
+  .rail::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--tone-solid, var(--color-accent));
+  }
+  /* Same idea across the top edge, for grid cards. */
+  .rail-top { position: relative; overflow: hidden; }
+  .rail-top::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 3px;
+    background: var(--tone-solid, var(--color-accent));
+  }
+  .hairline { border-color: var(--color-border); }
+  .rule {
+    height: 1px;
+    background: var(--color-border);
+    border: 0;
+  }
+
+  /* Page shell — identical gutters on every route. */
+  .page-shell {
+    width: 100%;
+    max-width: 72rem;
+    margin-inline: auto;
+    padding-inline: 1rem;
+    padding-block: 1.5rem 3rem;
+  }
+  @media (min-width: 768px) {
+    .page-shell { padding-inline: 1.5rem; padding-block: 2.5rem 4rem; }
+  }
+  .page-shell-narrow {
+    width: 100%;
+    max-width: 48rem;
+    margin-inline: auto;
+    padding-inline: 1rem;
+    padding-block: 1.5rem 3rem;
+  }
+  @media (min-width: 768px) {
+    .page-shell-narrow { padding-inline: 1.5rem; padding-block: 2.5rem 4rem; }
+  }
+  /* Section heading rule: label, then a hairline that fills the row. */
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .section-head::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+  }
+
+  /* ==========================================================
+     4. MARKET CHROME — the signature element
+     ========================================================== */
+  .odds-track {
+    display: flex;
+    width: 100%;
+    height: 0.625rem;
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+    background: var(--color-surface-sunken);
+    border: 1px solid var(--color-border);
+    isolation: isolate;
+  }
+  .odds-fill {
+    height: 100%;
+    min-width: 0;
+    transition: width var(--duration-slow) var(--ease-out);
+  }
+  .odds-fill-yes { background: var(--color-yes); }
+  .odds-fill-no { background: var(--color-no); }
+  /* Hairline between the two halves so a 100/0 split still reads. */
+  .odds-fill-no { box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.7); }
+
+  /* Stat cell — eyebrow above a numeral. */
+  .stat-value {
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    font-size: var(--text-2xl);
+    line-height: 1.1;
+    color: var(--color-text);
+  }
+
+  /* ==========================================================
+     5. CONTROLS — inputs and semantic buttons
+     ========================================================== */
+  .input {
+    width: 100%;
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-control);
+    padding: 0.625rem 0.875rem;
+    box-shadow: var(--shadow-elev-1);
+    transition: border-color var(--duration-fast) var(--ease-out),
+      box-shadow var(--duration-fast) var(--ease-out);
+  }
+  .input::placeholder { color: var(--color-text-muted); }
+  .input:hover { border-color: #9ca3af; }
+  .input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  }
+  .input:disabled {
+    background: var(--color-surface-sunken);
+    color: var(--color-text-secondary);
+    cursor: not-allowed;
+  }
+  .input-invalid {
+    border-color: var(--color-no);
+  }
+  .input-invalid:focus {
+    border-color: var(--color-no);
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+  }
+  .field-label {
+    display: block;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+    margin-bottom: 0.5rem;
+  }
+  .field-hint {
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    color: var(--color-text-secondary);
+  }
+
+  .btn-success,
+  .btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: var(--text-sm);
+    color: #fff;
+    border-radius: var(--radius-pill);
+    padding: 0.5rem 1rem;
+    border: 1px solid transparent;
+    transition: filter var(--duration-fast) var(--ease-out),
+      transform var(--duration-fast) var(--ease-out),
+      box-shadow var(--duration-fast) var(--ease-out);
+  }
+  .btn-success { background: #15803d; box-shadow: 0 1px 2px rgba(21, 128, 61, 0.3); }
+  .btn-danger  { background: #b91c1c; box-shadow: 0 1px 2px rgba(185, 28, 28, 0.3); }
+  .btn-success:hover, .btn-danger:hover { filter: brightness(1.08); }
+  .btn-success:active, .btn-danger:active { transform: scale(0.96); }
+  .btn-success:disabled, .btn-danger:disabled { opacity: 0.55; filter: none; transform: none; }
+  /* Quiet bordered variants for destructive/positive row actions. */
+  .btn-quiet-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: #b91c1c;
+    background: rgba(220, 38, 38, 0.06);
+    border: 1px solid rgba(220, 38, 38, 0.22);
+    border-radius: var(--radius-pill);
+    padding: 0.375rem 0.75rem;
+    transition: background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  }
+  .btn-quiet-danger:hover { background: rgba(220, 38, 38, 0.12); }
+  .btn-quiet-danger:active { transform: scale(0.96); }
+  .btn-quiet-success {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: #15803d;
+    background: rgba(22, 163, 74, 0.07);
+    border: 1px solid rgba(22, 163, 74, 0.24);
+    border-radius: var(--radius-pill);
+    padding: 0.375rem 0.75rem;
+    transition: background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  }
+  .btn-quiet-success:hover { background: rgba(22, 163, 74, 0.13); }
+  .btn-quiet-success:active { transform: scale(0.96); }
+
+  /* Micro-interaction for any pressable element that isn't a .btn-*. */
+  .press {
+    transition: transform var(--duration-fast) var(--ease-out),
+      background-color var(--duration-fast) var(--ease-out),
+      border-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out);
+  }
+  .press:active { transform: scale(0.97); }
+
+  /* ==========================================================
+     6. EMPTY + LOADING STATES
+     ========================================================== */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.75rem;
+    padding: 3rem 1.5rem;
+    background: var(--color-surface);
+    border: 1px dashed var(--color-border-strong);
+    border-radius: var(--radius-card);
+  }
+  .empty-state-icon {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-accent-fill);
+    color: var(--color-accent-hover);
+  }
+  .empty-state-title {
+    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-size: var(--text-lg);
+    font-weight: 650;
+    letter-spacing: -0.015em;
+    color: var(--color-text);
+  }
+  .empty-state-body {
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+    max-width: 34ch;
+  }
+
+  /* Skeleton primitives — always prefer these over a spinner. */
+  .skeleton-line {
+    height: 0.75rem;
+    border-radius: var(--radius-pill);
+    background: rgb(var(--surface) / 0.07);
+    position: relative;
+    overflow: hidden;
+  }
+  .skeleton-line::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent);
+    animation: shimmer 1.4s infinite;
+  }
+
+  /* ==========================================================
+     8. TONE INK, DECLARED LAST
+     ------------------------------------------------------------
+     Equal specificity means source order decides, and the type
+     and surface classes above all set `color`. Declaring the ink
+     here lets `display-2 tone-text tone-loss` (and every other
+     combination the pages use) actually render in its tone.
+     A Tailwind text-* utility still wins over this, which is the
+     behaviour we want for deliberate one-off overrides.
+     ========================================================== */
+  .tone-text { color: var(--tone-ink, var(--color-text-secondary)); }
+}
+
+/* ============================================================
+   7. MOTION — only where it carries meaning
+   ============================================================ */
+
+/* A bet landing: the stake drops in and settles. */
+@keyframes betLand {
+  0%   { opacity: 0; transform: translateY(-8px) scale(0.94); }
+  55%  { opacity: 1; transform: translateY(0) scale(1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-bet-land { animation: betLand var(--duration-slow) var(--ease-spring) both; }
+
+/* The resolution reveal: the answer turns over. */
+@keyframes revealTurn {
+  0%   { opacity: 0; transform: perspective(600px) rotateX(-32deg) translateY(10px); }
+  100% { opacity: 1; transform: perspective(600px) rotateX(0) translateY(0); }
+}
+.animate-reveal { animation: revealTurn var(--duration-slower) var(--ease-out) both; transform-origin: top center; }
+
+/* A countdown crossing into the final hour. */
+@keyframes urgentBeat {
+  0%, 100% { transform: scale(1); }
+  40%      { transform: scale(1.06); }
+}
+.animate-urgent { animation: urgentBeat 1.8s var(--ease-in-out) infinite; }
+
+/* A value that just changed — brief tone wash, no layout shift. */
+@keyframes valueFlash {
+  0%   { background-color: var(--tone-fill, var(--color-accent-fill)); }
+  100% { background-color: transparent; }
+}
+.animate-flash { animation: valueFlash var(--duration-slower) var(--ease-out) both; }
+
+/* Sheet/panel entrance from the bottom on mobile. */
+@keyframes sheetIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-sheet { animation: sheetIn var(--duration-base) var(--ease-out) both; }
+
+/* Row entrance for lists that stream in. */
+.stagger-rows > * { animation: riseIn var(--duration-slow) var(--ease-out) both; }
+.stagger-rows > *:nth-child(1)  { animation-delay: 0.02s; }
+.stagger-rows > *:nth-child(2)  { animation-delay: 0.05s; }
+.stagger-rows > *:nth-child(3)  { animation-delay: 0.08s; }
+.stagger-rows > *:nth-child(4)  { animation-delay: 0.11s; }
+.stagger-rows > *:nth-child(5)  { animation-delay: 0.14s; }
+.stagger-rows > *:nth-child(6)  { animation-delay: 0.17s; }
+.stagger-rows > *:nth-child(7)  { animation-delay: 0.20s; }
+.stagger-rows > *:nth-child(8)  { animation-delay: 0.23s; }
+.stagger-rows > *:nth-child(n+9) { animation-delay: 0.26s; }
+
+/* Quiet paper texture behind hero sections — depth without noise. */
+.hero-field {
+  position: relative;
+  background:
+    radial-gradient(120% 100% at 12% 0%, rgba(37, 99, 235, 0.07), transparent 58%),
+    radial-gradient(90% 80% at 92% 8%, rgba(245, 158, 11, 0.06), transparent 62%),
+    linear-gradient(180deg, var(--color-surface-sunken), var(--color-surface));
+}
+.hero-field::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(120% 90% at 50% 0%, #000 10%, transparent 72%);
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 10%, transparent 72%);
+}
+
 /* Respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
+  .animate-urgent,
+  .animate-pulse-glow,
+  .animate-floaty,
+  .animate-gradient {
+    animation: none !important;
+  }
+  .live-dot::after { animation: none !important; }
 }

@@ -3,12 +3,163 @@
 export const dynamic = 'force-dynamic';
 
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { useUser } from '@stackframe/stack';
 import { useRouter } from 'next/navigation';
 import { ActivityItem } from '@/lib/types';
 import { formatTimestamp } from '@/lib/utils';
+
+type ActivityTone = 'tone-accent' | 'tone-yes' | 'tone-info' | 'tone-neutral';
+
+function toneForActivity(type: ActivityItem['type']): ActivityTone {
+  switch (type) {
+    case 'bet':
+      return 'tone-accent';
+    case 'resolution':
+      return 'tone-yes';
+    case 'event_created':
+      return 'tone-info';
+    case 'comment':
+    default:
+      return 'tone-neutral';
+  }
+}
+
+// Presentation-only day bucketing off the timestamp we already have.
+function dayLabel(timestamp: number): string {
+  const d = new Date(timestamp);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return 'Today';
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+  });
+}
+
+function dayKey(timestamp: number): string {
+  const d = new Date(timestamp);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function activityLine(activity: ActivityItem): { primary: ReactNode; secondary?: string } {
+  const name = <span className="font-medium text-foreground">@{activity.username || 'Unknown'}</span>;
+  const title = <span className="text-muted">&ldquo;{activity.event_title}&rdquo;</span>;
+  const groupSuffix = activity.group_name ? (
+    <span className="text-muted"> &middot; {activity.group_name}</span>
+  ) : null;
+
+  if (activity.type === 'bet') {
+    return {
+      primary: (
+        <>
+          {name} bet on <span className="font-medium text-foreground">{activity.side}</span> in {title}
+          {groupSuffix}
+        </>
+      ),
+      secondary: activity.note,
+    };
+  }
+
+  if (activity.type === 'event_created') {
+    return {
+      primary: (
+        <>
+          {name} created {title}
+          {groupSuffix}
+        </>
+      ),
+    };
+  }
+
+  if (activity.type === 'resolution') {
+    return {
+      primary: (
+        <>
+          <span className="font-medium text-foreground">Resolved</span> {title} &mdash; winner{' '}
+          <span className="tone-text font-medium">{activity.winning_side}</span>
+          {groupSuffix}
+        </>
+      ),
+    };
+  }
+
+  if (activity.type === 'comment') {
+    return {
+      primary: (
+        <>
+          {name} commented on {title}
+          {groupSuffix}
+        </>
+      ),
+      secondary: activity.content || activity.note,
+    };
+  }
+
+  return { primary: `Unknown activity type: ${activity.type}` };
+}
+
+function ActivityRow({ activity }: { activity: ActivityItem }) {
+  const tone = toneForActivity(activity.type);
+  const { primary, secondary } = activityLine(activity);
+
+  return (
+    <Link
+      href={`/events/${activity.event_id}`}
+      className={`${tone} press flex items-start gap-3 border-b border-[var(--color-border)] px-3 py-3 transition-colors last:border-b-0 hover:bg-[var(--color-surface-sunken)] sm:px-4`}
+    >
+      <span className="tone-dot mt-2 flex-none" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm leading-snug text-foreground break-words">{primary}</p>
+        {secondary && (
+          <p className="mt-0.5 truncate text-xs italic text-muted">&ldquo;{secondary}&rdquo;</p>
+        )}
+      </div>
+      <div className="flex flex-none flex-col items-end gap-0.5 pl-1 text-right">
+        {activity.type === 'bet' && typeof activity.amount === 'number' && (
+          <span className="numeral tone-text text-sm">${activity.amount.toFixed(2)}</span>
+        )}
+        <span className="whitespace-nowrap text-xs text-muted">{formatTimestamp(activity.timestamp)}</span>
+      </div>
+    </Link>
+  );
+}
+
+// Presentation-only grouping of the already-fetched, already-ordered list.
+function groupByDay(activities: ActivityItem[]): { key: string; label: string; items: ActivityItem[] }[] {
+  const groups: { key: string; label: string; items: ActivityItem[] }[] = [];
+  for (const activity of activities) {
+    const key = dayKey(activity.timestamp);
+    const current = groups[groups.length - 1];
+    if (current && current.key === key) {
+      current.items.push(activity);
+    } else {
+      groups.push({ key, label: dayLabel(activity.timestamp), items: [activity] });
+    }
+  }
+  return groups;
+}
+
+function ActivitySkeletonRows() {
+  return (
+    <div className="card overflow-hidden">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="flex items-start gap-3 border-b border-[var(--color-border)] px-3 py-3 last:border-b-0 sm:px-4">
+          <span className="skeleton mt-1.5 h-2 w-2 flex-none rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="skeleton-line w-3/4" />
+            <div className="skeleton-line w-1/3" />
+          </div>
+          <div className="skeleton-line w-14 flex-none" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function ActivityPage() {
   const user = useUser({ or: "return-null" });
@@ -26,7 +177,7 @@ export default function ActivityPage() {
 
   const fetchActivities = async () => {
     if (!user) return;
-    
+
     try {
       const response = await fetch(`/api/activity?userId=${user.id}`);
       const data = await response.json();
@@ -38,145 +189,12 @@ export default function ActivityPage() {
     }
   };
 
-  const renderActivity = (activity: ActivityItem, index: number) => {
-    if (activity.type === 'bet') {
-      return (
-        <div className="flex justify-between items-start">
-          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-sky-500" />
-          <div className="flex-1">
-            <p className="text-foreground">
-              <span className="font-medium text-sky-700">@{activity.username || 'Unknown'}</span>
-              {' bet '}
-              <span className="font-semibold text-foreground">${activity.amount?.toFixed(2)}</span>
-              {' on '}
-              <span className="font-medium">{activity.side}</span>
-              {' in '}
-              <span className="text-muted">"{activity.event_title}"</span>
-              {activity.group_name && (
-                <>
-                  {' '}
-                  <span className="text-muted-2 text-sm">
-                    · <span className="font-medium">{activity.group_name}</span>
-                  </span>
-                </>
-              )}
-            </p>
-            {activity.note && (
-              <p className="text-sm text-muted mt-1 italic">
-                "{activity.note}"
-              </p>
-            )}
-          </div>
-          <span className="text-xs text-muted-2 ml-2 whitespace-nowrap">
-            {formatTimestamp(activity.timestamp)}
-          </span>
-        </div>
-      );
-    }
-
-    if (activity.type === 'event_created') {
-      return (
-        <div className="flex justify-between items-start">
-          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-indigo-500" />
-          <div>
-            <p className="text-foreground">
-              <span className="font-medium text-indigo-600">@{activity.username || 'Unknown'}</span>
-              {' created '}
-              <span className="text-muted">"{activity.event_title}"</span>
-              {activity.group_name && (
-                <>
-                  {' '}
-                  <span className="text-muted-2 text-sm">
-                    · <span className="font-medium">{activity.group_name}</span>
-                  </span>
-                </>
-              )}
-            </p>
-          </div>
-          <span className="text-xs text-muted-2 ml-2 whitespace-nowrap">
-            {formatTimestamp(activity.timestamp)}
-          </span>
-        </div>
-      );
-    }
-
-    if (activity.type === 'resolution') {
-      return (
-        <div className="flex justify-between items-start">
-          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-green-500" />
-          <div>
-            <p className="text-foreground">
-              <span className="font-medium text-green-700">✓ Resolved:</span>
-              {' '}
-              <span className="text-muted">"{activity.event_title}"</span>
-              {activity.group_name && (
-                <>
-                  {' '}
-                  <span className="text-muted-2 text-sm">
-                    · <span className="font-medium">{activity.group_name}</span>
-                  </span>
-                </>
-              )}
-            </p>
-            <p className="text-sm text-muted mt-1">
-              Winner: <span className="font-medium text-green-700">{activity.winning_side}</span>
-            </p>
-          </div>
-          <span className="text-xs text-muted-2 ml-2 whitespace-nowrap">
-            {formatTimestamp(activity.timestamp)}
-          </span>
-        </div>
-      );
-    }
-
-    if (activity.type === 'comment') {
-      return (
-        <div className="flex justify-between items-start">
-          <span className="mt-1.5 mr-3 h-2 w-2 flex-shrink-0 rounded-full bg-amber-500" />
-          <div className="flex-1">
-            <p className="text-foreground">
-              <span className="font-medium text-amber-700">@{activity.username || 'Unknown'}</span>
-              {' commented on '}
-              <span className="text-muted">"{activity.event_title}"</span>
-              {activity.group_name && (
-                <>
-                  {' '}
-                  <span className="text-muted-2 text-sm">
-                    · <span className="font-medium">{activity.group_name}</span>
-                  </span>
-                </>
-              )}
-            </p>
-            {(activity.content || activity.note) && (
-              <p className="text-sm text-muted mt-1 italic">
-                "{activity.content || activity.note}"
-              </p>
-            )}
-          </div>
-          <span className="text-xs text-muted-2 ml-2 whitespace-nowrap">
-            {formatTimestamp(activity.timestamp)}
-          </span>
-        </div>
-      );
-    }
-
-    return (
-      <div className="text-muted-2">
-        Unknown activity type: {activity.type}
-      </div>
-    );
-  };
-
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8 mobile-page">
-        <div className="h-9 w-48 skeleton rounded-xl mb-2" />
-        <div className="h-5 w-72 skeleton rounded-lg mb-8" />
-        <div className="space-y-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-16 skeleton rounded-2xl" />
-          ))}
-        </div>
+      <div className="page-shell-narrow mobile-page">
+        <div className="skeleton-line mb-2 h-8 w-56" />
+        <div className="skeleton-line mb-8 h-4 w-72" />
+        <ActivitySkeletonRows />
       </div>
     );
   }
@@ -185,36 +203,50 @@ export default function ActivityPage() {
     return null;
   }
 
+  const groups = groupByDay(activities);
+
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 mobile-page animate-rise">
-      <h1 className="font-display text-3xl font-semibold text-foreground mb-2">
-        Activity Feed
-      </h1>
-      <p className="text-muted mb-8">
-        Recent events, bets, and resolutions from your groups
+    <div className="page-shell-narrow mobile-page animate-rise">
+      <p className="eyebrow mb-2">Ledger</p>
+      <h1 className="display-1 mb-2">Activity Feed</h1>
+      <p className="lede mb-8">
+        Recent events, bets, and resolutions from your groups.
       </p>
 
       {activities.length === 0 ? (
-        <div className="glass-subtle rounded-3xl p-12 text-center">
-          <p className="text-foreground text-lg mb-2">No activity yet</p>
-          <p className="text-muted text-sm">
-            Start by creating an event and placing bets!
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <p className="empty-state-title">No activity yet</p>
+          <p className="empty-state-body">
+            Bets, new events, and resolutions from your groups will show up here as they happen.
           </p>
+          <Link href="/create" className="btn-primary">
+            Create an event
+          </Link>
         </div>
       ) : (
-        <div className="space-y-3 stagger">
-          {activities.map((activity, index) => (
-            <Link
-              key={`${activity.type}-${activity.event_id}-${activity.timestamp}-${index}`}
-              href={`/events/${activity.event_id}`}
-            >
-              <div className="glass glass-hover rounded-2xl p-4 cursor-pointer">
-                {renderActivity(activity, index)}
+        <div className="space-y-6">
+          {groups.map((group) => (
+            <div key={group.key}>
+              <div className="section-head mb-2">
+                <span className="eyebrow">{group.label}</span>
               </div>
-            </Link>
+              <div className="card stagger-rows overflow-hidden">
+                {group.items.map((activity, index) => (
+                  <ActivityRow
+                    key={`${activity.type}-${activity.event_id}-${activity.timestamp}-${index}`}
+                    activity={activity}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
 
-          <div className="text-center text-xs text-muted-2 pt-4">
+          <div className="pt-2 text-center text-xs text-muted">
             Showing {activities.length} {activities.length === 50 ? '(limit reached)' : ''} activities from your groups
           </div>
         </div>

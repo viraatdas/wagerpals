@@ -12,6 +12,41 @@ interface ToastProps {
   duration?: number;
 }
 
+const TONE_BY_TYPE: Record<ToastType, string> = {
+  success: 'tone-yes',
+  error: 'tone-no',
+  warning: 'tone-pending',
+  info: 'tone-info',
+};
+
+const ICON_BY_TYPE: Record<ToastType, JSX.Element> = {
+  success: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+    </svg>
+  ),
+  error: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  ),
+  warning: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2.5}
+        d="M12 9v4m0 4h.01M10.29 3.86l-8.18 14.14A1 1 0 003 19.5h18a1 1 0 00.89-1.5L13.71 3.86a1 1 0 00-1.72 0z"
+      />
+    </svg>
+  ),
+  info: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-4 w-4">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+};
+
 export default function Toast({
   isOpen,
   onClose,
@@ -31,47 +66,24 @@ export default function Toast({
 
   if (!isOpen) return null;
 
-  const typeStyles = {
-    success: {
-      icon: '✓',
-      accentColor: 'border-l-green-600',
-      textColor: 'text-green-700',
-      iconBg: 'bg-green-50',
-    },
-    error: {
-      icon: '✕',
-      accentColor: 'border-l-red-600',
-      textColor: 'text-red-700',
-      iconBg: 'bg-red-50',
-    },
-    warning: {
-      icon: '⚠',
-      accentColor: 'border-l-amber-500',
-      textColor: 'text-amber-700',
-      iconBg: 'bg-amber-50',
-    },
-    info: {
-      icon: 'ℹ',
-      accentColor: 'border-l-sky-600',
-      textColor: 'text-sky-700',
-      iconBg: 'bg-sky-50',
-    },
-  };
-
-  const styles = typeStyles[type];
+  const tone = TONE_BY_TYPE[type];
+  const isError = type === 'error';
 
   return (
-    <div className="fixed left-4 right-4 top-20 z-[60] animate-fade-in sm:left-auto sm:right-4">
-      <div className={`bg-white border border-gray-200 border-l-4 ${styles.accentColor} shadow-lg rounded-xl p-4 max-w-md flex items-start gap-3`}>
-        <div className={`${styles.iconBg} rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0`}>
-          <span className={`${styles.textColor} font-semibold text-lg`}>{styles.icon}</span>
+    <div className="pointer-events-none fixed left-4 right-4 top-20 z-[60] flex justify-center sm:left-auto sm:right-4 sm:justify-end">
+      <div
+        role={isError ? 'alert' : 'status'}
+        aria-live={isError ? 'assertive' : 'polite'}
+        className={`${tone} card rail animate-sheet pointer-events-auto flex w-full max-w-md items-start gap-3 p-4 pl-5`}
+      >
+        <div className="tone-surface tone-text flex h-8 w-8 flex-none items-center justify-center rounded-full border">
+          {ICON_BY_TYPE[type]}
         </div>
-        <div className="flex-1">
-          <p className="text-foreground">{message}</p>
-        </div>
+        <p className="flex-1 pt-0.5 text-sm text-foreground">{message}</p>
         <button
           onClick={onClose}
-          className="text-muted-2 hover:text-foreground transition-colors flex-shrink-0"
+          className="press flex-none text-muted-2 hover:text-foreground transition-colors"
+          aria-label="Dismiss notification"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

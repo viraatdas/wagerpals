@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useUser } from '@stackframe/stack';
 import Countdown from '@/components/Countdown';
 import BetForm from '@/components/BetForm';
@@ -71,7 +72,7 @@ export default function EventPage() {
       setLoading(false);
       return;
     }
-    
+
     try {
       const eventResponse = await fetch(`/api/events?id=${params.id}`);
 
@@ -118,7 +119,7 @@ export default function EventPage() {
 
   const confirmResolve = async (winningSide: string) => {
     if (!user) return;
-    
+
     setConfirmationModal(prev => ({ ...prev, isOpen: false }));
     setResolving(true);
 
@@ -276,21 +277,66 @@ export default function EventPage() {
     }
   };
 
+  // Presentational-only: the odds split, derived from data already in scope.
+  // Held across renders so the split bar has a "previous" value to animate
+  // from when a bet lands and the percentages shift.
+  const sideAStats = event ? event.side_stats[event.side_a] : undefined;
+  const sideBStats = event ? event.side_stats[event.side_b] : undefined;
+  const poolTotal = (sideAStats?.total ?? 0) + (sideBStats?.total ?? 0);
+  const pctA = poolTotal > 0 ? Math.round(((sideAStats?.total ?? 0) / poolTotal) * 100) : 50;
+  const pctB = 100 - pctA;
+
+  const prevPctARef = useRef<number | null>(null);
+  const [oddsFlash, setOddsFlash] = useState(false);
+  useEffect(() => {
+    if (!event) return;
+    if (prevPctARef.current !== null && prevPctARef.current !== pctA) {
+      setOddsFlash(true);
+      const timer = setTimeout(() => setOddsFlash(false), 900);
+      prevPctARef.current = pctA;
+      return () => clearTimeout(timer);
+    }
+    prevPctARef.current = pctA;
+  }, [pctA, event]);
+
   if (!user) {
     return null; // Will redirect to signin
   }
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8 mobile-page">
-        <div className="space-y-4">
-          <div className="skeleton h-9 w-3/4 rounded-xl" />
-          <div className="skeleton h-9 w-40 rounded-full" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="skeleton h-28 rounded-2xl" />
-            <div className="skeleton h-28 rounded-2xl" />
+      <div className="page-shell mobile-page">
+        <div className="card-focal p-5 sm:p-8 mb-6">
+          <div className="flex items-center justify-between mb-5 gap-3">
+            <div className="skeleton-line h-3 w-28" />
+            <div className="skeleton-line h-6 w-16 rounded-full" />
           </div>
-          <div className="skeleton h-40 rounded-3xl" />
+          <div className="skeleton-line h-8 w-full max-w-lg mb-2" />
+          <div className="skeleton-line h-8 w-2/3 mb-6" />
+          <div className="flex gap-2 mb-6">
+            <div className="skeleton-line h-5 w-24 rounded-full" />
+            <div className="skeleton-line h-5 w-20 rounded-full" />
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="skeleton-line h-8 w-16" />
+            <div className="skeleton-line h-8 w-16 ml-auto" />
+          </div>
+          <div className="skeleton h-2.5 w-full rounded-full mb-6" />
+          <div className="grid grid-cols-3 gap-4 pt-5 border-t border-[var(--color-border)]">
+            <div className="skeleton-line h-6 w-14" />
+            <div className="skeleton-line h-6 w-14" />
+            <div className="skeleton-line h-6 w-14" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6">
+          <div className="skeleton h-28 rounded-2xl" />
+          <div className="skeleton h-28 rounded-2xl" />
+        </div>
+        <div className="skeleton h-32 rounded-2xl mb-8" />
+        <div className="space-y-2">
+          <div className="skeleton-line h-10 w-full rounded-lg" />
+          <div className="skeleton-line h-10 w-full rounded-lg" />
+          <div className="skeleton-line h-10 w-3/4 rounded-lg" />
         </div>
       </div>
     );
@@ -298,9 +344,19 @@ export default function EventPage() {
 
   if (!event) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8 mobile-page">
-        <div className="glass rounded-3xl text-center py-14 px-6">
-          <p className="text-muted font-light">Event not found</p>
+      <div className="page-shell-narrow mobile-page">
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+          </div>
+          <p className="empty-state-title">Event not found</p>
+          <p className="empty-state-body">This market may have been deleted, or the link might be wrong. Head back and find another one.</p>
+          <Link href="/" className="btn-primary mt-2">
+            Back to events
+          </Link>
         </div>
       </div>
     );
@@ -312,6 +368,7 @@ export default function EventPage() {
   const username = user.displayName || user.primaryEmail || 'User';
   const isCash = event.payment_type === 'cash';
   const isCancelled = event.status === 'resolved' && !event.resolution;
+  const isUrgent = event.status === 'active' && !isEnded && (event.end_time - Date.now()) <= 60 * 60 * 1000;
 
   return (
     <>
@@ -332,104 +389,159 @@ export default function EventPage() {
         type={toast?.type || 'info'}
       />
 
-      <div className="max-w-4xl mx-auto px-4 py-8 mobile-page animate-rise">
-        <div className="mb-6 relative">
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="absolute top-0 right-0 hidden sm:inline-flex px-3 py-1 text-sm font-medium text-muted-2 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Delete event"
-          >
-            Delete
-          </button>
+      <div className="page-shell mobile-page animate-rise">
+        {/* Market header — the page's one focal point */}
+        <div className="card-focal p-5 sm:p-8 mb-6">
+          <div className="flex items-start justify-between gap-3 mb-5">
+            <Link
+              href={`/groups/${event.group_id}`}
+              className="eyebrow tone-text press inline-flex items-center gap-1 hover:opacity-75"
+            >
+              <span aria-hidden="true">&larr;</span> Back to group
+            </Link>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="btn-quiet-danger press shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
 
-          <h1 className="font-display text-2xl sm:text-3xl font-semibold text-foreground mb-3 sm:pr-20 break-words leading-tight">{event.title}</h1>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            {isEnded ? (
-              <span className="chip">⏳ Event ended</span>
+          <h1 className="market-title text-2xl sm:text-3xl md:text-4xl mb-4 break-words">
+            {event.title}
+          </h1>
+
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            {isCancelled ? (
+              <span className="tone-pending pill">
+                <span className="tone-dot" /> Cancelled
+              </span>
+            ) : event.status === 'resolved' ? (
+              <span className="tone-neutral pill">
+                <span className="tone-dot" /> Resolved
+              </span>
+            ) : isEnded ? (
+              <span className="tone-pending pill">
+                <span className="tone-dot" /> Ended — awaiting resolution
+              </span>
             ) : (
-              <span className="chip chip-live">
-                <span className="live-dot" /> <Countdown endTime={event.end_time} />
+              <span className={`tone-yes pill ${isUrgent ? 'animate-urgent' : ''}`}>
+                <span className="tone-dot" />
+                <Countdown endTime={event.end_time} />
               </span>
             )}
-            {event.status === 'resolved' && !isCancelled && (
-              <span className="chip chip-yes">✓ Resolved</span>
-            )}
-            {isCancelled && (
-              <span className="chip text-amber-700 bg-amber-50 border-amber-200">Cancelled</span>
-            )}
+
             {paidResolver && (
-              <span className="chip text-sky-700 bg-sky-50 border-sky-200 break-all">
-                Resolver: @{paidResolver.username || 'Unknown'}
+              <span className="tone-info pill break-all">
+                Resolver @{paidResolver.username || 'Unknown'}
               </span>
             )}
-            {isCash && (
-              <span className="chip text-green-700 bg-green-50 border-green-200">💵 Real money</span>
-            )}
+
+            {isCash && <span className="tone-info pill">💵 Real money</span>}
+
             {isCash && (
               typeof event.stake_amount === 'number' && event.stake_amount > 0 ? (
-                <span className="chip">Stake ${event.stake_amount.toFixed(2)}</span>
+                <span className="tone-neutral pill">Stake ${event.stake_amount.toFixed(2)}</span>
               ) : (
-                <span className="chip">Open stakes</span>
+                <span className="tone-neutral pill">Open stakes</span>
               )
             )}
           </div>
+
           {isCash && (event.escrow_total ?? 0) > 0 && (
-            <p className="text-sm text-muted mt-2">
-              $<b>{(event.escrow_total ?? 0).toFixed(2)}</b> held in escrow across all players.
+            <p className="field-hint mb-6">
+              <span className="tone-pending tone-text font-semibold numeral">
+                ${(event.escrow_total ?? 0).toFixed(2)}
+              </span>{' '}
+              held in escrow across all players.
             </p>
           )}
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="mt-3 inline-flex sm:hidden px-3 py-1 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Delete event"
-          >
-            Delete Event
-          </button>
+
+          {/* Odds read — side names as eyebrows, percentages as the hero numerals */}
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="min-w-0">
+              <div className="eyebrow tone-yes tone-text truncate mb-1">{event.side_a}</div>
+              <div className={`numeral text-2xl sm:text-3xl tone-yes tone-text ${oddsFlash ? 'animate-flash' : ''}`}>
+                {pctA}%
+              </div>
+            </div>
+            <div className="min-w-0 text-right">
+              <div className="eyebrow tone-no tone-text truncate mb-1">{event.side_b}</div>
+              <div className={`numeral text-2xl sm:text-3xl tone-no tone-text ${oddsFlash ? 'animate-flash' : ''}`}>
+                {pctB}%
+              </div>
+            </div>
+          </div>
+          <div className="odds-track mb-6">
+            <div className="odds-fill odds-fill-yes" style={{ width: `${pctA}%` }} />
+            <div className="odds-fill odds-fill-no" style={{ width: `${pctB}%` }} />
+          </div>
+
+          <div className="grid grid-cols-3 gap-3 sm:gap-6 pt-5 border-t border-[var(--color-border)]">
+            <div className="min-w-0">
+              <div className="eyebrow mb-1">Pool</div>
+              <div className="stat-value truncate">${poolTotal.toFixed(2)}</div>
+            </div>
+            <div className="min-w-0">
+              <div className="eyebrow mb-1">Players</div>
+              <div className="stat-value truncate">{event.total_participants}</div>
+            </div>
+            <div className="min-w-0">
+              <div className="eyebrow mb-1">Bets</div>
+              <div className="stat-value truncate">{event.total_bets}</div>
+            </div>
+          </div>
         </div>
 
         {isCancelled && (
-          <div className="glass rounded-2xl p-4 mb-6 border-amber-200">
-            <p className="text-amber-700 font-medium">Event cancelled — every stake was refunded.</p>
+          <div className="tone-pending tone-surface border rounded-xl p-4 mb-6 flex items-center gap-3">
+            <span className="tone-dot shrink-0" />
+            <p className="tone-text text-sm font-medium">
+              This event was cancelled — every stake was refunded.
+            </p>
           </div>
         )}
 
         {event.status === 'resolved' && !isCancelled && netResults.length > 0 && (
-          <>
+          <div className="mb-6">
             <ResolutionBanner event={event} netResults={netResults} isPublic={isPublic} />
-            <div className="mb-6">
+            <div className="mt-3 flex justify-end">
               <button
                 onClick={handleUnresolve}
                 disabled={resolving}
-                className="px-4 py-2 text-amber-700 bg-amber-50 border border-amber-200 text-sm font-medium rounded-full hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                className="btn-quiet-danger press disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {resolving ? 'Unresolving...' : 'Unresolve Event'}
+                {resolving ? 'Unresolving…' : 'Unresolve event'}
               </button>
             </div>
-          </>
+          </div>
         )}
 
         {event.status === 'active' && paidResolver && paidResolver.user_id !== user.id && (
-          <div className="glass rounded-2xl p-4 mb-6 text-sm text-muted font-light border-sky-200">
+          <div className="tone-info tone-surface border rounded-xl p-4 mb-6 text-sm tone-text">
             @{paidResolver.username || 'The chosen resolver'} is responsible for resolving this paid event.
           </div>
         )}
 
         {canResolve && (
-          <div className="glass rounded-3xl p-5 mb-6">
-            <h3 className="font-medium text-foreground mb-3">
-              If this event has been resolved, what has it been resolved to?
-            </h3>
+          <div className="tone-neutral tone-surface border rounded-2xl p-4 sm:p-5 mb-6">
+            <div className="section-head mb-3">
+              <span className="eyebrow">Resolve market</span>
+            </div>
+            <p className="field-hint mb-3">Pick the side that won. This settles every bet.</p>
             <div className="flex gap-2 flex-wrap">
-              {[event.side_a, event.side_b].map((side) => (
+              {[
+                { side: event.side_a, tone: 'tone-yes' },
+                { side: event.side_b, tone: 'tone-no' },
+              ].map(({ side, tone }) => (
                 <button
                   key={side}
                   onClick={() => handleResolve(side)}
                   disabled={resolving}
-                  className="btn-primary w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`${tone} pill pill-solid press px-4 py-2 text-xs break-words disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
-                  {side}
+                  {side} won
                 </button>
               ))}
             </div>
@@ -438,7 +550,7 @@ export default function EventPage() {
                 <button
                   onClick={handleCancel}
                   disabled={resolving}
-                  className="w-full sm:w-auto px-4 py-2 text-amber-700 bg-amber-50 border border-amber-200 text-sm font-medium rounded-full hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                  className="btn-quiet-danger press disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel & refund all stakes
                 </button>
@@ -447,33 +559,20 @@ export default function EventPage() {
           </div>
         )}
 
+        {/* Side cards — keep their yes/no identity via the tone system */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6">
           {[
-            { side: event.side_a, tone: 'yes' as const },
-            { side: event.side_b, tone: 'no' as const },
-          ].map(({ side, tone }) => {
+            { side: event.side_a, tone: 'tone-yes' as const, pct: pctA },
+            { side: event.side_b, tone: 'tone-no' as const, pct: pctB },
+          ].map(({ side, tone, pct }) => {
             const stats = event.side_stats[side];
-            const isYes = tone === 'yes';
             return (
-              <div
-                key={side}
-                className={`glass rounded-3xl p-5 relative overflow-hidden transition-shadow ${
-                  isYes
-                    ? 'border-green-200 hover:shadow-[0_4px_16px_-4px_rgba(22,163,74,0.2)]'
-                    : 'border-red-200 hover:shadow-[0_4px_16px_-4px_rgba(220,38,38,0.18)]'
-                }`}
-              >
-                <div
-                  className={`absolute inset-x-0 top-0 h-1 pointer-events-none ${
-                    isYes ? 'bg-green-500' : 'bg-red-500'
-                  }`}
-                />
-                <h3 className={`text-lg sm:text-xl font-semibold mb-2 border-b border-gray-100 pb-2 break-words ${
-                  isYes ? 'text-green-700' : 'text-red-600'
-                }`}>{side}</h3>
-                <div className="text-sm text-muted font-light">
-                  <div>{stats.count} participants</div>
-                  <div className="text-3xl font-semibold text-foreground mt-1 tabular-nums">${stats.total.toFixed(2)}</div>
+              <div key={side} className={`card card-interactive rail-top ${tone} p-5`}>
+                <h3 className="tone-text font-semibold break-words leading-snug mb-2">{side}</h3>
+                <div className="numeral text-3xl sm:text-4xl tone-text">{pct}%</div>
+                <div className="mt-4 pt-3 border-t border-[var(--color-border)] flex items-center justify-between gap-2 text-sm">
+                  <span className="eyebrow">{stats.count} {stats.count === 1 ? 'bet' : 'bets'}</span>
+                  <span className="stat-value text-lg">${stats.total.toFixed(2)}</span>
                 </div>
               </div>
             );
@@ -481,7 +580,7 @@ export default function EventPage() {
         </div>
 
         {event.status === 'active' && user && (
-          <div className="mb-6">
+          <div className="mb-8">
             <BetForm
               sides={[event.side_a, event.side_b]}
               eventId={event.id}
@@ -496,10 +595,12 @@ export default function EventPage() {
           </div>
         )}
 
-        <div className="mb-6">
-          <h2 className="font-display text-2xl font-semibold text-foreground mb-4 border-b-2 border-brand-2/50 pb-2 inline-block">
-            Comments{commentCount > 0 ? ` (${commentCount})` : ''}
-          </h2>
+        <div className="mb-8">
+          <div className="section-head mb-4">
+            <span className="eyebrow">
+              Comments{commentCount > 0 ? ` (${commentCount})` : ''}
+            </span>
+          </div>
           <CommentThread
             eventId={event.id}
             currentUserId={user?.id}
@@ -510,19 +611,19 @@ export default function EventPage() {
         </div>
 
         <div>
-          <h2 className="font-display text-2xl font-semibold text-foreground mb-4 border-b-2 border-brand-2/50 pb-2 inline-block">Ledger</h2>
-          <div className="mt-6">
-            <Ledger
-              bets={event.bets}
-              currentUserId={user?.id}
-              onBetDeleted={fetchEvent}
-              isPublic={isPublic}
-              paymentType={event.payment_type}
-              eventId={event.id}
-              eventStatus={event.status}
-              escrowByBet={event.escrow_by_bet}
-            />
+          <div className="section-head mb-4">
+            <span className="eyebrow">Ledger</span>
           </div>
+          <Ledger
+            bets={event.bets}
+            currentUserId={user?.id}
+            onBetDeleted={fetchEvent}
+            isPublic={isPublic}
+            paymentType={event.payment_type}
+            eventId={event.id}
+            eventStatus={event.status}
+            escrowByBet={event.escrow_by_bet}
+          />
         </div>
       </div>
     </>
