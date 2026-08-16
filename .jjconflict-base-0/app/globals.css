@@ -1,0 +1,430 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   WagerPals — light design system
+   Near-white canvas, crisp white cards, hairline borders,
+   one confident blue accent. Polymarket-like data density.
+   ============================================================ */
+
+:root {
+  /* Base canvas */
+  --bg: #ffffff;
+  --bg-2: #f7f8fa;
+  --surface: 30 37 48; /* slate ink channels — rgb(var(--surface) / a) yields subtle gray tints on white */
+  --foreground: #1e2530;
+  --muted: #6b7280;
+  --muted-2: #9ca3af;
+
+  /* Brand ramp — the single blue accent (light → base → deep) */
+  --brand-1: #3b82f6;
+  --brand-2: #2563eb;
+  --brand-3: #1d4ed8;
+  /* RGB channels of the same colors — lets Tailwind alpha modifiers
+     (bg-brand-2/10, ring-brand-2/20, …) actually apply the alpha */
+  --brand-1-rgb: 59 130 246;
+  --brand-2-rgb: 37 99 235;
+  --brand-3-rgb: 29 78 216;
+
+  /* Semantic accents (legacy neon names, light-theme values) */
+  --neon-violet: #4f46e5;
+  --neon-cyan: #0284c7;
+  --neon-mint: #16a34a; /* yes / win */
+  --neon-rose: #dc2626; /* no / loss */
+  --neon-amber: #d97706;
+  --neon-violet-rgb: 79 70 229;
+  --neon-cyan-rgb: 2 132 199;
+  --neon-mint-rgb: 22 163 74;
+  --neon-rose-rgb: 220 38 38;
+  --neon-amber-rgb: 217 119 6;
+
+  --border: 31 41 55; /* slate channels — rgb(var(--border) / 0.1) ≈ #e5e7eb hairline on white */
+
+  color-scheme: light;
+
+  /* ============================================================
+     Canonical design tokens — single source of truth
+     ------------------------------------------------------------
+     This block is the canonical token vocabulary for the visual
+     system. mobile/src/theme.ts mirrors these same names/values
+     for the React Native app. The --bg / --bg-2 / --brand-* /
+     --neon-* vars above are kept as the legacy vocabulary that
+     existing components still consume — they are unchanged.
+     ============================================================ */
+
+  /* Surfaces */
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-surface-sunken: #f7f8fa;
+  /* Borders */
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  /* Text */
+  --color-text: #1e2530;
+  --color-text-secondary: #6b7280;
+  --color-text-muted: #9ca3af;
+  --color-text-inverse: #ffffff;
+  /* Signature accent */
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-soft: #3b82f6;
+  --color-accent-fill: rgba(37, 99, 235, 0.08);
+  /* Semantic */
+  --color-yes: #16a34a;      --color-yes-fill: rgba(22, 163, 74, 0.08);
+  --color-no: #dc2626;       --color-no-fill: rgba(220, 38, 38, 0.08);
+  --color-win: #16a34a;      --color-loss: #dc2626;
+  --color-pending: #d97706;  --color-pending-fill: rgba(217, 119, 6, 0.08);
+  --color-info: #0284c7;     --color-info-fill: rgba(2, 132, 199, 0.08);
+  /* RGB channel twins so Tailwind alpha modifiers (bg-accent/10) work */
+  --color-accent-rgb: 37 99 235;
+  --color-accent-hover-rgb: 29 78 216;
+  --color-accent-soft-rgb: 59 130 246;
+  --color-yes-rgb: 22 163 74;
+  --color-no-rgb: 220 38 38;
+  --color-win-rgb: 22 163 74;
+  --color-loss-rgb: 220 38 38;
+  --color-pending-rgb: 217 119 6;
+  --color-info-rgb: 2 132 199;
+  --color-surface-rgb: 255 255 255;
+  --color-border-rgb: 229 231 235;
+  --color-text-rgb: 30 37 48;
+
+  /* Type scale — values are Tailwind's defaults so nothing reflows */
+  --text-xs: 0.75rem;   --leading-xs: 1rem;
+  --text-sm: 0.875rem;  --leading-sm: 1.25rem;
+  --text-base: 1rem;    --leading-base: 1.5rem;
+  --text-lg: 1.125rem;  --leading-lg: 1.75rem;
+  --text-xl: 1.25rem;   --leading-xl: 1.75rem;
+  --text-2xl: 1.5rem;   --leading-2xl: 2rem;
+  --text-3xl: 1.875rem; --leading-3xl: 2.25rem;
+  --text-4xl: 2.25rem;  --leading-4xl: 2.5rem;
+  --text-5xl: 3rem;     --leading-5xl: 1;
+  --text-6xl: 3.75rem;  --leading-6xl: 1;
+  --text-7xl: 4.5rem;   --leading-7xl: 1;
+
+  /* Spacing scale — Tailwind's default rem values */
+  --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem;
+  --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
+  --space-12: 3rem; --space-16: 4rem; --space-20: 5rem; --space-24: 6rem;
+
+  /* Radii — semantic names (do NOT map these onto Tailwind's sm/md/lg/xl keys) */
+  --radius-chip: 0.625rem;    /* 10px */
+  --radius-control: 1rem;     /* 16px */
+  --radius-card: 1.375rem;    /* 22px */
+  --radius-panel: 1.75rem;    /* 28px */
+  --radius-pill: 9999px;
+
+  /* Elevation */
+  --shadow-elev-1: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-elev-2: 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-elev-3: 0 4px 16px -4px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
+  --shadow-elev-4: 0 12px 32px -12px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.05);
+  --shadow-accent: 0 2px 8px -2px rgba(37, 99, 235, 0.25);
+
+  /* Motion */
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 360ms;
+  --duration-slower: 600ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-top: 76px;
+  background: var(--bg);
+}
+
+body {
+  color: var(--foreground);
+  background: var(--bg);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Roboto', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior-y: contain;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  min-height: 100vh;
+}
+
+main {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.mobile-bottom-nav {
+  padding-bottom: max(env(safe-area-inset-bottom), 8px);
+}
+
+button, a, input, select, textarea {
+  touch-action: manipulation;
+}
+
+@media (max-width: 768px) {
+  button:not(.no-min-size),
+  a:not(.no-min-size) {
+    min-height: 44px;
+  }
+  main {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  .mobile-page {
+    padding-top: 1rem;
+    padding-bottom: 1.5rem;
+  }
+  .mobile-stack {
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+input, select, textarea {
+  font-size: 16px;
+}
+@media (min-width: 768px) {
+  input, select, textarea {
+    font-size: 14px;
+  }
+}
+
+/* ---------- Aurora backdrop (retired) ---------- */
+/* The dark theme's animated glow layer. Kept as a no-op so any
+   remaining <div class="aurora"> renders nothing. */
+.aurora {
+  display: none;
+}
+
+/* ============================================================
+   Component utility classes — the shared vocabulary
+   ============================================================ */
+@layer components {
+  /* Card surface (formerly frosted glass) — white, hairline border, soft shadow */
+  .glass {
+    background: #ffffff;
+    border: 1px solid rgb(var(--border) / 0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+  .glass-strong {
+    background: #ffffff;
+    border: 1px solid rgb(var(--border) / 0.12);
+    box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.08),
+      0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+  .glass-subtle {
+    background: var(--bg-2);
+    border: 1px solid rgb(var(--border) / 0.07);
+  }
+
+  /* Interactive lift on hover for cards */
+  .glass-hover {
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+  .glass-hover:hover {
+    transform: translateY(-2px);
+    border-color: rgb(var(--border) / 0.18);
+    box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.1),
+      0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+
+  /* Display text (formerly gradient) — solid ink / solid accent */
+  .text-gradient {
+    color: var(--foreground);
+  }
+  .text-gradient-cool {
+    color: var(--brand-2);
+  }
+
+  /* Primary CTA — solid blue with a whisper of depth */
+  .btn-primary {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: #fff;
+    border-radius: 9999px;
+    padding: 0.625rem 1.25rem;
+    background: linear-gradient(180deg, var(--brand-1), var(--brand-2));
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.3),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, filter 0.2s ease;
+  }
+  .btn-primary:hover {
+    box-shadow: 0 2px 8px -1px rgba(37, 99, 235, 0.35),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
+    filter: brightness(1.05);
+  }
+  .btn-primary:active { transform: scale(0.96); }
+
+  /* Secondary button — white, bordered */
+  .btn-glass {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-weight: 500;
+    color: var(--foreground);
+    border-radius: 9999px;
+    padding: 0.625rem 1.25rem;
+    background: #ffffff;
+    border: 1px solid rgb(var(--border) / 0.14);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, border-color 0.2s ease;
+  }
+  .btn-glass:hover {
+    background: var(--bg-2);
+    border-color: rgb(var(--border) / 0.22);
+  }
+  .btn-glass:active { transform: scale(0.96); }
+
+  /* Pills / chips — light tinted */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    padding: 0.25rem 0.6rem;
+    border-radius: 9999px;
+    background: rgb(var(--surface) / 0.04);
+    border: 1px solid rgb(var(--border) / 0.1);
+    color: var(--muted);
+  }
+  .chip-live {
+    color: #15803d;
+    background: rgba(22, 163, 74, 0.08);
+    border-color: rgba(22, 163, 74, 0.25);
+  }
+  .chip-yes {
+    color: #15803d;
+    background: rgba(22, 163, 74, 0.08);
+    border-color: rgba(22, 163, 74, 0.25);
+  }
+  .chip-no {
+    color: #b91c1c;
+    background: rgba(220, 38, 38, 0.07);
+    border-color: rgba(220, 38, 38, 0.22);
+  }
+
+  /* Live status dot with pulse */
+  .live-dot {
+    position: relative;
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 9999px;
+    background: var(--neon-mint);
+  }
+  .live-dot::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 9999px;
+    border: 1px solid var(--neon-mint);
+    animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+}
+
+/* ============================================================
+   Keyframes & motion utilities
+   ============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.animate-fade-in { animation: fadeIn 0.25s ease-out both; }
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-rise { animation: riseIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@keyframes ping {
+  75%, 100% { transform: scale(2.4); opacity: 0; }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+  50% { box-shadow: 0 2px 12px -2px rgba(37, 99, 235, 0.25); }
+}
+.animate-pulse-glow { animation: pulseGlow 2.4s ease-in-out infinite; }
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgb(var(--surface) / 0.06);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
+@keyframes gradientShift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradientShift 6s ease infinite;
+}
+
+/* Staggered entrance — add .stagger to a parent, children rise in sequence */
+.stagger > * { animation: riseIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.stagger > *:nth-child(1) { animation-delay: 0.04s; }
+.stagger > *:nth-child(2) { animation-delay: 0.08s; }
+.stagger > *:nth-child(3) { animation-delay: 0.12s; }
+.stagger > *:nth-child(4) { animation-delay: 0.16s; }
+.stagger > *:nth-child(5) { animation-delay: 0.20s; }
+.stagger > *:nth-child(6) { animation-delay: 0.24s; }
+.stagger > *:nth-child(7) { animation-delay: 0.28s; }
+.stagger > *:nth-child(8) { animation-delay: 0.32s; }
+.stagger > *:nth-child(n+9) { animation-delay: 0.36s; }
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--surface) / 0.18);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--surface) / 0.28); background-clip: content-box; }
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
