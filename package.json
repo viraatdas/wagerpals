@@ -13,6 +13,8 @@
     "db:add-push": "tsx scripts/add-push-subscriptions.ts",
     "db:migrate-mobile": "tsx scripts/migrate-mobile.ts",
     "db:migrate-wallet": "tsx scripts/migrate-wallet.ts",
+    "db:migrate": "tsx scripts/migrate-comeback.ts",
+    "db:verify": "tsx scripts/verify-comeback.ts",
     "verify-pwa": "tsx scripts/verify-pwa-setup.ts",
     "test:push": "tsx scripts/test-push-notification.ts"
   },

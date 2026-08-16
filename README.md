@@ -62,6 +62,29 @@ cd mobile
 npm start
 ```
 
+## Comeback Migration
+
+`lib/schema.sql` is the target schema for a fresh database. An existing database is brought up
+to it with the comeback migration, which adds identity/auth columns, cash escrow, notification
+preferences and threaded comments:
+
+```bash
+npm run db:migrate   # apply — additive and idempotent, safe to re-run
+npm run db:verify    # assert every column, table, index and constraint landed
+```
+
+`db:verify` is read-only (its write checks run inside a transaction that is always rolled back)
+and exits non-zero if anything is missing, so it works as a deploy gate.
+
+Two data conditions can block a step. Neither aborts the migration — it applies everything else,
+names the offending rows, and reports how many steps were blocked:
+
+- **Duplicate emails** (same address in different cases) block the unique `idx_users_email_lower`.
+  Merge the accounts, then re-run.
+- **`transactions.type` values outside the allowed set** block validation of
+  `transactions_type_check`. The constraint is added `NOT VALID`, so new and updated rows are
+  still enforced while existing rows are not. Clean up those rows, then re-run to validate.
+
 ## Migration Guide (Existing Users)
 
 If you already have the web app running, follow these steps to add mobile support:
