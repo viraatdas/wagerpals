@@ -126,7 +126,7 @@ export default function EventPage() {
     try {
       const response = await fetch('/api/events/resolve', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-stack-user-id': user.id },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event_id: event!.id,
           winning_side: winningSide,
@@ -170,7 +170,7 @@ export default function EventPage() {
     try {
       const response = await fetch('/api/events/unresolve', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-stack-user-id': user?.id ?? '' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event_id: event!.id,
         }),
@@ -213,7 +213,7 @@ export default function EventPage() {
     try {
       const response = await fetch('/api/events/resolve', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-stack-user-id': user.id },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event_id: event!.id,
           action: 'cancel',
@@ -256,7 +256,7 @@ export default function EventPage() {
     try {
       const response = await fetch('/api/events/delete', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-stack-user-id': user?.id ?? '' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event_id: event!.id,
         }),

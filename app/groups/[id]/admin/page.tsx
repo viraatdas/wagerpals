@@ -54,7 +54,7 @@ export default function GroupAdminPage() {
     try {
       const response = await fetch('/api/groups/members', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-stack-user-id': user.id },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action,
           group_id: params.id,
@@ -87,7 +87,6 @@ export default function GroupAdminPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-stack-user-id': user.id,
         },
         body: JSON.stringify({
           id: params.id,
@@ -118,7 +117,6 @@ export default function GroupAdminPage() {
     try {
       const response = await fetch(`/api/groups?id=${params.id}`, {
         method: 'DELETE',
-        headers: { 'x-stack-user-id': user.id },
       });
 
       if (response.ok) {

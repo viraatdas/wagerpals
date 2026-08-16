@@ -1,374 +1,178 @@
-# WagerPals v2
+# WagerPals
 
 [![Uptime Status](https://img.shields.io/badge/status-live-brightgreen)](https://stats.uptimerobot.com/DLPMolyHJj)
 [![Website](https://img.shields.io/website?url=https%3A%2F%2Fwww.wagerpals.io)](https://www.wagerpals.io)
 
 **[📊 View Status Page](https://stats.uptimerobot.com/DLPMolyHJj)** | **[🌐 Visit WagerPals](https://www.wagerpals.io)**
 
-Comprehensive guide for the full WagerPals project, including both web and mobile applications.
-
-## Project Structure
+WagerPals is a social betting app: friends form groups, create events (predictions/bets
+among the group), and settle them for bragging rights or real money. The repo has two apps
+that share one backend:
 
 ```
-wagerpals-v2/
-├── app/              # Next.js web application
-├── components/       # Shared web components
-├── lib/             # Shared backend logic, database, and types
-├── mobile/          # React Native mobile app (NEW!)
-├── public/          # Static assets for web
-└── scripts/         # Database scripts and utilities
+app/          Next.js 14 App Router web app + API routes
+components/   Shared web components
+lib/          Backend logic, database access, types (shared by app/ and scripts/)
+scripts/      Database migrations and verification scripts
+mobile/       Expo/React Native iOS app, including a native iMessage Messages App Extension
+public/       Static web assets
 ```
 
-## Quick Start
+For architecture detail, environment variable reference, the invariants this codebase
+depends on (money idempotency, identity resolution, notification filtering, design tokens),
+and a full verification-script table, see [`CLAUDE.md`](./CLAUDE.md). This file covers
+day-to-day setup, running, and troubleshooting.
 
-### Web Application
+## Quick start — web
 
 ```bash
-# Install dependencies
 npm install
-
-# Set up environment variables
-cp .env.local.example .env.local
-# Edit .env.local with your values
-
-# Initialize database
-npm run db:init
-
-# Start development server
+cp .env.local.example .env.local   # fill in real values, see "Environment setup" below
 npm run dev
 ```
 
-Visit http://localhost:3000
+Visit http://localhost:3000. `npm run build` / `npm run start` / `npm run lint` are the
+standard Next.js build/start/lint commands.
 
-### Mobile Application
+## Quick start — mobile
 
 ```bash
-# Navigate to mobile directory
 cd mobile
-
-# Install dependencies
 npm install
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your values
-
-# Run the migration for mobile support
-cd ..
-npm run db:migrate-mobile
-
-# Start Expo
-cd mobile
-npm start
+cp .env.example .env               # fill in real values
+npm start                          # expo start
 ```
 
-## Comeback Migration
+Then press `i` for the iOS Simulator, or scan the QR code with Expo Go. The mobile app talks
+to the same backend as the web app over `EXPO_PUBLIC_API_URL` — point it at your local
+`npm run dev` server (`http://localhost:3000`, or your machine's LAN IP if testing on a
+physical device) or at a deployed backend.
 
-`lib/schema.sql` is the target schema for a fresh database. An existing database is brought up
-to it with the comeback migration, which adds identity/auth columns, cash escrow, notification
-preferences and threaded comments:
+Other mobile commands (see `mobile/package.json`): `npm run android` / `npm run ios` (native
+builds via `expo run:*`), `npm run web` (`expo start --web`), `npm run prebuild` (regenerates
+`mobile/ios/`, including the native iMessage extension target — there is no committed `ios/`
+directory, it's generated). `npm run beta` / `npm run build:ios` invoke Fastlane and require
+`mobile/ios/` to already exist plus a working Fastlane/Apple credentials setup.
+
+## Database & migrations
+
+`lib/schema.sql` is the target schema for a brand-new database:
 
 ```bash
-npm run db:migrate   # apply — additive and idempotent, safe to re-run
-npm run db:verify    # assert every column, table, index and constraint landed
+psql "$POSTGRES_URL" -f lib/schema.sql
 ```
 
-`db:verify` is read-only (its write checks run inside a transaction that is always rolled back)
-and exits non-zero if anything is missing, so it works as a deploy gate.
-
-Two data conditions can block a step. Neither aborts the migration — it applies everything else,
-names the offending rows, and reports how many steps were blocked:
-
-- **Duplicate emails** (same address in different cases) block the unique `idx_users_email_lower`.
-  Merge the accounts, then re-run.
-- **`transactions.type` values outside the allowed set** block validation of
-  `transactions_type_check`. The constraint is added `NOT VALID`, so new and updated rows are
-  still enforced while existing rows are not. Clean up those rows, then re-run to validate.
-
-## Migration Guide (Existing Users)
-
-If you already have the web app running, follow these steps to add mobile support:
-
-### 1. Update Database Schema
+To bring an **existing** database up to date instead, run the comeback migration:
 
 ```bash
-npm run db:migrate-mobile
+npm run db:migrate   # additive and idempotent — safe to re-run
+npm run db:verify    # read-only; asserts every column/table/index/constraint landed; exits non-zero if not
 ```
 
-This adds:
-- `username_selected` column to `users` table
-- Mobile push notification support to `push_subscriptions` table
+`db:verify` is safe to use as a deploy gate. Two data conditions can block individual
+migration steps without aborting the run (duplicate emails differing only by case; existing
+`transactions.type` values outside the allowed set) — the migration reports which steps were
+blocked and why; fix the data and re-run.
 
-### 2. Deploy Backend Changes
+There are older, narrower scripts (`db:init`, `db:clean`, `db:migrate-mobile`,
+`db:migrate-wallet`) still present for compatibility — they predate `lib/schema.sql` and do
+**not** create/drop the full current schema. Don't use them to bootstrap a fresh database;
+see `CLAUDE.md` §3 for exactly what each one does and doesn't touch.
 
-The backend API changes are backward-compatible and will work for both web and mobile:
-
-- Updated `/api/push/subscribe` to accept Expo push tokens
-- Updated `/api/groups/members` to send push notifications for approvals/promotions
-- Updated `lib/push.ts` to support both web push and Expo push
-
-Simply deploy your Next.js app as usual:
+If duplicate `users` rows exist for the same person (e.g. one signed up with
+email/password and again with Google before account linking was fixed), reconcile them with:
 
 ```bash
-npm run build
-# Deploy to Vercel or your hosting provider
+npx tsx scripts/merge-duplicate-users.ts            # dry run — prints the plan only
+npx tsx scripts/merge-duplicate-users.ts --apply    # execute
 ```
 
-### 3. Configure Mobile Deep Linking
+Both require `POSTGRES_URL` in `.env.local`.
 
-Update `mobile/app.json` with your production domain:
+## Environment setup
 
-```json
-{
-  "expo": {
-    "scheme": "wagerpals",
-    "ios": {
-      "bundleIdentifier": "com.yourcompany.wagerpals",
-      "associatedDomains": [
-        "applinks:your-domain.com"
-      ]
-    },
-    "android": {
-      "package": "com.yourcompany.wagerpals",
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "data": [
-            {
-              "scheme": "https",
-              "host": "your-domain.com"
-            }
-          ]
-        }
-      ]
-    }
-  }
-}
+Copy the example files and fill in real values:
+- Web: `.env.local.example` → `.env.local`
+- Mobile: `mobile/.env.example` → `mobile/.env`
+
+At minimum, the web app needs a Postgres connection (`POSTGRES_URL`), Stack Auth credentials
+(`NEXT_PUBLIC_STACK_PROJECT_ID`, `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`,
+`STACK_SECRET_SERVER_KEY`), and `NEXT_PUBLIC_APP_URL`. Stripe (`STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET`, `STRIPE_PUBLISHABLE_KEY`) is required for cash/real-money betting to
+work; web push (`NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`) is required for browser
+push notifications; `IMESSAGE_SHARE_SECRET` is required for the iMessage extension's share
+links. The mobile app mainly needs `EXPO_PUBLIC_API_URL` pointed at your backend.
+
+See `CLAUDE.md` §4 for the complete, per-variable required/optional breakdown, including a
+couple of variables present in `mobile/.env.example` that don't currently appear to be read
+anywhere in `mobile/src` — flagged there rather than silently omitted.
+
+## Testing & verification
+
+Everything runs via `tsx`, no test runner framework is configured. Highlights:
+
+```bash
+npm run identity:check        # forged x-stack-user-id header must not authenticate (no DB needed for this part)
+npm run test:auth             # full identity/account-consolidation test, creates+drops a throwaway DB
+npm run verify:payments       # drives the real payment routes against the shared dev DB
+npm run verify:notifications  # proves the push filter pipeline, no DB/network needed
+npm run verify:comments       # pure function tests for lib/comments.ts, no DB/network needed
+npm run verify:imessage       # drives the real iMessage routes with in-memory fakes, no DB needed
+npm run verify:escrow-chips   # drives the real event/ledger rendering against the shared dev DB
+npm run verify:constraints    # proves the migration's constraint lookup is table-scoped
+npm run db:verify             # structural/functional proof the comeback migration landed
 ```
 
-### 4. Build and Deploy Mobile App
-
-See `mobile/README.md` for detailed instructions on:
-- Building with EAS
-- Submitting to App Store and Google Play
-- Testing push notifications
-- Configuring deep links
-
-## Features
-
-### Web App
-- ✅ PWA with offline support
-- ✅ Web push notifications
-- ✅ Responsive design
-- ✅ Group management
-- ✅ Event creation and resolution
-- ✅ Real-time activity feed
-
-### Mobile App (NEW!)
-- ✅ Native iOS and Android apps
-- ✅ Expo push notifications
-- ✅ Deep linking for group invites
-- ✅ Username selection flow
-- ✅ Pending approval indication
-- ✅ Profile and stats
-- ✅ All core web features
-
-## Database Schema
-
-See `lib/schema.sql` for the complete schema.
-
-Key tables:
-- `users` - User accounts and stats
-- `groups` - Betting groups
-- `group_members` - Group membership and roles
-- `events` - Betting events
-- `bets` - Individual bets
-- `comments` - Event comments
-- `activities` - Activity feed
-- `push_subscriptions` - Push notification tokens (web & mobile)
-
-## API Routes
-
-All API routes are in `app/api/`:
-
-### Users
-- `GET /api/users?id=X` - Get user by ID
-- `GET /api/users?username=X` - Get user by username
-- `POST /api/users` - Create/update user
-
-### Groups
-- `GET /api/groups?userId=X` - Get user's groups
-- `POST /api/groups` - Create group
-- `POST /api/groups/join` - Join group
-- `POST /api/groups/members` - Manage members
-
-### Events
-- `GET /api/events?groupId=X` - Get events
-- `GET /api/events?id=X` - Get event details
-- `POST /api/events` - Create event
-- `POST /api/events/resolve` - Resolve event
-- `POST /api/events/delete` - Delete event
-
-### Bets & Comments
-- `POST /api/bets` - Place bet
-- `GET /api/comments?eventId=X` - Get comments
-- `POST /api/comments` - Add comment
-
-### Push Notifications
-- `POST /api/push/subscribe` - Register for push (web or mobile)
-- `DELETE /api/push/subscribe` - Unsubscribe
-
-## Environment Variables
-
-### Backend (.env.local)
-```env
-# Database
-POSTGRES_URL=...
-POSTGRES_PRISMA_URL=...
-# ... other Postgres vars
-
-# Stack Auth
-NEXT_PUBLIC_STACK_PROJECT_ID=...
-NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=...
-STACK_SECRET_SERVER_KEY=...
-
-# App URL
-NEXT_PUBLIC_APP_URL=https://your-domain.com
-
-# Web Push (for web app)
-NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
-VAPID_PRIVATE_KEY=...
-VAPID_SUBJECT=mailto:your-email@example.com
-```
-
-### Mobile (mobile/.env)
-```env
-# API URL
-EXPO_PUBLIC_API_URL=https://your-domain.com
-
-# Stack Auth (same as web)
-EXPO_PUBLIC_STACK_PROJECT_ID=...
-EXPO_PUBLIC_STACK_PUBLISHABLE_KEY=...
-```
+Scripts marked "against the shared dev DB" or "throwaway DB" need `POSTGRES_URL` set in
+`.env.local` (the throwaway-DB ones also need permission to `CREATE DATABASE`, or set
+`TEST_ADMIN_POSTGRES_URL`). See `CLAUDE.md` §6 for the full table, including exactly what
+each script proves.
 
 ## Deployment
 
-### Web App
-Deploy to Vercel (recommended):
-```bash
-vercel --prod
-```
+**Web** — Vercel. `vercel.json` at the repo root sets the Next.js build/dev/install commands
+and output directory explicitly. `vercel --prod` from the repo root, or connect the repo in
+the Vercel dashboard. Set all required env vars (§ above) in the Vercel project settings —
+`.env.local` is never deployed.
 
-Or any Next.js-compatible hosting.
-
-### Mobile App
-Build and submit with EAS:
-```bash
-cd mobile
-eas build --platform all
-eas submit --platform all
-```
-
-## Development Workflow
-
-1. **Backend/API Changes**: Make changes in `app/api/` or `lib/`
-2. **Web Changes**: Edit `app/`, `components/`, or styles
-3. **Mobile Changes**: Edit `mobile/src/`
-4. **Database Changes**: Update `lib/schema.sql` and create migration script
-5. **Testing**: Test on both web and mobile before deploying
-
-## Automated Tests
-
-### Identity / multi-auth consolidation
+**Mobile** — EAS. `eas.json` (repo root) and `mobile/eas.json` both define build profiles
+(`development`, `preview`, `production`); `mobile/eas.json`'s `production`/`preview`
+profiles set `EXPO_PUBLIC_API_URL=https://wagerpals.io` and `submit.production.ios` targets
+App Store Connect (`ascAppId`, `appleTeamId` are already filled in). From `mobile/`:
 
 ```bash
-npm run test:auth              # ~35s
-npm run test:auth -- --keep-db # leave the throwaway database behind to poke at it
+eas build --platform ios --profile production
+eas submit --platform ios --profile production
 ```
 
-`scripts/test-auth-consolidation.ts` is an end-to-end test of "one human, one
-account". It drives the real `app/api/users` route handlers, so `lib/auth`
-(web cookie session, mobile `Authorization: Bearer`, `x-stack-auth` header),
-`lib/sync-user`, `lib/db` and Postgres' unique indexes are all exercised for
-real; only Stack Auth itself is replaced, by `scripts/testing/stack-auth-stub.ts`.
-It covers email sign-up, adding Google to the same account, choosing a
-username, a second unlinked Stack account on the same email (the email is
-never stolen), 401/403 guards, identity fields not leaking to other callers,
-unverified emails, the create race, `scripts/merge-duplicate-users.ts` (dry
-run, `--apply`, and idempotent re-run) and tombstoned accounts.
-
-It never touches your application database: it `CREATE DATABASE`s a throwaway
-`wagerpals_authtest_*`, applies `lib/schema.sql` to it, refuses to run unless
-`SELECT current_database()` confirms it is on that throwaway, and drops it
-afterwards even when tests fail. Requirements: `POSTGRES_URL` in `.env.local`
-with permission to create databases (set `TEST_ADMIN_POSTGRES_URL` to use a
-different server, e.g. a local Postgres), and Node 22.15+.
-
-## Push Notifications
-
-The system supports two types of push notifications:
-
-### Web Push (PWA)
-- Uses Web Push API with VAPID keys
-- Requires service worker
-- Works on Chrome, Firefox, Edge, Safari
-
-### Expo Push (Mobile)
-- Uses Expo's push notification service
-- Works on iOS and Android
-- No configuration needed for development
-
-### Backend Implementation
-The backend automatically detects the platform and sends the appropriate notification type:
-
-```typescript
-// Web push subscription
-{ endpoint: "...", keys: { p256dh: "...", auth: "..." } }
-
-// Expo push subscription
-{ token: "ExponentPushToken[...]", userId: "..." }
-```
-
-Both are stored in the `push_subscriptions` table with a `platform` field.
+The iMessage extension is bundled into the same iOS build via the Expo config plugin
+declared in `mobile/app.json` (`./plugins/imessage-extension/withIMessageExtension`) — no
+separate build step.
 
 ## Troubleshooting
 
-### Database Issues
-```bash
-# Reset database (CAUTION: Deletes all data)
-npm run db:clean
-npm run db:init
+**Database schema looks wrong / migration didn't apply everything** — run `npm run db:verify`;
+it lists exactly what's missing. If it reports blocked steps, see the "Database & migrations"
+section above for the two known blocking conditions.
 
-# Or just add new tables/columns
-npm run db:migrate-mobile
-```
+**Duplicate accounts for the same person** — run `npx tsx scripts/merge-duplicate-users.ts`
+(dry run first) and/or `npm run identity:check` to check for duplicate emails and broken
+tombstones.
 
-### Push Notification Issues
-- Check backend logs for detailed error messages
-- Verify VAPID keys are set (web)
-- Ensure Expo push token is valid (mobile)
-- Test with `/api/push/test` endpoint
+**Push notifications not arriving** — for web, confirm `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and
+`VAPID_PRIVATE_KEY` are both set (missing either silently disables web push, logged once in
+server logs); for mobile, confirm the device has a registered Expo push token. `npm run
+verify:notifications` proves the filter/dispatch logic itself is correct without needing a
+real device.
 
-### Mobile Build Issues
-- Clear Expo cache: `expo start -c`
-- Reinstall dependencies: `cd mobile && rm -rf node_modules && npm install`
-- Check EAS build logs for errors
+**iMessage extension links don't open the app / can't take a side from the bubble** —
+confirm `IMESSAGE_SHARE_SECRET` is set on the backend; without it, share tokens aren't
+minted and only existing group members can act on a shared wager.
 
-## Next Steps
-
-- [ ] Implement remaining mobile screens (GroupDetail, EventDetail)
-- [ ] Add group admin interface on mobile
-- [ ] Implement Hard Mode (real money wagering)
-- [ ] Add in-app messaging
-- [ ] Implement social features (friend system)
-- [ ] Add achievement system
-- [ ] Implement analytics
-- [ ] Add error tracking (Sentry)
+**Mobile build issues** — clear the Expo cache (`expo start -c`), reinstall
+(`cd mobile && rm -rf node_modules && npm install`), and re-run `npm run prebuild` before a
+native build if `mobile/ios/` is stale or missing.
 
 ## License
 
 Private - All Rights Reserved
-
-## Support
-
-For questions or issues, contact the development team.

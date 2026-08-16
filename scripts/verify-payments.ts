@@ -21,6 +21,12 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_verify_payments_local';
 process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_verify_payments_local';
+// Withdrawals are disabled by default in production (see
+// app/api/wallet/route.ts and .env.local.example) because no real payout
+// mechanism exists yet. Force-enable here so Step 13 can still exercise the
+// withdrawal path end-to-end; a later step flips this off and back on to
+// prove the gate itself works.
+process.env.WALLET_WITHDRAWALS_ENABLED = 'true';
 
 // Neutralize outbound push before any route handler runs.
 //
@@ -44,13 +50,60 @@ pushModule.setPushTransport({
 import { NextRequest } from 'next/server';
 import { sql } from '@vercel/postgres';
 import Stripe from 'stripe';
+import { resolve as resolvePath } from 'path';
+import { existsSync } from 'fs';
+import { pathToFileURL } from 'url';
+import * as nodeModule from 'module';
 
-import * as betsRoute from '../app/api/bets/route';
-import * as eventsRoute from '../app/api/events/route';
-import * as resolveRoute from '../app/api/events/resolve/route';
-import * as unresolveRoute from '../app/api/events/unresolve/route';
-import * as walletRoute from '../app/api/wallet/route';
-import * as webhookRoute from '../app/api/webhooks/stripe/route';
+import { stackUser, signInWeb, signOutWeb, resetSessions } from './testing/stack-auth-stub';
+
+// ---------------------------------------------------------------------------
+// Stack Auth stub injection
+// ---------------------------------------------------------------------------
+// lib/auth.ts resolves the signed-in human by lazily `await import('@/lib/stack')`
+// and calling stackServerApp.getUser(...). A previous node (n2, identity
+// consolidation) deliberately made the `x-stack-user-id` request header
+// inert — trusting a client-supplied header as identity was a
+// forged-identity vulnerability (see scripts/check-identity.ts Asserts
+// 4-6) — so this harness can no longer fake auth by setting that header.
+//
+// Instead, exactly like scripts/test-auth-consolidation.ts, redirect the
+// '@/lib/stack' module specifier at scripts/testing/stack-auth-stub.ts via
+// module.registerHooks, and drive real Stack Auth sessions through it
+// (signInWeb/stackUser below). Only the third-party identity provider is
+// faked; everything else — the route handlers, lib/auth's session
+// resolution, lib/payments, and Postgres — is the real thing.
+//
+// This hook MUST be registered before any route module that (transitively)
+// hits '@/lib/stack' is imported, so the route imports are dynamic
+// `await import(...)` calls performed inside main(), after this runs.
+// ---------------------------------------------------------------------------
+const STUB_PATH = resolvePath(process.cwd(), 'scripts/testing/stack-auth-stub.ts');
+if (!existsSync(STUB_PATH)) {
+  console.error(`❌ Cannot find ${STUB_PATH}. Run this script from the repository root.`);
+  process.exit(1);
+}
+const STUB_URL = pathToFileURL(STUB_PATH).href;
+
+// module.registerHooks landed in Node 22.15 / 23.5; @types/node@20 predates it.
+const registerHooks = (nodeModule as any).registerHooks as
+  | ((hooks: { resolve?: (...args: any[]) => any }) => void)
+  | undefined;
+if (typeof registerHooks !== 'function') {
+  console.error(`❌ Node ${process.versions.node} has no module.registerHooks — this script needs Node 22.15+.`);
+  process.exit(1);
+}
+
+registerHooks({
+  resolve(specifier: string, context: unknown, nextResolve: any) {
+    if (specifier === '@/lib/stack') {
+      // `format` is set explicitly so Node does not have to sniff the module
+      // type of a .ts file it is about to hand to tsx.
+      return { url: STUB_URL, format: 'module', shortCircuit: true };
+    }
+    return nextResolve(specifier, context);
+  },
+});
 
 const KEEP = process.argv.includes('--keep');
 const RUN = `vp_${Date.now().toString(36)}`;
@@ -106,13 +159,36 @@ async function step(name: string, fn: () => Promise<void>): Promise<void> {
 // Route-calling helper (per team guidance: call handlers as plain functions)
 // ---------------------------------------------------------------------------
 
+// `init.userId` means "sign this human in for this call" — a real Stack Auth
+// session via the stub, not a forged header. lib/auth.ts no longer reads
+// x-stack-user-id at all (that header is dead: see scripts/check-identity.ts
+// Asserts 4-6), so the request carries no auth header at all here; the
+// session travels through the stub's same-origin "cookie" path instead,
+// exactly like a real browser fetch. The signed-in id must match the id the
+// setup step used when inserting the row directly into `users`.
+function signInAs(userId: string): void {
+  signInWeb(
+    stackUser({
+      id: userId,
+      primaryEmail: `${userId}@verify-payments.test`,
+      primaryEmailVerified: true,
+      displayName: userId,
+      hasPassword: true,
+    })
+  );
+}
+
 async function callRoute(
   handler: (req: NextRequest) => Promise<Response>,
   url: string,
   init?: { method?: string; body?: any; userId?: string; headers?: Record<string, string> }
 ): Promise<{ status: number; body: any }> {
+  if (init?.userId) {
+    signInAs(init.userId);
+  } else {
+    signOutWeb();
+  }
   const headers: Record<string, string> = { 'content-type': 'application/json', ...(init?.headers || {}) };
-  if (init?.userId) headers['x-stack-user-id'] = init.userId;
   const req = new NextRequest(`http://localhost:3000${url}`, {
     method: init?.method || 'GET',
     headers,
@@ -128,13 +204,17 @@ async function callRoute(
   return { status: res.status, body };
 }
 
-async function callWebhook(payload: string, signature: string): Promise<{ status: number; body: any }> {
+async function callWebhook(
+  handler: (req: NextRequest) => Promise<Response>,
+  payload: string,
+  signature: string
+): Promise<{ status: number; body: any }> {
   const req = new NextRequest('http://localhost:3000/api/webhooks/stripe', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'stripe-signature': signature },
     body: payload,
   });
-  const res = await webhookRoute.POST(req);
+  const res = await handler(req);
   let body: any = null;
   try {
     body = await res.json();
@@ -154,7 +234,23 @@ async function walletBalance(userId: string): Promise<number> {
 }
 
 async function ledgerSum(userId: string): Promise<number> {
-  const r = await sql`SELECT COALESCE(SUM(amount), 0)::numeric AS total FROM transactions WHERE user_id = ${userId} AND status = 'completed'`;
+  // Every transaction type except 'deposit' and 'withdrawal' moves the
+  // wallet balance synchronously and is inserted as 'completed' — so
+  // summing 'completed' rows alone matches the balance for those. Deposits
+  // are the mirror image: 'pending' deposits haven't credited the balance
+  // yet (the Stripe webhook does that on completion), so excluding
+  // 'pending' deposits from the sum is correct. Withdrawals (B2 fix) are
+  // the one type that debits the balance immediately but is intentionally
+  // inserted as 'pending' — no payout mechanism exists to ever flip it to
+  // 'completed' — so pending withdrawals must be counted here too, or this
+  // invariant would flag every real (gate-enabled) withdrawal as a $-amount
+  // leak instead of recognizing it moved the money out.
+  const r = await sql`
+    SELECT COALESCE(SUM(amount), 0)::numeric AS total
+    FROM transactions
+    WHERE user_id = ${userId}
+      AND (status = 'completed' OR (type = 'withdrawal' AND status = 'pending'))
+  `;
   return parseFloat(r.rows[0].total);
 }
 
@@ -307,6 +403,18 @@ async function main(): Promise<void> {
   console.log(`  verify-payments — run tag: ${RUN}`);
   console.log('='.repeat(78));
 
+  // Route modules are imported dynamically, now that the '@/lib/stack'
+  // module-resolution hook above is registered — every authenticated call
+  // below goes through a real Stack Auth session (via the stub) instead of
+  // a forged header.
+  const betsRoute = await import('../app/api/bets/route');
+  const eventsRoute = await import('../app/api/events/route');
+  const resolveRoute = await import('../app/api/events/resolve/route');
+  const unresolveRoute = await import('../app/api/events/unresolve/route');
+  const walletRoute = await import('../app/api/wallet/route');
+  const webhookRoute = await import('../app/api/webhooks/stripe/route');
+  resetSessions();
+
   // Identities
   const aliceId = `${RUN}_alice`;
   const bobId = `${RUN}_bob`;
@@ -388,7 +496,7 @@ async function main(): Promise<void> {
       for (const [uid, label, amount] of fundPlan) {
         const dep = await performDeposit(uid, label, amount);
         if (uid === aliceId) aliceDeposit = dep;
-        const { status, body } = await callWebhook(dep.payload, dep.signature);
+        const { status, body } = await callWebhook(webhookRoute.POST, dep.payload, dep.signature);
         assert(status === 200, `${label}: webhook returns 200 (got ${status})`);
         assert(body?.credited === true && body?.duplicate === false, `${label}: webhook reports credited=true, duplicate=false`);
         const bal = await walletBalance(uid);
@@ -405,7 +513,7 @@ async function main(): Promise<void> {
     // -----------------------------------------------------------------
     await step('Step 2: webhook replay guard (idempotency)', async () => {
       // Same event id replayed verbatim.
-      const replay1 = await callWebhook(aliceDeposit.payload, aliceDeposit.signature);
+      const replay1 = await callWebhook(webhookRoute.POST, aliceDeposit.payload, aliceDeposit.signature);
       assert(replay1.status === 200, `replay (same event id): returns 200 (got ${replay1.status})`);
       assert(
         replay1.body?.duplicate === true || replay1.body?.credited === false,
@@ -420,7 +528,7 @@ async function main(): Promise<void> {
       const evt2Id = `evt_${RUN}_alice_2`;
       const payload2 = JSON.stringify(buildDepositEvent(evt2Id, aliceDeposit.paymentIntentId, 100, aliceId));
       const sig2 = sign(payload2);
-      const replay2 = await callWebhook(payload2, sig2);
+      const replay2 = await callWebhook(webhookRoute.POST, payload2, sig2);
       assert(replay2.status === 200, `redelivery (new event id, same intent): returns 200 (got ${replay2.status})`);
       bal = await walletBalance(aliceId);
       assertMoney(bal, 100, 'redelivery (new event id, same intent): alice balance still $100');
@@ -432,7 +540,7 @@ async function main(): Promise<void> {
       const payload3 = JSON.stringify(buildDepositEvent(evt3Id, aliceDeposit.paymentIntentId, 100, aliceId));
       const sig3 = sign(payload3);
       const corrupted = sig3.slice(0, -4) + 'dead';
-      const badSigRes = await callWebhook(payload3, corrupted);
+      const badSigRes = await callWebhook(webhookRoute.POST, payload3, corrupted);
       assert(badSigRes.status === 400, `corrupted signature: rejected with 400 (got ${badSigRes.status})`);
       bal = await walletBalance(aliceId);
       assertMoney(bal, 100, 'corrupted signature: alice balance unchanged at $100');
@@ -911,8 +1019,17 @@ async function main(): Promise<void> {
       });
       assert(res.status === 200, `bob withdraws $20: 200 (got ${res.status})`);
       assertMoney(await walletBalance(bobId), preBob - 20, 'bob balance drops by exactly $20');
-      const w1 = await sql`SELECT amount FROM transactions WHERE user_id = ${bobId} AND type = 'withdrawal' AND idempotency_key = ${`withdraw:${bobId}:wd1`}`;
+      const w1 = await sql`SELECT amount, status FROM transactions WHERE user_id = ${bobId} AND type = 'withdrawal' AND idempotency_key = ${`withdraw:${bobId}:wd1`}`;
       assert(w1.rows.length === 1 && parseFloat(w1.rows[0].amount) === -20, 'a withdrawal transaction of -$20 exists');
+      // B2 fix: the row must be honest about the fact that no payout has
+      // actually happened — there is no Stripe Connect transfer (or any
+      // external call) anywhere in this codebase, so 'completed' would be a
+      // lie. Money already left the wallet (asserted above); the ledger
+      // status must reflect that it hasn't reached the user yet.
+      assert(
+        w1.rows.length === 1 && w1.rows[0].status === 'pending',
+        `withdrawal transaction status is 'pending', not falsely 'completed' (got ${w1.rows[0]?.status})`
+      );
 
       const replay = await callRoute(walletRoute.POST, '/api/wallet', {
         method: 'POST',
@@ -953,6 +1070,67 @@ async function main(): Promise<void> {
 
       await checkInvariant1(bobId, 'bob after Step 13');
       await checkInvariant4(testUserIds, 'after Step 13');
+    });
+
+    // -----------------------------------------------------------------
+    // Step 13b — withdrawals are disabled by default (B2 gate)
+    // -----------------------------------------------------------------
+    // withdrawFromWallet has no real payout mechanism behind it (no Stripe
+    // Connect transfer, no external call of any kind), so the API must
+    // refuse the withdraw action unless WALLET_WITHDRAWALS_ENABLED is the
+    // exact string 'true'. Steps 1-13 ran with the flag force-enabled (see
+    // the env preamble at the top of this file) so the withdrawal path
+    // itself could be exercised; this step flips the flag off to prove the
+    // gate fails closed, then restores it so nothing after this step is
+    // affected.
+    await step('Step 13b: withdrawals disabled by default (PAYOUTS_UNAVAILABLE gate)', async () => {
+      const originalFlag = process.env.WALLET_WITHDRAWALS_ENABLED;
+      try {
+        for (const flagValue of [undefined, '', 'false', 'TRUE', '1']) {
+          if (flagValue === undefined) {
+            delete process.env.WALLET_WITHDRAWALS_ENABLED;
+          } else {
+            process.env.WALLET_WITHDRAWALS_ENABLED = flagValue;
+          }
+
+          const before = await snapshotUser(bobId);
+          const gated = await callRoute(walletRoute.POST, '/api/wallet', {
+            method: 'POST',
+            userId: bobId,
+            body: { user_id: bobId, action: 'withdraw', amount: 5, idempotency_key: `wd_gated_${flagValue ?? 'unset'}` },
+          });
+          const shown = flagValue === undefined ? 'unset' : JSON.stringify(flagValue);
+          assert(gated.status === 503, `withdraw with flag ${shown}: 503 (got ${gated.status})`);
+          assert(
+            gated.body?.code === 'PAYOUTS_UNAVAILABLE',
+            `withdraw with flag ${shown}: code PAYOUTS_UNAVAILABLE (got ${gated.body?.code})`
+          );
+          assert(
+            typeof gated.body?.error === 'string' && gated.body.error.length > 0,
+            `withdraw with flag ${shown}: response carries a human-readable error message`
+          );
+          const after = await snapshotUser(bobId);
+          assertSnapshotUnchanged(before, after, `bob (withdraw attempt with flag ${shown})`);
+
+          const gatedRow = await sql`
+            SELECT COUNT(*)::int AS n FROM transactions
+            WHERE user_id = ${bobId} AND type = 'withdrawal' AND idempotency_key = ${`withdraw:${bobId}:wd_gated_${flagValue ?? 'unset'}`}
+          `;
+          assert(gatedRow.rows[0].n === 0, `withdraw with flag ${shown}: no withdrawal transaction row was created`);
+        }
+      } finally {
+        // Restore exactly what it was (the env preamble's 'true') so Step 14
+        // and any future steps that might touch withdrawals aren't affected.
+        if (originalFlag === undefined) {
+          delete process.env.WALLET_WITHDRAWALS_ENABLED;
+        } else {
+          process.env.WALLET_WITHDRAWALS_ENABLED = originalFlag;
+        }
+      }
+      assert(
+        process.env.WALLET_WITHDRAWALS_ENABLED === 'true',
+        'WALLET_WITHDRAWALS_ENABLED restored to true after the gate check'
+      );
     });
 
     // -----------------------------------------------------------------

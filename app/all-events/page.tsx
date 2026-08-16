@@ -106,7 +106,7 @@ export default function AllEventsPage() {
           </div>
           <h2 className="empty-state-title">No events in any of your groups yet</h2>
           <p className="empty-state-body">
-            Once a group you're in lists a market, it'll show up here. Start one yourself to get things moving.
+            Once a group you&apos;re in lists a market, it&apos;ll show up here. Start one yourself to get things moving.
           </p>
           <Link href="/create" className="btn-primary mt-2">
             Create Event

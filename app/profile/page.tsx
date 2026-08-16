@@ -251,9 +251,7 @@ export default function ProfilePage() {
   const fetchWallet = async () => {
     if (!user) return;
     try {
-      const response = await fetch(`/api/wallet?userId=${user.id}`, {
-        headers: { 'x-stack-user-id': user.id },
-      });
+      const response = await fetch(`/api/wallet?userId=${user.id}`);
       if (response.ok) {
         const data = await response.json();
         setWallet(data.wallet);
@@ -282,7 +280,6 @@ export default function ProfilePage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-stack-user-id': user.id,
         },
         body: JSON.stringify({ user_id: user.id, action, amount }),
       });

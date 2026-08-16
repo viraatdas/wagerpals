@@ -181,7 +181,7 @@ function CreateEventForm() {
 
       const response = await fetch('/api/events', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-stack-user-id': user.id },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(eventData),
       });
 

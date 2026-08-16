@@ -152,7 +152,7 @@ export default function Home() {
     try {
       const response = await fetch('/api/groups', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-stack-user-id': user.id },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: groupName.trim(),
           created_by: user.id,
@@ -180,7 +180,7 @@ export default function Home() {
     try {
       const response = await fetch('/api/groups/join', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-stack-user-id': user.id },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           group_id: groupCode.trim(),
           user_id: user.id,

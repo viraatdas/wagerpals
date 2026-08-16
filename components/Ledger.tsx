@@ -2,19 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Bet, Comment, EscrowHold, EscrowHoldStatus, Transaction } from '@/lib/types';
+import { Bet, EscrowHold, EscrowHoldStatus, Transaction } from '@/lib/types';
 import { formatTimestamp, formatAmount } from '@/lib/utils';
 import ConfirmationModal from './ConfirmationModal';
 import Toast, { ToastType } from './Toast';
 
 interface LedgerProps {
   bets: Bet[];
-  // Dead: comments now render in their own component (CommentThread). Kept
-  // on the type for call-site compatibility; no UI is built around them.
-  comments?: Comment[];
   currentUserId?: string;
   onBetDeleted?: () => void;
-  onCommentDeleted?: () => void;
   isPublic?: boolean;
   paymentType?: 'none' | 'cash';
   eventId?: string;
@@ -103,9 +99,7 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = f
     setWalletLoading(true);
     setWalletError(false);
 
-    fetch(`/api/wallet?userId=${currentUserId}&eventId=${eventId}`, {
-      headers: { 'x-stack-user-id': currentUserId },
-    })
+    fetch(`/api/wallet?userId=${currentUserId}&eventId=${eventId}`)
       .then((response) => {
         if (!response.ok) throw new Error('Failed to fetch wallet');
         return response.json();
@@ -169,7 +163,6 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = f
     try {
       const response = await fetch(`/api/bets?id=${betToDelete}`, {
         method: 'DELETE',
-        headers: currentUserId ? { 'x-stack-user-id': currentUserId } : undefined,
       });
 
       if (!response.ok) {

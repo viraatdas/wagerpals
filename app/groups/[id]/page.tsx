@@ -56,9 +56,7 @@ export default function GroupPage() {
       setIsAdmin(userMember?.role === 'admin');
 
       if (!groupData.is_public) {
-        fetch(`/api/wallet?userId=${uid}`, {
-          headers: { 'x-stack-user-id': uid },
-        })
+        fetch(`/api/wallet?userId=${uid}`)
           .then((response) => response.ok ? response.json() : null)
           .then((walletData) => {
             if (walletData?.wallet) setWallet(walletData.wallet);

@@ -75,9 +75,7 @@ export default function Header() {
       return;
     }
 
-    fetch(`/api/wallet?userId=${user.id}`, {
-      headers: { 'x-stack-user-id': user.id },
-    })
+    fetch(`/api/wallet?userId=${user.id}`)
       .then((response) => response.ok ? response.json() : null)
       .then((data) => setWalletBalance(data?.wallet?.balance ?? null))
       .catch(() => setWalletBalance(null));

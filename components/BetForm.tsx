@@ -44,9 +44,7 @@ export default function BetForm({
 
   const fetchBalance = async () => {
     try {
-      const response = await fetch(`/api/wallet?userId=${userId}`, {
-        headers: { 'x-stack-user-id': userId },
-      });
+      const response = await fetch(`/api/wallet?userId=${userId}`);
       if (!response.ok) return;
       const data = await response.json();
       if (data && data.wallet && typeof data.wallet.balance === 'number') {
@@ -90,7 +88,7 @@ export default function BetForm({
     try {
       const response = await fetch('/api/bets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-stack-user-id': userId },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event_id: eventId,
           user_id: userId,

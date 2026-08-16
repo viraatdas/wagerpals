@@ -124,6 +124,20 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === 'withdraw') {
+    // Withdrawals debit the wallet but there is no Stripe Connect payout
+    // (or any other external transfer) wired up anywhere in this codebase —
+    // shipping this path unconditionally would silently delete users'
+    // money. Fail closed: only the exact string 'true' enables it, so an
+    // unset/empty/misspelled env var keeps withdrawals off. This check
+    // must run before withdrawFromWallet is ever called, so a disabled
+    // gate produces no wallet mutation and no transaction row.
+    if (process.env.WALLET_WITHDRAWALS_ENABLED !== 'true') {
+      return NextResponse.json(
+        { error: 'Withdrawals are temporarily unavailable.', code: 'PAYOUTS_UNAVAILABLE' },
+        { status: 503 }
+      );
+    }
+
     try {
       const result = await withdrawFromWallet({
         userId: user_id,

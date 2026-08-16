@@ -1,0 +1,4 @@
+node_modules
+.next
+mobile/
+public/service-worker.js

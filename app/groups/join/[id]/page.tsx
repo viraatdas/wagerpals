@@ -107,7 +107,7 @@ export default function JoinGroupPage() {
     try {
       const response = await fetch('/api/groups/join', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-stack-user-id': user.id },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           group_id: params.id,
           user_id: user.id,

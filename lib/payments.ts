@@ -821,6 +821,14 @@ export async function withdrawFromWallet(params: {
     // balance before the duplicate check would make a legitimate replay
     // fail with INSUFFICIENT_FUNDS once the original withdrawal has already
     // spent the money down.
+    // Status is 'pending', not 'completed': there is no Stripe Connect
+    // payout (or any other external transfer) wired up anywhere in this
+    // codebase. The debit below is real — the money leaves the user's
+    // spendable balance right now — but nothing has actually been paid
+    // out yet, so the ledger must not claim otherwise. The
+    // WALLET_WITHDRAWALS_ENABLED gate in app/api/wallet/route.ts keeps
+    // this path unreachable by default until a real payout mechanism
+    // marks these rows 'completed'.
     const insertResult = await tx.sql`
       INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key)
       VALUES (
@@ -828,7 +836,7 @@ export async function withdrawFromWallet(params: {
         ${params.userId},
         'withdrawal',
         ${-amount},
-        'completed',
+        'pending',
         ${description},
         ${key}
       )
@@ -839,7 +847,8 @@ export async function withdrawFromWallet(params: {
     if (insertResult.rows.length === 0) {
       // A NULL idempotency_key never conflicts (the unique index is partial,
       // covering only non-NULL keys), so reaching here means params.idempotencyKey
-      // was set and this is a genuine replay of an already-completed withdrawal.
+      // was set and this is a genuine replay of an already-submitted (pending)
+      // withdrawal.
       const existingResult = await tx.sql`SELECT * FROM transactions WHERE idempotency_key = ${key}`;
       const existingTxn = mapTransaction(existingResult.rows[0]);
       const walletResult = await tx.sql`SELECT * FROM wallets WHERE user_id = ${params.userId}`;
