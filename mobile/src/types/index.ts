@@ -9,6 +9,10 @@ export interface User {
   username_selected?: boolean;
 }
 
+// Mirrors lib/types.ts PaymentType exactly. 'none' events are points-only;
+// 'cash' events move real money through the escrow/wallet engine.
+export type PaymentType = 'none' | 'cash';
+
 export interface Event {
   id: string;
   title: string;
@@ -24,6 +28,15 @@ export interface Event {
     winning_side: string;
     resolved_at: number;
   };
+  // NOTE: same rationale as lib/types.ts — these columns are NOT NULL with
+  // DB defaults and every db.events.* accessor always populates them, so
+  // they're effectively always present on rows read back from the server.
+  // Kept optional here (rather than required) so object literals built
+  // ahead of insert don't need to supply them.
+  payment_type?: PaymentType;
+  stake_amount?: number | null;
+  subject_user_id?: string | null;
+  notify_subject?: boolean;
 }
 
 export interface Bet {
@@ -36,6 +49,7 @@ export interface Bet {
   note?: string;
   timestamp: number;
   is_late: boolean;
+  escrow_hold_id?: string | null;
 }
 
 export interface ActivityItem {
@@ -59,6 +73,13 @@ export interface EventWithStats extends Event {
   total_bets: number;
   total_participants: number;
   bets: Bet[];
+  // GET /api/events?id= always includes this on the single-event response —
+  // 0 for 'none' events, and the live held total (in dollars, not cents) for
+  // 'cash' events. See app/api/events/route.ts:
+  // `event.payment_type === 'cash' ? db.escrowHolds.getHeldTotalForEvent(id) : 0`.
+  // Kept optional rather than required so any other EventWithStats-shaped
+  // value assembled elsewhere doesn't have to fabricate this field.
+  escrow_total?: number;
 }
 
 export interface NetResult {
@@ -125,6 +146,89 @@ export interface AuthUser {
   primaryEmail?: string;
 }
 
+// Mirrors lib/types.ts Transaction exactly.
+export interface Transaction {
+  id: string;
+  user_id: string;
+  type:
+    | 'deposit'
+    | 'withdrawal'
+    | 'bet_placed'
+    | 'bet_refund'
+    | 'winnings'
+    | 'escrow_hold'
+    | 'escrow_release'
+    | 'payout'
+    | 'refund';
+  amount: number;
+  status: 'pending' | 'completed' | 'failed';
+  description?: string;
+  created_at?: string;
+  event_id?: string | null;
+  stripe_payment_intent_id?: string;
+  idempotency_key?: string | null;
+}
 
+export type EscrowHoldStatus = 'held' | 'released' | 'refunded';
 
+export interface EscrowHold {
+  id: string;
+  event_id: string;
+  bet_id?: string | null;
+  user_id: string;
+  amount: number;
+  status: EscrowHoldStatus;
+  created_at?: string;
+  released_at?: string | null;
+}
 
+// Only present on the wallet summary when the caller passed `eventId` — see
+// lib/payments.ts getWalletSummary. Note the field is `escrow_held`, an
+// object with the event-scoped holds/transactions/pot, not a bare number.
+export interface EventWalletSummary {
+  escrow_held: number;
+  holds: EscrowHold[];
+  transactions: Transaction[];
+  pot: number;
+  settled: boolean;
+}
+
+// Matches the exact JSON shape returned by GET /api/wallet (app/api/wallet/route.ts):
+// { wallet, transactions, escrow_held_total, available, event? }.
+export interface WalletSummary {
+  wallet: Wallet;
+  transactions: Transaction[];
+  escrow_held_total: number;
+  available: number;
+  event?: EventWalletSummary;
+}
+
+// Notification preferences — mirrors lib/types.ts exactly.
+export type NotificationCategory =
+  | 'bets'
+  | 'comments'
+  | 'mentions'
+  | 'resolutions'
+  | 'invites'
+  | 'group_activity'
+  | 'payments';
+
+export type NotificationCategories = Record<NotificationCategory, boolean>;
+
+export const DEFAULT_NOTIFICATION_CATEGORIES: NotificationCategories = {
+  bets: true,
+  comments: true,
+  mentions: true,
+  resolutions: true,
+  invites: true,
+  group_activity: true,
+  payments: true,
+};
+
+export interface NotificationPreferences {
+  user_id: string;
+  push_enabled: boolean;
+  email_enabled: boolean;
+  categories: NotificationCategories;
+  updated_at?: string;
+}

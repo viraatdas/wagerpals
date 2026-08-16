@@ -9,7 +9,8 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  TouchableWithoutFeedback,
+  Pressable,
+  ActivityIndicator,
   Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,6 +28,8 @@ interface TextInputModalProps {
   onCancel: () => void;
   submitText?: string;
   cancelText?: string;
+  /** Optional loading state — disables both buttons and swaps the submit label for a spinner. */
+  loading?: boolean;
 }
 
 export default function TextInputModal({
@@ -41,6 +44,7 @@ export default function TextInputModal({
   onCancel,
   submitText = 'Submit',
   cancelText = 'Cancel',
+  loading = false,
 }: TextInputModalProps) {
   const [value, setValue] = useState(defaultValue);
   const inputRef = useRef<TextInput>(null);
@@ -56,6 +60,7 @@ export default function TextInputModal({
   }, [visible, defaultValue]);
 
   const handleSubmit = () => {
+    if (loading) return;
     if (value.trim()) {
       onSubmit(value.trim());
       setValue('');
@@ -63,9 +68,12 @@ export default function TextInputModal({
   };
 
   const handleCancel = () => {
+    if (loading) return;
     setValue('');
     onCancel();
   };
+
+  const submitDisabled = !value.trim() || loading;
 
   return (
     <Modal
@@ -74,62 +82,85 @@ export default function TextInputModal({
       animationType="fade"
       onRequestClose={handleCancel}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.overlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.keyboardView}
-          >
-            <View style={styles.modalContainer}>
-              <View style={styles.modalContent}>
-                <Text style={styles.title}>{title}</Text>
-                {message && <Text style={styles.message}>{message}</Text>}
-                
-                <TextInput
-                  ref={inputRef}
-                  style={styles.input}
-                  value={value}
-                  onChangeText={setValue}
-                  placeholder={placeholder}
-                  placeholderTextColor={colors.textFaint}
-                  keyboardType={keyboardType}
-                  maxLength={maxLength}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onSubmitEditing={handleSubmit}
-                  returnKeyType="done"
-                />
-                
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity
-                    style={[styles.button, styles.cancelButton]}
-                    onPress={handleCancel}
+      <View style={styles.overlay}>
+        {/* Backdrop is a sibling (not a parent) of the content so its dim
+            opacity never bleeds onto the modal card itself. */}
+        <Pressable
+          style={styles.backdrop}
+          onPress={() => Keyboard.dismiss()}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss keyboard"
+        />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
+                {title}
+              </Text>
+              {message && (
+                <Text style={styles.message} numberOfLines={4}>
+                  {message}
+                </Text>
+              )}
+
+              <TextInput
+                ref={inputRef}
+                style={styles.input}
+                value={value}
+                onChangeText={setValue}
+                placeholder={placeholder}
+                placeholderTextColor={colors.textFaint}
+                keyboardType={keyboardType}
+                maxLength={maxLength}
+                autoCapitalize="none"
+                autoCorrect={false}
+                onSubmitEditing={handleSubmit}
+                returnKeyType="done"
+                editable={!loading}
+                accessibilityLabel={placeholder ?? title}
+              />
+
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={[styles.button, styles.cancelButton]}
+                  onPress={handleCancel}
+                  disabled={loading}
+                  accessibilityRole="button"
+                  accessibilityLabel={cancelText}
+                  accessibilityState={{ disabled: loading }}
+                >
+                  <Text style={styles.cancelButtonText}>{cancelText}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.buttonWrap, submitDisabled && styles.submitButtonDisabled]}
+                  onPress={handleSubmit}
+                  disabled={submitDisabled}
+                  accessibilityRole="button"
+                  accessibilityLabel={submitText}
+                  accessibilityState={{ disabled: submitDisabled, busy: loading }}
+                >
+                  <LinearGradient
+                    colors={gradients.brand}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[styles.button, styles.submitButton]}
                   >
-                    <Text style={styles.cancelButtonText}>{cancelText}</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[styles.buttonWrap, !value.trim() && styles.submitButtonDisabled]}
-                    onPress={handleSubmit}
-                    disabled={!value.trim()}
-                  >
-                    <LinearGradient
-                      colors={gradients.brand}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={[styles.button, styles.submitButton]}
-                    >
-                      <Text style={styles.submitButtonText}>
-                        {submitText}
-                      </Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                </View>
+                    {loading ? (
+                      <ActivityIndicator color={colors.white} size="small" />
+                    ) : (
+                      <Text style={styles.submitButtonText}>{submitText}</Text>
+                    )}
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
             </View>
-          </KeyboardAvoidingView>
-        </View>
-      </TouchableWithoutFeedback>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -137,9 +168,16 @@ export default function TextInputModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // A dim scrim behind the card. Kept token-only (no rgba literal) by using
+  // a dark theme color at reduced opacity instead of baking translucency
+  // into the color itself.
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.text,
+    opacity: 0.4,
   },
   keyboardView: {
     width: '100%',
@@ -209,7 +247,7 @@ const styles = StyleSheet.create({
   submitButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: colors.white,
   },
 });
 

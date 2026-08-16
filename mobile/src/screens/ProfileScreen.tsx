@@ -1,50 +1,157 @@
-// Profile screen - Modern iOS design
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
-  StatusBar,
-  ScrollView,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+// Profile screen — avatar/stats header, wallet summary (audit finding D12:
+// there was previously no way to see a balance or add funds from the
+// phone), and account settings.
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Alert, StatusBar, ScrollView, RefreshControl, Platform } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
-import { User } from '../types';
-import { formatCurrency } from '../utils/helpers';
 import notificationService from '../services/notifications';
-import { colors, gradients, radius, glow } from '../theme';
-import { LinearGradient } from 'expo-linear-gradient';
+import { User, WalletSummary } from '../types';
+import { ApiError, toApiError } from '../utils/errors';
+import { truncate, formatMoney } from '../utils/format';
+import { success, error as hapticError } from '../utils/haptics';
+import { colors, spacing, tokens } from '../theme';
+import {
+  Avatar,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  ListRow,
+  LoadingState,
+  Money,
+  Pill,
+  SectionHeader,
+  SkeletonCard,
+  SkeletonList,
+} from '../components';
+
+// Matches the tab bar's own height (see navigation/MainTabNavigator.tsx) —
+// the bar is absolutely positioned so scroll content needs explicit bottom
+// clearance or the last row ends up hidden behind it.
+const TAB_BAR_HEIGHT = Platform.OS === 'ios' ? 88 : 64;
+
+type IconChipTone = 'brand' | 'amber' | 'info' | 'rose';
+
+const ICON_CHIP_TONE: Record<IconChipTone, { bg: string; fg: string }> = {
+  brand: { bg: colors.brandFill, fg: colors.brand },
+  amber: { bg: colors.amberFill, fg: colors.amber },
+  info: { bg: colors.cyanFill, fg: colors.cyan },
+  rose: { bg: colors.roseFill, fg: colors.rose },
+};
+
+// `Money` (the shared component) doesn't itself guard against a non-finite
+// input — it just does `Math.abs(amount).toFixed(2)`, which prints "$NaN"
+// for a NaN. Every value handed to it here goes through this first so a bad
+// server value can never render as "$NaN" or crash mid-format.
+function safeAmount(n: number | null | undefined): number {
+  return typeof n === 'number' && Number.isFinite(n) ? n : 0;
+}
+
+function IconChip({ name, tone }: { name: keyof typeof Ionicons.glyphMap; tone: IconChipTone }) {
+  const { bg, fg } = ICON_CHIP_TONE[tone];
+  return (
+    <View style={[styles.iconChip, { backgroundColor: bg }]}>
+      <Ionicons name={name} size={18} color={fg} />
+    </View>
+  );
+}
 
 export default function ProfileScreen() {
   const navigation = useNavigation<any>();
-  const { user: authUser, signOut } = useAuth();
-  const [userData, setUserData] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user: authUser, isLoading: authLoading, signOut } = useAuth();
+  const insets = useSafeAreaInsets();
 
-  useEffect(() => {
-    loadUserData();
+  const [userData, setUserData] = useState<User | null>(null);
+  const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<ApiError | null>(null);
+  const [walletError, setWalletError] = useState<ApiError | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  // Guards against setState-after-unmount from a fetch that resolves after
+  // the screen has gone away.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
+  // True once the first load (success or failure) has completed — used so a
+  // silent background refetch-on-focus doesn't flash the skeleton again.
+  const hasLoadedRef = useRef(false);
+
+  const loadUserData = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!authUser) {
+      // AUDIT FINDING D8 (the bug this screen shipped with): the old code
+      // was `if (!authUser) return;` sitting BEFORE the try/finally below,
+      // so it skipped the `finally` that cleared isLoading — if auth was
+      // momentarily null (which it legitimately is for an instant on every
+      // cold start while Stack Auth resolves), the screen showed a spinner
+      // FOREVER. Every path through this function — including "no user" —
+      // must reach a point that clears isLoading/isRefreshing.
+      if (mountedRef.current) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+      return;
+    }
+
+    if (!opts?.silent) {
+      setLoadError(null);
+      setWalletError(null);
+    }
+
+    // User profile and wallet summary are independent of one another — a
+    // wallet hiccup must not block the rest of the profile from rendering,
+    // and vice versa, so each leg is caught on its own instead of one
+    // Promise.all rejection wiping out both.
+    const [userResult, walletResult] = await Promise.allSettled([
+      apiService.getUser(authUser.id),
+      apiService.getWallet(authUser.id),
+    ]);
+
+    if (!mountedRef.current) return;
+
+    if (userResult.status === 'fulfilled') {
+      setUserData(userResult.value);
+      setLoadError(null);
+    } else {
+      setLoadError(userResult.reason instanceof ApiError ? userResult.reason : toApiError(userResult.reason, '/api/users'));
+    }
+
+    if (walletResult.status === 'fulfilled') {
+      setWalletSummary(walletResult.value);
+      setWalletError(null);
+    } else {
+      setWalletError(walletResult.reason instanceof ApiError ? walletResult.reason : toApiError(walletResult.reason, '/api/wallet'));
+    }
+
+    setIsLoading(false);
+    setIsRefreshing(false);
   }, [authUser]);
 
-  const loadUserData = async () => {
-    if (!authUser) return;
+  // Refetch on every focus (e.g. coming back from the Wallet screen after a
+  // deposit/withdrawal) but only show the full-screen skeleton on the very
+  // first load — later focuses refresh silently.
+  useFocusEffect(
+    useCallback(() => {
+      if (authLoading) return;
+      loadUserData({ silent: hasLoadedRef.current });
+      hasLoadedRef.current = true;
+    }, [authLoading, loadUserData])
+  );
 
-    try {
-      const data = await apiService.getUser(authUser.id);
-      setUserData(data);
-    } catch (error) {
-      console.error('Failed to load user data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    // See apiService.invalidateForRefresh.
+    apiService.invalidateForRefresh('/api/users', '/api/wallet');
+    loadUserData({ silent: true });
+  }, [loadUserData]);
 
-  const handleSignOut = () => {
+  const handleSignOut = useCallback(() => {
+    if (isSigningOut) return;
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -54,128 +161,240 @@ export default function ProfileScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
-            await signOut();
+            setIsSigningOut(true);
+            try {
+              await signOut();
+              success();
+            } catch (err) {
+              hapticError();
+              const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/auth');
+              Alert.alert('Error', apiErr.userMessage);
+            } finally {
+              // The api layer's GET cache is keyed by URL only, NOT by
+              // user — without this, the next person to sign in on this
+              // device could briefly see this user's cached groups/wallet/
+              // activity before their own requests land. Clearing runs in
+              // `finally` so it happens even if signOut() itself errored
+              // partway through.
+              apiService.clearCache();
+              if (mountedRef.current) setIsSigningOut(false);
+            }
           },
         },
       ]
     );
-  };
+  }, [signOut, isSigningOut]);
 
-  const handleTestNotification = async () => {
+  const handleTestNotification = useCallback(async () => {
     if (!authUser?.id) return;
     try {
       await notificationService.init(authUser.id);
       await apiService.sendPushToUser({
         userId: authUser.id,
-        title: 'Test Notification 🎉',
+        title: 'Test Notification',
         body: 'Push notifications are working!',
       });
+      success();
       Alert.alert('Success', 'Test notification sent!');
-    } catch (e) {
-      console.error('Test push failed', e);
-      Alert.alert('Error', 'Failed to send test notification. Make sure you\'re on a physical device.');
+    } catch (err) {
+      hapticError();
+      const message =
+        err instanceof ApiError ? err.userMessage : "Failed to send test notification. Make sure you're on a physical device.";
+      Alert.alert('Error', message);
     }
-  };
+  }, [authUser]);
 
-  if (isLoading) {
+  const goToWallet = useCallback(() => {
+    navigation.navigate('Wallet');
+  }, [navigation]);
+
+  if (authLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.brand2} />
-      </View>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+        <LoadingState style={styles.stateFill} />
+      </SafeAreaView>
     );
   }
 
-  const netTotal = userData?.net_total || 0;
-  const isPositive = netTotal >= 0;
+  // Proper signed-out state instead of a spinner (part of the D8 fix) — a
+  // null authUser is an expected, renderable state, not a loading state.
+  if (!authUser) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+        <EmptyState
+          icon="log-in-outline"
+          title="Sign in required"
+          message="Sign in to see your profile, stats, and wallet."
+          style={styles.stateFill}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.skeletonHeader}>
+            <SkeletonCard />
+          </View>
+          <SkeletonCard />
+          <View style={styles.skeletonGap}>
+            <SkeletonList count={3} />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  if (loadError && !userData) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+        <ErrorState message={loadError.userMessage} onRetry={() => loadUserData()} style={styles.stateFill} />
+      </SafeAreaView>
+    );
+  }
+
+  const netTotal = safeAmount(userData?.net_total);
+  const totalBet = safeAmount(userData?.total_bet);
+  const streak = Number.isFinite(userData?.streak) ? userData!.streak : 0;
+  const displayUsername = truncate(userData?.username ?? '', 20);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Profile Header */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: TAB_BAR_HEIGHT + insets.bottom + spacing.xl }]}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.brand2} />}
+      >
+        {/* Profile header */}
         <View style={styles.profileHeader}>
-          <LinearGradient
-            colors={gradients.brand}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.avatarContainer}
-          >
-            <Text style={styles.avatarText}>
-              {userData?.username?.charAt(0).toUpperCase() || '?'}
+          <Avatar username={userData?.username} size="lg" style={styles.avatar} />
+          <Text style={styles.username} numberOfLines={1} ellipsizeMode="tail">
+            @{displayUsername}
+          </Text>
+          {authUser?.email ? (
+            <Text style={styles.email} numberOfLines={1} ellipsizeMode="tail">
+              {authUser.email}
             </Text>
-          </LinearGradient>
-          <Text style={styles.username}>@{userData?.username}</Text>
-          <Text style={styles.email}>{authUser?.email}</Text>
+          ) : null}
         </View>
 
-        {/* Stats Cards */}
-        <View style={styles.statsContainer}>
-          <View style={[styles.statCard, styles.mainStatCard]}>
-            <Text style={styles.mainStatLabel}>Net Total</Text>
-            <Text style={[styles.mainStatValue, isPositive ? styles.positive : styles.negative]}>
-              {isPositive ? '+' : ''}{formatCurrency(netTotal)}
+        {/* Stats */}
+        <View style={styles.statsRow}>
+          <Card style={styles.statCard}>
+            <Text style={styles.statLabel} numberOfLines={1}>Net total</Text>
+            <Money amount={netTotal} tone="auto" signed size="md" />
+          </Card>
+          <Card style={styles.statCard}>
+            <Text style={styles.statLabel} numberOfLines={1}>Total bet</Text>
+            <Money amount={totalBet} tone="neutral" size="md" />
+          </Card>
+          <Card style={styles.statCard}>
+            <Text style={styles.statLabel} numberOfLines={1}>Win streak</Text>
+            <Text style={styles.streakValue} numberOfLines={1} ellipsizeMode="tail">
+              {streak}
             </Text>
-          </View>
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{formatCurrency(userData?.total_bet || 0)}</Text>
-              <Text style={styles.statLabel}>Total Bet</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{userData?.streak || 0}</Text>
-              <Text style={styles.statLabel}>Win Streak</Text>
-            </View>
-          </View>
+          </Card>
         </View>
 
-        {/* Menu Section */}
-        <View style={styles.menuSection}>
-          <Text style={styles.sectionTitle}>Settings</Text>
-          
-          <View style={styles.menuCard}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => navigation.navigate('EditUsername' as never)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.menuIconContainer, { backgroundColor: colors.cyanFill }]}>
-                <Ionicons name="create-outline" size={20} color={colors.cyan} />
+        {/* Wallet summary — audit finding D12 fix: this card + the Wallet
+            screen are the only place a balance can be seen or funded from
+            the phone. */}
+        <SectionHeader title="Wallet" />
+        {walletSummary ? (
+          <Card elevated style={styles.walletCard}>
+            <View style={styles.walletStatsRow}>
+              <View style={styles.walletStatCol}>
+                <Text style={styles.walletLabel}>Available</Text>
+                <Money amount={safeAmount(walletSummary.available)} tone="neutral" size="lg" />
               </View>
-              <Text style={styles.menuText}>Edit Username</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
-            </TouchableOpacity>
-
-            <View style={styles.menuDivider} />
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={handleTestNotification}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.menuIconContainer, { backgroundColor: colors.amberFill }]}>
-                <Ionicons name="notifications-outline" size={20} color={colors.amber} />
+              <View style={styles.walletStatColRight}>
+                <Text style={styles.walletLabel}>Escrowed</Text>
+                <Pill
+                  label={formatMoney(walletSummary.escrow_held_total)}
+                  tone="pending"
+                  icon="lock-closed-outline"
+                />
               </View>
-              <Text style={styles.menuText}>Test Notifications</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
-            </TouchableOpacity>
-          </View>
+            </View>
+            <Button
+              title="Add funds"
+              onPress={goToWallet}
+              variant="primary"
+              size="md"
+              icon="add-circle-outline"
+              fullWidth
+              style={styles.addFundsButton}
+            />
+            <ListRow
+              title="View wallet"
+              subtitle="Balance, deposits, and transaction history"
+              leading={<IconChip name="wallet-outline" tone="brand" />}
+              onPress={goToWallet}
+              showChevron
+              style={styles.viewWalletRow}
+            />
+          </Card>
+        ) : walletError ? (
+          <Card style={styles.walletCard}>
+            <ErrorState
+              message={walletError.userMessage}
+              onRetry={() => loadUserData()}
+              compact
+            />
+          </Card>
+        ) : (
+          <SkeletonCard />
+        )}
 
-          <View style={styles.menuCard}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={handleSignOut}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.menuIconContainer, { backgroundColor: colors.roseFill }]}>
-                <Ionicons name="log-out-outline" size={20} color={colors.rose} />
-              </View>
-              <Text style={[styles.menuText, styles.signOutText]}>Sign Out</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
-            </TouchableOpacity>
-          </View>
+        {/* Settings */}
+        <View style={styles.settingsHeader}>
+          <SectionHeader title="Settings" />
         </View>
+        <Card padded style={styles.menuCard}>
+          <ListRow
+            title="Edit Username"
+            leading={<IconChip name="create-outline" tone="brand" />}
+            onPress={() => navigation.navigate('EditUsername')}
+            showChevron
+          />
+          <ListRow
+            title="Notification Preferences"
+            leading={<IconChip name="notifications-outline" tone="amber" />}
+            onPress={() => navigation.navigate('NotificationPreferences')}
+            showChevron
+          />
+          <ListRow
+            title="Test Notification"
+            leading={<IconChip name="paper-plane-outline" tone="info" />}
+            onPress={handleTestNotification}
+            showChevron
+          />
+        </Card>
+        <Card padded style={styles.menuCard}>
+          <ListRow
+            title="Sign Out"
+            leading={<IconChip name="log-out-outline" tone="rose" />}
+            onPress={handleSignOut}
+            destructive
+            showChevron
+            accessibilityLabel="Sign out"
+          />
+        </Card>
 
-        {/* App Version */}
+        {loadError && userData ? (
+          <Text style={styles.staleNotice}>Some data may be out of date — pull to refresh.</Text>
+        ) : null}
+
         <Text style={styles.versionText}>WagerPals v1.0.1</Text>
       </ScrollView>
     </SafeAreaView>
@@ -187,138 +406,113 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  loadingContainer: {
+  stateFill: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.bg,
+  },
+  scrollContent: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+  },
+  skeletonHeader: {
+    marginBottom: spacing.lg,
+  },
+  skeletonGap: {
+    marginTop: spacing.lg,
   },
   profileHeader: {
     alignItems: 'center',
-    paddingTop: 20,
-    paddingBottom: 24,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
   },
-  avatarContainer: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    ...glow(colors.brand2, 0.5),
-  },
-  avatarText: {
-    fontSize: 36,
-    fontWeight: '600',
-    color: '#fff',
+  avatar: {
+    marginBottom: spacing.lg,
   },
   username: {
-    fontSize: 24,
+    fontSize: tokens.fontSize['2xl'],
     fontWeight: '600',
     color: colors.text,
     marginBottom: 4,
+    maxWidth: '90%',
   },
   email: {
-    fontSize: 14,
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
-  },
-  statsContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
+    maxWidth: '90%',
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.md,
+    marginBottom: spacing.xl,
   },
   statCard: {
     flex: 1,
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: 16,
+    minWidth: 0,
     alignItems: 'center',
-  },
-  mainStatCard: {
-    marginBottom: 12,
-    paddingVertical: 20,
-  },
-  mainStatLabel: {
-    fontSize: 14,
-    color: colors.textMuted,
-    marginBottom: 4,
-  },
-  mainStatValue: {
-    fontSize: 32,
-    fontWeight: '700',
-  },
-  positive: {
-    color: colors.mint,
-  },
-  negative: {
-    color: colors.rose,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
+    marginBottom: spacing.xs,
   },
-  menuSection: {
-    paddingHorizontal: 20,
-  },
-  sectionTitle: {
-    fontSize: 14,
+  streakValue: {
+    fontSize: tokens.fontSize.base,
     fontWeight: '600',
+    color: colors.text,
+    fontVariant: ['tabular-nums'],
+  },
+  walletCard: {
+    marginBottom: spacing.xl,
+  },
+  walletStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.lg,
+  },
+  walletStatCol: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  walletStatColRight: {
+    flexShrink: 1,
+    minWidth: 0,
+    alignItems: 'flex-end',
+  },
+  walletLabel: {
+    fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    marginBottom: spacing.xs,
+  },
+  addFundsButton: {
+    marginBottom: spacing.sm,
+  },
+  viewWalletRow: {
+    marginBottom: -spacing.sm,
+  },
+  settingsHeader: {
+    marginTop: spacing.xs,
   },
   menuCard: {
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    marginBottom: 12,
-    overflow: 'hidden',
+    marginBottom: spacing.md,
   },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-  },
-  menuIconContainer: {
+  iconChip: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
+    justifyContent: 'center',
   },
-  menuText: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: '500',
-  },
-  signOutText: {
-    color: colors.rose,
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginLeft: 66,
-  },
-  versionText: {
-    fontSize: 12,
+  staleNotice: {
+    fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
     textAlign: 'center',
-    marginTop: 24,
-    marginBottom: 32,
+    marginTop: spacing.sm,
+  },
+  versionText: {
+    fontSize: tokens.fontSize.xs,
+    color: colors.textFaint,
+    textAlign: 'center',
+    marginTop: spacing.xl,
+    marginBottom: spacing.xl,
   },
 });

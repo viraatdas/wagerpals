@@ -1,28 +1,116 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
 import type { RouteProp } from '@react-navigation/native';
-import { colors, gradients, radius, glow, inputStyle } from '../theme';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, spacing, tokens } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
+import { GroupMember, PaymentType } from '../types';
+import { ApiError, toApiError } from '../utils/errors';
 import { tapMedium, success, error as hapticError } from '../utils/haptics';
+import {
+  FormScreen,
+  Field,
+  DateTimeField,
+  AmountInput,
+  SegmentedControl,
+  Toggle,
+  UserPicker,
+  Button,
+  LoadingState,
+  ErrorState,
+  type SegmentedOption,
+} from '../components';
+import type { UserPickerUser } from '../components/UserPicker';
 
 type CreateEventRouteProps = RouteProp<RootStackParamList, 'CreateEvent'>;
+
+// Mirrors lib/payments.ts MAX_TRANSACTION_AMOUNT — kept in sync by hand since
+// this mobile bundle can't import from the Next.js server package.
+const MAX_STAKE_AMOUNT = 500;
+const MAX_TITLE_LENGTH = 100;
+const MAX_SIDE_LENGTH = 40;
+
+const PAYMENT_OPTIONS: SegmentedOption<PaymentType>[] = [
+  { value: 'none', label: 'Free' },
+  { value: 'cash', label: 'Cash', icon: 'cash-outline', tone: 'brand' },
+];
+
+interface FormErrors {
+  title?: string;
+  sideA?: string;
+  sideB?: string;
+  endTime?: string;
+  stake?: string;
+}
+
+function validateForm(input: {
+  title: string;
+  sideA: string;
+  sideB: string;
+  endTime: number | null;
+  paymentType: PaymentType;
+  stakeAmount: string;
+}): FormErrors {
+  const errors: FormErrors = {};
+  const trimmedTitle = input.title.trim();
+  const trimmedA = input.sideA.trim();
+  const trimmedB = input.sideB.trim();
+
+  if (!trimmedTitle) {
+    errors.title = 'Give the wager a title.';
+  } else if (trimmedTitle.length > MAX_TITLE_LENGTH) {
+    errors.title = `Keep it under ${MAX_TITLE_LENGTH} characters.`;
+  }
+
+  if (!trimmedA) {
+    errors.sideA = 'Name side A.';
+  } else if (trimmedA.length > MAX_SIDE_LENGTH) {
+    errors.sideA = `Keep it under ${MAX_SIDE_LENGTH} characters.`;
+  }
+
+  if (!trimmedB) {
+    errors.sideB = 'Name side B.';
+  } else if (trimmedB.length > MAX_SIDE_LENGTH) {
+    errors.sideB = `Keep it under ${MAX_SIDE_LENGTH} characters.`;
+  }
+
+  if (!errors.sideA && !errors.sideB && trimmedA.toLowerCase() === trimmedB.toLowerCase()) {
+    errors.sideB = 'Side B must be different from side A.';
+  }
+
+  if (input.endTime == null) {
+    errors.endTime = 'Pick when this ends.';
+  } else if (input.endTime <= Date.now()) {
+    errors.endTime = 'End time must be in the future.';
+  }
+
+  if (input.paymentType === 'cash') {
+    const stake = parseFloat(input.stakeAmount);
+    if (!input.stakeAmount || !Number.isFinite(stake) || stake <= 0) {
+      errors.stake = 'Enter a stake amount.';
+    } else if (stake > MAX_STAKE_AMOUNT) {
+      errors.stake = `Max stake is $${MAX_STAKE_AMOUNT}.`;
+    }
+  }
+
+  return errors;
+}
+
+// Turns a create-event failure into copy a user can act on. Falls back to
+// the server's own message (via ApiError.userMessage) for anything we don't
+// have a more specific story for.
+function describeCreateEventError(err: ApiError): string {
+  if (err.status === 403) {
+    return "You're not an active member of this group, so you can't create events here.";
+  }
+  if (err.status === 400 && /subject/i.test(err.message)) {
+    return 'The person you tagged is no longer an active member of this group. Remove the tag and try again.';
+  }
+  return err.userMessage;
+}
 
 export default function CreateEventScreen() {
   const navigation = useNavigation<any>();
@@ -33,44 +121,113 @@ export default function CreateEventScreen() {
   const [title, setTitle] = useState('');
   const [sideA, setSideA] = useState('');
   const [sideB, setSideB] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [endTime, setEndTime] = useState('');
+  const [endTime, setEndTime] = useState<number | null>(null);
+  const [paymentType, setPaymentType] = useState<PaymentType>('none');
+  const [stakeAmount, setStakeAmount] = useState('');
+  const [subjectUserId, setSubjectUserId] = useState<string | null>(null);
+  const [notifySubject, setNotifySubject] = useState(true);
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Audit finding D11 / A7: the creator's identity for the activity feed and
+  // membership check must come from the backend user record, never the
+  // device's OS display name. If this fails to load we refuse to submit
+  // rather than silently falling back to something else.
+  const [creatorUsername, setCreatorUsername] = useState<string | null>(null);
+  const [creatorUsernameError, setCreatorUsernameError] = useState<string | null>(null);
+  const [loadingCreator, setLoadingCreator] = useState(true);
+  const [creatorReloadKey, setCreatorReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!user) {
+      setLoadingCreator(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingCreator(true);
+    setCreatorUsernameError(null);
+    apiService
+      .getUser(user.id)
+      .then((u) => {
+        if (cancelled) return;
+        setCreatorUsername(u.username);
+        setLoadingCreator(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/users');
+        setCreatorUsernameError(apiErr.userMessage);
+        setLoadingCreator(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, creatorReloadKey]);
+
+  // Subject-tagging candidates: active members of this group, minus the
+  // creator themselves. Its own loading/error state so a slow or failing
+  // members fetch never blocks the rest of the form.
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(true);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [membersReloadKey, setMembersReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMembersLoading(true);
+    setMembersError(null);
+    apiService
+      .getGroupMembers(groupId)
+      .then((data) => {
+        if (cancelled) return;
+        setMembers(data);
+        setMembersLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups/members');
+        setMembersError(apiErr.userMessage);
+        setMembersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [groupId, membersReloadKey]);
+
+  const subjectCandidates: UserPickerUser[] = useMemo(
+    () =>
+      members
+        .filter((m) => m.status === 'active' && m.user_id !== user?.id)
+        .map((m) => ({ id: m.user_id, username: m.username || 'Member' })),
+    [members, user?.id]
+  );
+
+  const subjectUsername = subjectCandidates.find((u) => u.id === subjectUserId)?.username;
 
   const handleCreate = async () => {
     if (!user) {
-      Alert.alert('Error', 'You must be logged in to create an event.');
+      setSubmitError('You must be signed in to create an event.');
       return;
     }
 
-    if (!title.trim()) {
-      Alert.alert('Missing Field', 'Please enter an event title.');
-      return;
-    }
-    if (!sideA.trim() || !sideB.trim()) {
-      Alert.alert('Missing Field', 'Please enter names for both sides.');
-      return;
-    }
-    if (!endDate.trim() || !endTime.trim()) {
-      Alert.alert('Missing Field', 'Please enter an end date and time.');
+    const errors = validateForm({ title, sideA, sideB, endTime, paymentType, stakeAmount });
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
       return;
     }
 
-    // Parse date/time — expected formats: YYYY-MM-DD and HH:MM
-    const dateTimeString = `${endDate.trim()}T${endTime.trim()}`;
-    const parsedTime = new Date(dateTimeString).getTime();
-
-    if (isNaN(parsedTime)) {
-      Alert.alert('Invalid Date', 'Please enter date as YYYY-MM-DD and time as HH:MM.');
-      return;
-    }
-
-    if (parsedTime <= Date.now()) {
-      Alert.alert('Invalid Date', 'End time must be in the future.');
+    if (!creatorUsername) {
+      setSubmitError(
+        creatorUsernameError
+          ? 'Could not load your profile — fix that above before creating an event.'
+          : 'Still loading your profile — try again in a moment.'
+      );
       return;
     }
 
     tapMedium();
+    setSubmitError(null);
     setIsSubmitting(true);
 
     try {
@@ -78,160 +235,172 @@ export default function CreateEventScreen() {
         title: title.trim(),
         side_a: sideA.trim(),
         side_b: sideB.trim(),
-        end_time: parsedTime,
+        end_time: endTime as number,
         group_id: groupId,
+        creator_user_id: user.id,
+        creator_username: creatorUsername,
+        payment_type: paymentType,
+        stake_amount: paymentType === 'cash' ? parseFloat(stakeAmount) : undefined,
+        subject_user_id: subjectUserId ?? undefined,
+        notify_subject: subjectUserId ? notifySubject : undefined,
       });
 
       success();
-      Alert.alert('Success', 'Event created!', [
-        {
-          text: 'View Event',
-          onPress: () =>
-            navigation.navigate('EventDetail' as never, { eventId: newEvent.id } as never),
-        },
-        {
-          text: 'Back to Group',
-          onPress: () => navigation.goBack(),
-        },
-      ]);
-    } catch (error: any) {
+      navigation.navigate('EventDetail' as never, { eventId: newEvent.id } as never);
+    } catch (err) {
       hapticError();
-      Alert.alert('Error', error.message || 'Failed to create event. Please try again.');
+      const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/events');
+      setSubmitError(describeCreateEventError(apiErr));
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const canSubmit = !isSubmitting && !loadingCreator;
+
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.heading}>Create Event</Text>
-            <Text style={styles.subheading}>Set up a new prediction event</Text>
-          </View>
-
-          {/* Form Card */}
-          <View style={styles.card}>
-            {/* Title */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Event Title</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Will it rain tomorrow?"
-                placeholderTextColor={colors.textFaint}
-                value={title}
-                onChangeText={setTitle}
-                autoCapitalize="sentences"
-                returnKeyType="next"
-              />
-            </View>
-
-            {/* Sides */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Sides</Text>
-              <View style={styles.sidesContainer}>
-                <View style={[styles.sideInputWrapper, styles.sideInputWrapperA]}>
-                  <View style={[styles.sideIndicator, styles.sideIndicatorA]}>
-                    <Text style={[styles.sideIndicatorText, styles.sideIndicatorTextA]}>A</Text>
-                  </View>
-                  <TextInput
-                    style={styles.sideInput}
-                    placeholder="e.g. Yes"
-                    placeholderTextColor={colors.textFaint}
-                    value={sideA}
-                    onChangeText={setSideA}
-                    autoCapitalize="sentences"
-                    returnKeyType="next"
-                  />
-                </View>
-                <View style={styles.vsContainer}>
-                  <Text style={styles.vsText}>vs</Text>
-                </View>
-                <View style={[styles.sideInputWrapper, styles.sideInputWrapperB]}>
-                  <View style={[styles.sideIndicator, styles.sideIndicatorB]}>
-                    <Text style={[styles.sideIndicatorText, styles.sideIndicatorTextB]}>B</Text>
-                  </View>
-                  <TextInput
-                    style={styles.sideInput}
-                    placeholder="e.g. No"
-                    placeholderTextColor={colors.textFaint}
-                    value={sideB}
-                    onChangeText={setSideB}
-                    autoCapitalize="sentences"
-                    returnKeyType="next"
-                  />
-                </View>
+    <View style={styles.container}>
+      <FormScreen
+        footer={
+          <>
+            {submitError ? (
+              <View style={styles.errorBanner}>
+                <Ionicons name="alert-circle" size={16} color={colors.rose} />
+                <Text style={styles.errorBannerText}>{submitError}</Text>
               </View>
-            </View>
-
-            {/* End Date/Time */}
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>When does this end?</Text>
-              <View style={styles.dateTimeRow}>
-                <View style={styles.dateTimeField}>
-                  <Ionicons name="calendar-outline" size={18} color={colors.brand2} style={styles.dateIcon} />
-                  <TextInput
-                    style={styles.dateTimeInput}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.textFaint}
-                    value={endDate}
-                    onChangeText={setEndDate}
-                    keyboardType="numbers-and-punctuation"
-                    returnKeyType="next"
-                  />
-                </View>
-                <View style={styles.dateTimeField}>
-                  <Ionicons name="time-outline" size={18} color={colors.brand2} style={styles.dateIcon} />
-                  <TextInput
-                    style={styles.dateTimeInput}
-                    placeholder="HH:MM"
-                    placeholderTextColor={colors.textFaint}
-                    value={endTime}
-                    onChangeText={setEndTime}
-                    keyboardType="numbers-and-punctuation"
-                    returnKeyType="done"
-                  />
-                </View>
-              </View>
-              <Text style={styles.hint}>Use 24-hour format (e.g. 14:30)</Text>
-            </View>
-
-            {/* Submit Button */}
-            <TouchableOpacity
+            ) : null}
+            <Button
+              title="Create Event"
               onPress={handleCreate}
-              disabled={isSubmitting}
-              activeOpacity={0.85}
-              style={isSubmitting && styles.submitButtonDisabled}
-            >
-              <LinearGradient
-                colors={gradients.brand}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.submitButton}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color={colors.white} size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="add-circle-outline" size={20} color={colors.white} />
-                    <Text style={styles.submitButtonText}>Create Event</Text>
-                  </>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
+              icon="add-circle-outline"
+              loading={isSubmitting}
+              disabled={!canSubmit}
+              fullWidth
+              haptic="none"
+            />
+          </>
+        }
+      >
+        <Text style={styles.heading}>Create Event</Text>
+        <Text style={styles.subheading}>Set up a new prediction event</Text>
+
+        {creatorUsernameError ? (
+          <ErrorState
+            compact
+            title="Couldn't load your profile"
+            message={creatorUsernameError}
+            onRetry={() => setCreatorReloadKey((k) => k + 1)}
+          />
+        ) : null}
+
+        <Field
+          label="Event Title"
+          value={title}
+          onChangeText={(t) => {
+            setTitle(t);
+            if (formErrors.title) setFormErrors((prev) => ({ ...prev, title: undefined }));
+          }}
+          placeholder="Will it rain tomorrow?"
+          error={formErrors.title}
+          maxLength={MAX_TITLE_LENGTH}
+          showCount
+          returnKeyType="next"
+        />
+
+        <Field
+          label="Side A"
+          value={sideA}
+          onChangeText={(t) => {
+            setSideA(t);
+            if (formErrors.sideA || formErrors.sideB) {
+              setFormErrors((prev) => ({ ...prev, sideA: undefined, sideB: undefined }));
+            }
+          }}
+          placeholder="e.g. Yes"
+          error={formErrors.sideA}
+          maxLength={MAX_SIDE_LENGTH}
+          returnKeyType="next"
+        />
+
+        <Field
+          label="Side B"
+          value={sideB}
+          onChangeText={(t) => {
+            setSideB(t);
+            if (formErrors.sideA || formErrors.sideB) {
+              setFormErrors((prev) => ({ ...prev, sideA: undefined, sideB: undefined }));
+            }
+          }}
+          placeholder="e.g. No"
+          error={formErrors.sideB}
+          maxLength={MAX_SIDE_LENGTH}
+          returnKeyType="done"
+        />
+
+        <DateTimeField
+          label="When does this end?"
+          value={endTime}
+          onChange={(ts) => {
+            setEndTime(ts);
+            if (formErrors.endTime) setFormErrors((prev) => ({ ...prev, endTime: undefined }));
+          }}
+          minimumDate={new Date()}
+          error={formErrors.endTime}
+        />
+
+        <Text style={styles.sectionLabel}>Payment</Text>
+        <SegmentedControl options={PAYMENT_OPTIONS} value={paymentType} onChange={setPaymentType} />
+        {paymentType === 'cash' ? (
+          <View style={styles.stakeWrap}>
+            <AmountInput
+              label="Stake Amount"
+              value={stakeAmount}
+              onChangeText={(v) => {
+                setStakeAmount(v);
+                if (formErrors.stake) setFormErrors((prev) => ({ ...prev, stake: undefined }));
+              }}
+              max={MAX_STAKE_AMOUNT}
+              error={formErrors.stake}
+            />
+            <View style={styles.infoRow}>
+              <Ionicons name="lock-closed-outline" size={14} color={colors.textFaint} />
+              <Text style={styles.infoText}>
+                Each participant's stake is escrowed from their wallet until the event resolves.
+              </Text>
+            </View>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        ) : null}
+
+        <Text style={styles.sectionLabel}>Tag Someone (optional)</Text>
+        {membersLoading ? (
+          <LoadingState compact label="Loading group members…" />
+        ) : membersError ? (
+          <ErrorState compact message={membersError} onRetry={() => setMembersReloadKey((k) => k + 1)} />
+        ) : (
+          <>
+            <UserPicker
+              users={subjectCandidates}
+              value={subjectUserId}
+              onChange={setSubjectUserId}
+              placeholder="No one — general bet"
+              hint="Tag the group member this wager is about."
+            />
+            {subjectUserId ? (
+              <Toggle
+                label={`Notify ${subjectUsername ?? 'them'}`}
+                value={notifySubject}
+                onValueChange={setNotifySubject}
+                description={
+                  notifySubject
+                    ? undefined
+                    : `Quiet bet — ${subjectUsername ?? 'they'} won't be notified.`
+                }
+              />
+            ) : null}
+          </>
+        )}
+      </FormScreen>
+    </View>
   );
 }
 
@@ -240,151 +409,48 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  flex: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  header: {
-    marginBottom: 24,
-  },
   heading: {
-    fontSize: 28,
+    fontSize: tokens.fontSize['2xl'],
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   subheading: {
-    fontSize: 15,
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
-    fontWeight: '400',
+    marginBottom: spacing.xl,
   },
-  card: {
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.xl,
-    padding: 24,
-  },
-  fieldGroup: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 13,
+  sectionLabel: {
+    fontSize: tokens.fontSize.sm,
     fontWeight: '600',
     color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 10,
+    marginBottom: spacing.sm,
   },
-  input: {
-    ...inputStyle,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+  stakeWrap: {
+    marginTop: spacing.sm,
   },
-  sidesContainer: {
-    gap: 12,
-  },
-  sideInputWrapper: {
+  infoRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    overflow: 'hidden',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.lg,
   },
-  sideInputWrapperA: {
-    borderColor: colors.mint,
+  infoText: {
+    flex: 1,
+    fontSize: tokens.fontSize.xs,
+    color: colors.textFaint,
+    lineHeight: tokens.lineHeight.xs,
   },
-  sideInputWrapperB: {
-    borderColor: colors.rose,
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
   },
-  sideIndicator: {
-    width: 40,
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  sideIndicatorA: {
-    backgroundColor: colors.mintFill,
-  },
-  sideIndicatorB: {
-    backgroundColor: colors.roseFill,
-  },
-  sideIndicatorText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  sideIndicatorTextA: {
-    color: colors.mint,
-  },
-  sideIndicatorTextB: {
+  errorBannerText: {
+    flex: 1,
+    fontSize: tokens.fontSize.xs,
     color: colors.rose,
-  },
-  sideInput: {
-    flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: colors.text,
-  },
-  vsContainer: {
-    alignItems: 'center',
-  },
-  vsText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textFaint,
-  },
-  dateTimeRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  dateTimeField: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
-  dateIcon: {
-    marginLeft: 14,
-  },
-  dateTimeInput: {
-    flex: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: colors.text,
-  },
-  hint: {
-    fontSize: 12,
-    color: colors.textFaint,
-    marginTop: 6,
-  },
-  submitButton: {
-    borderRadius: radius.pill,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    ...glow(colors.brand2),
-  },
-  submitButtonDisabled: {
-    opacity: 0.5,
-  },
-  submitButtonText: {
-    color: colors.white,
-    fontSize: 17,
-    fontWeight: '700',
   },
 });

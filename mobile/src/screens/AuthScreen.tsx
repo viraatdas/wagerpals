@@ -1,254 +1,327 @@
 // Authentication screen - Modern iOS design
-import React, { useState } from 'react';
+//
+// n2 parity (docs/IDENTITY.md): email sign-up and Google sign-in for the same
+// verified email resolve to ONE WagerPals account (lib/sync-user.ts, backed
+// by Stack Auth's `link_method` OAuth merge strategy). The copy below is
+// written so it never implies "sign in" and "create an account" are two
+// different destinations for the same person — there's one welcome screen,
+// one set of buttons, and a line that says outright that email and Google
+// land on the same account.
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View,
+  StatusBar,
+  StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Alert,
-  StatusBar,
-  Dimensions,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import authService from '../services/auth';
-import { colors, gradients, radius, glow, inputStyle } from '../theme';
+import { ApiError, toApiError } from '../utils/errors';
+import * as haptics from '../utils/haptics';
+import { Button, FormScreen } from '../components';
+import { colors, gradients, radius, spacing, tokens } from '../theme';
 
-const { width } = Dimensions.get('window');
+type Step = 'email' | 'code';
+type Busy = null | 'sendCode' | 'verify' | 'google' | 'resend';
+
+const CODE_LENGTH = 6;
+const RESEND_COOLDOWN_SECONDS = 30;
+
+function isValidEmail(value: string): boolean {
+  // Deliberately loose — the server is the real validator. This just keeps
+  // an obviously-incomplete address from firing a request.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function classifyError(err: unknown, endpoint: string): ApiError {
+  return err instanceof ApiError ? err : toApiError(err, endpoint);
+}
 
 export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [step, setStep] = useState<Step>('email');
+  const [busy, setBusy] = useState<Busy>(null);
+  const [emailError, setEmailError] = useState('');
+  const [codeError, setCodeError] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  const codeInputRef = useRef<TextInput>(null);
 
-  const handleSendCode = async () => {
-    if (!email || !email.includes('@')) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address');
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  const handleSendCode = async (isResend = false) => {
+    const trimmedEmail = email.trim();
+    if (!isValidEmail(trimmedEmail)) {
+      setEmailError('Enter a valid email address');
       return;
     }
+    if (busy) return;
 
-    setIsLoading(true);
+    setBusy(isResend ? 'resend' : 'sendCode');
+    setEmailError('');
+    if (isResend) setCodeError('');
+
     try {
-      await authService.sendMagicLink(email);
+      await authService.sendMagicLink(trimmedEmail);
       setStep('code');
-      Alert.alert(
-        'Check Your Email',
-        'We sent you a 6-digit verification code. Enter it below to sign in.',
-        [{ text: 'OK' }]
-      );
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to send code');
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+      if (!isResend) {
+        haptics.tapLight();
+        setCode('');
+      }
+    } catch (err) {
+      const apiErr = classifyError(err, '/api/auth/mobile-magic-link');
+      const message = apiErr.isOffline
+        ? "You're offline. Check your connection and try again."
+        : apiErr.userMessage;
+      if (isResend) {
+        setCodeError(message);
+      } else {
+        setEmailError(message);
+      }
     } finally {
-      setIsLoading(false);
+      setBusy(null);
     }
   };
 
   const handleVerifyCode = async () => {
-    if (!code || code.length < 6) {
-      Alert.alert('Invalid Code', 'Please enter the 6-digit verification code');
+    if (code.length < CODE_LENGTH) {
+      setCodeError(`Enter the ${CODE_LENGTH}-digit code`);
       return;
     }
+    if (busy) return;
 
-    setIsLoading(true);
+    setBusy('verify');
+    setCodeError('');
+
     try {
-      await authService.signInWithCode(email, code);
+      await authService.signInWithCode(email.trim(), code);
+      haptics.success();
       // Auth state change will trigger navigation via RootNavigator
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Invalid code. Please try again.');
+    } catch (err) {
+      const apiErr = classifyError(err, '/api/auth/mobile-verify-code');
+      if (apiErr.isOffline) {
+        setCodeError("You're offline. Check your connection and try again.");
+      } else if (/expired/i.test(apiErr.message)) {
+        // The current server contract collapses "wrong" and "expired" into
+        // one generic 401, but if a more specific message ever comes
+        // through, prefer it.
+        setCodeError('That code expired. Resend a new one and try again.');
+      } else {
+        setCodeError("That code isn't right. Double-check it or resend a new one.");
+      }
+      haptics.error();
     } finally {
-      setIsLoading(false);
+      setBusy(null);
     }
   };
 
   const handleGoogleAuth = async () => {
-    setIsLoading(true);
+    if (busy) return;
+    setBusy('google');
+    setEmailError('');
+
     try {
       await authService.signInWithGoogle();
+      haptics.success();
       // Auth state change will trigger navigation via RootNavigator
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Google sign in failed');
+    } catch (err) {
+      // A user backing out of the Google sheet is not an error worth
+      // surfacing — authService throws this exact message for both an
+      // explicit cancel and a dismissed browser sheet.
+      if (err instanceof Error && err.message === 'Authentication cancelled') {
+        return;
+      }
+      const apiErr = classifyError(err, '/api/auth/mobile-oauth');
+      setEmailError(apiErr.isOffline ? "You're offline. Check your connection and try again." : apiErr.userMessage);
     } finally {
-      setIsLoading(false);
+      setBusy(null);
     }
   };
 
   const handleBackToEmail = () => {
     setStep('email');
     setCode('');
+    setCodeError('');
+    setCooldown(0);
+  };
+
+  const handleCodeChange = (text: string) => {
+    setCode(text.replace(/[^0-9]/g, '').slice(0, CODE_LENGTH));
+    if (codeError) setCodeError('');
+  };
+
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+    if (emailError) setEmailError('');
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
+      <FormScreen
+        contentContainerStyle={styles.formContent}
+        keyboardOffset={0}
+        footer={
+          step === 'email' ? (
+            <Button
+              title="Continue with Email"
+              onPress={() => handleSendCode(false)}
+              loading={busy === 'sendCode'}
+              disabled={busy !== null && busy !== 'sendCode'}
+              icon="arrow-forward"
+              iconPosition="right"
+              fullWidth
+              haptic="none"
+            />
+          ) : (
+            <Button
+              title="Verify & Sign In"
+              onPress={handleVerifyCode}
+              loading={busy === 'verify'}
+              disabled={(busy !== null && busy !== 'verify') || code.length < CODE_LENGTH}
+              icon="checkmark"
+              iconPosition="right"
+              fullWidth
+              haptic="none"
+            />
+          )
+        }
       >
-        <View style={styles.content}>
-          {/* Logo & Header */}
-          <View style={styles.header}>
-            <LinearGradient
-              colors={gradients.brand}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.logoContainer}
-            >
-              <Ionicons name="trophy" size={40} color="#fff" />
-            </LinearGradient>
-            <Text style={styles.title}>
-              <Text style={styles.titleWager}>Wager</Text>
-              <Text style={styles.titlePals}>Pals</Text>
-            </Text>
-            <Text style={styles.subtitle}>Polymarket for friends</Text>
-          </View>
-
-          {/* Auth Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              {step === 'email' ? 'Welcome' : 'Verify Email'}
-            </Text>
-            <Text style={styles.cardSubtitle}>
-              {step === 'email' 
-                ? 'Sign in to start betting with friends'
-                : `Enter the code sent to ${email}`
-              }
-            </Text>
-
-            {step === 'email' ? (
-              <View style={styles.form}>
-                <View style={styles.inputContainer}>
-                  <Ionicons name="mail-outline" size={20} color={colors.textFaint} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter your email"
-                    placeholderTextColor={colors.textFaint}
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    autoComplete="email"
-                    editable={!isLoading}
-                  />
-                </View>
-
-                <TouchableOpacity
-                  onPress={handleSendCode}
-                  disabled={isLoading || !email}
-                  activeOpacity={0.8}
-                  style={(!email || isLoading) && styles.buttonDisabled}
-                >
-                  <LinearGradient
-                    colors={gradients.brand}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[styles.button, styles.primaryButton]}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <>
-                        <Text style={styles.primaryButtonText}>Continue with Email</Text>
-                        <Ionicons name="arrow-forward" size={18} color="#fff" />
-                      </>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <View style={styles.divider}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>or</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.button, styles.googleButton]}
-                  onPress={handleGoogleAuth}
-                  disabled={isLoading}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.googleIconContainer}>
-                    <Text style={styles.googleIcon}>G</Text>
-                  </View>
-                  <Text style={styles.googleButtonText}>Continue with Google</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.form}>
-                <View style={styles.codeContainer}>
-                  <TextInput
-                    style={styles.codeInput}
-                    placeholder="000000"
-                    placeholderTextColor={colors.textFaint}
-                    value={code}
-                    onChangeText={setCode}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                    editable={!isLoading}
-                    autoFocus
-                  />
-                </View>
-
-                <TouchableOpacity
-                  onPress={handleVerifyCode}
-                  disabled={isLoading || code.length < 6}
-                  activeOpacity={0.8}
-                  style={(code.length < 6 || isLoading) && styles.buttonDisabled}
-                >
-                  <LinearGradient
-                    colors={gradients.brand}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[styles.button, styles.primaryButton]}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <>
-                        <Text style={styles.primaryButtonText}>Verify & Sign In</Text>
-                        <Ionicons name="checkmark" size={18} color="#fff" />
-                      </>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <View style={styles.codeActions}>
-                  <TouchableOpacity
-                    style={styles.linkButton}
-                    onPress={handleBackToEmail}
-                    disabled={isLoading}
-                  >
-                    <Ionicons name="arrow-back" size={16} color={colors.brand2} />
-                    <Text style={styles.linkButtonText}>Use different email</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.linkButton}
-                    onPress={handleSendCode}
-                    disabled={isLoading}
-                  >
-                    <Ionicons name="refresh" size={16} color={colors.brand2} />
-                    <Text style={styles.linkButtonText}>Resend code</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </View>
-
-          {/* Terms */}
-          <Text style={styles.termsText}>
-            By signing in, you agree to our{' '}
-            <Text style={styles.termsLink}>Terms of Service</Text>
-            {' '}and{' '}
-            <Text style={styles.termsLink}>Privacy Policy</Text>
+        {/* Logo & Header */}
+        <View style={styles.header}>
+          <LinearGradient
+            colors={gradients.brand}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.logoContainer}
+          >
+            <Ionicons name="trophy" size={40} color={colors.white} />
+          </LinearGradient>
+          <Text style={styles.title}>
+            <Text style={styles.titleWager}>Wager</Text>
+            <Text style={styles.titlePals}>Pals</Text>
           </Text>
+          <Text style={styles.subtitle}>Polymarket for friends</Text>
         </View>
-      </KeyboardAvoidingView>
+
+        {/* Auth Card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>{step === 'email' ? 'Welcome' : 'Verify your email'}</Text>
+          <Text style={styles.cardSubtitle}>
+            {step === 'email'
+              ? 'Sign in with email or Google — same address, same WagerPals account, automatically.'
+              : `Enter the code sent to ${email.trim()}`}
+          </Text>
+
+          {step === 'email' ? (
+            <View style={styles.form}>
+              <View style={[styles.inputContainer, emailError && styles.inputContainerError]}>
+                <Ionicons name="mail-outline" size={20} color={colors.textFaint} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter your email"
+                  placeholderTextColor={colors.textFaint}
+                  value={email}
+                  onChangeText={handleEmailChange}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  returnKeyType="go"
+                  onSubmitEditing={() => handleSendCode(false)}
+                  editable={busy === null}
+                />
+              </View>
+              {emailError ? (
+                <View style={styles.errorRow}>
+                  <Ionicons name="alert-circle" size={14} color={colors.rose} />
+                  <Text style={styles.errorText}>{emailError}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <Button
+                title="Continue with Google"
+                onPress={handleGoogleAuth}
+                loading={busy === 'google'}
+                disabled={busy !== null && busy !== 'google'}
+                variant="secondary"
+                icon="logo-google"
+                fullWidth
+                haptic="none"
+              />
+            </View>
+          ) : (
+            <View style={styles.form}>
+              <View style={styles.codeContainer}>
+                <TextInput
+                  ref={codeInputRef}
+                  style={[styles.codeInput, codeError && styles.inputContainerError]}
+                  placeholder={'0'.repeat(CODE_LENGTH)}
+                  placeholderTextColor={colors.textFaint}
+                  value={code}
+                  onChangeText={handleCodeChange}
+                  keyboardType="number-pad"
+                  textContentType="oneTimeCode"
+                  maxLength={CODE_LENGTH}
+                  editable={busy === null}
+                  autoFocus
+                  onSubmitEditing={handleVerifyCode}
+                />
+              </View>
+              {codeError ? (
+                <View style={styles.errorRow}>
+                  <Ionicons name="alert-circle" size={14} color={colors.rose} />
+                  <Text style={styles.errorText}>{codeError}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.codeActions}>
+                <Button
+                  title="Use different email"
+                  onPress={handleBackToEmail}
+                  disabled={busy !== null}
+                  variant="ghost"
+                  size="sm"
+                  icon="arrow-back"
+                  haptic="none"
+                />
+                <Button
+                  title={cooldown > 0 ? `Resend code (${cooldown}s)` : 'Resend code'}
+                  onPress={() => handleSendCode(true)}
+                  loading={busy === 'resend'}
+                  disabled={cooldown > 0 || (busy !== null && busy !== 'resend')}
+                  variant="ghost"
+                  size="sm"
+                  icon="refresh"
+                  haptic="none"
+                />
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Terms */}
+        <Text style={styles.termsText}>
+          By signing in, you agree to our{' '}
+          <Text style={styles.termsLink}>Terms of Service</Text>
+          {' '}and{' '}
+          <Text style={styles.termsLink}>Privacy Policy</Text>
+        </Text>
+      </FormScreen>
     </SafeAreaView>
   );
 }
@@ -258,17 +331,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  keyboardView: {
-    flex: 1,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 24,
+  formContent: {
+    flexGrow: 1,
     justifyContent: 'center',
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: spacing.xl,
   },
   logoContainer: {
     width: 72,
@@ -276,12 +345,12 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
-    ...glow(colors.brand2, 0.6),
+    marginBottom: spacing.lg,
+    ...tokens.shadow.accent,
   },
   title: {
     fontSize: 36,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   titleWager: {
     fontWeight: '300',
@@ -292,7 +361,7 @@ const styles = StyleSheet.create({
     color: colors.brand2,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: tokens.fontSize.base,
     color: colors.textMuted,
     fontWeight: '400',
   },
@@ -301,21 +370,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.xl,
-    padding: 28,
+    padding: spacing.xl,
   },
   cardTitle: {
-    fontSize: 24,
+    fontSize: tokens.fontSize['2xl'],
     fontWeight: '600',
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   cardSubtitle: {
-    fontSize: 14,
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     textAlign: 'center',
-    marginBottom: 28,
-    lineHeight: 20,
+    marginBottom: spacing.xl,
+    lineHeight: tokens.lineHeight.sm,
   },
   form: {
     width: '100%',
@@ -328,19 +397,32 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: 16,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
+  },
+  inputContainerError: {
+    borderColor: colors.rose,
   },
   inputIcon: {
-    marginRight: 12,
+    marginRight: spacing.md,
   },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: tokens.fontSize.base,
     color: colors.text,
   },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  errorText: {
+    flexShrink: 1,
+    fontSize: tokens.fontSize.xs,
+    color: colors.rose,
+  },
   codeContainer: {
-    marginBottom: 20,
+    marginBottom: spacing.sm,
   },
   codeInput: {
     height: 64,
@@ -354,29 +436,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 12,
   },
-  button: {
-    height: 56,
-    borderRadius: 14,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  primaryButton: {
-    ...glow(colors.brand2, 0.5),
-  },
-  buttonDisabled: {
-    opacity: 0.45,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 24,
+    marginVertical: spacing.xl,
   },
   dividerLine: {
     flex: 1,
@@ -384,55 +447,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
   },
   dividerText: {
-    marginHorizontal: 16,
+    marginHorizontal: spacing.lg,
     color: colors.textFaint,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  googleButton: {
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  googleIconContainer: {
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  googleIcon: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#ea4335',
-  },
-  googleButtonText: {
-    color: colors.text,
-    fontSize: 16,
+    fontSize: tokens.fontSize.sm,
     fontWeight: '500',
   },
   codeActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 20,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-  },
-  linkButtonText: {
-    color: colors.brand2,
-    fontSize: 14,
-    fontWeight: '500',
+    marginTop: spacing.md,
+    gap: spacing.sm,
   },
   termsText: {
-    fontSize: 12,
+    fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
     textAlign: 'center',
-    marginTop: 24,
+    marginTop: spacing.xl,
     lineHeight: 18,
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.lg,
   },
   termsLink: {
     color: colors.brand2,

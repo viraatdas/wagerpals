@@ -1,23 +1,85 @@
-// Group Admin Screen - Manage members
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
-  RefreshControl,
-} from 'react-native';
+// Group Admin Screen - Manage members, group settings, and danger zone.
+// A single SectionList (not a ScrollView full of .map()s) renders the
+// member rows; settings live in the header, danger zone in the footer.
+import React, { useCallback, useMemo, useState } from 'react';
+import { View, Text, SectionList, Pressable, StyleSheet, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
-import { GroupMember } from '../types';
-import { colors, gradients, radius, glow } from '../theme';
+import { Group, GroupMember } from '../types';
+import { ApiError, toApiError } from '../utils/errors';
+import { tapHeavy, tapMedium, success, warning, error as hapticError } from '../utils/haptics';
+import { colors, radius, spacing, tokens } from '../theme';
+import { Avatar, Button, Card, EmptyState, ErrorState, Pill, SectionHeader, Skeleton, SkeletonList, Toggle } from '../components';
+
+type GroupData = Group & { members?: GroupMember[]; pending_requests?: GroupMember[] };
+type MemberAction = 'approve' | 'decline' | 'promote' | 'demote' | 'remove';
+type SectionKey = 'pending' | 'admins' | 'members';
+
+interface MemberSection {
+  key: SectionKey;
+  title: string;
+  data: GroupMember[];
+}
+
+const ACTION_CONFIG: Record<
+  MemberAction,
+  { title: string; message: (username: string) => string; confirmLabel: string; destructive: boolean; failTitle: string }
+> = {
+  approve: {
+    title: 'Approve request',
+    message: (u) => `Approve ${u}'s request to join?`,
+    confirmLabel: 'Approve',
+    destructive: false,
+    failTitle: "Couldn't approve request",
+  },
+  decline: {
+    title: 'Decline request',
+    message: (u) => `Decline ${u}'s request to join? They can request to join again later.`,
+    confirmLabel: 'Decline',
+    destructive: true,
+    failTitle: "Couldn't decline request",
+  },
+  promote: {
+    title: 'Promote to admin',
+    message: (u) => `Make ${u} an admin? They'll be able to manage members and group settings.`,
+    confirmLabel: 'Promote',
+    destructive: false,
+    failTitle: "Couldn't promote member",
+  },
+  demote: {
+    title: 'Remove admin access',
+    message: (u) => `Remove admin access from ${u}? They'll remain a regular member.`,
+    confirmLabel: 'Demote',
+    destructive: true,
+    failTitle: "Couldn't demote admin",
+  },
+  remove: {
+    title: 'Remove member',
+    message: (u) => `Remove ${u} from the group? They'll need to request to join again.`,
+    confirmLabel: 'Remove',
+    destructive: true,
+    failTitle: "Couldn't remove member",
+  },
+};
+
+function applyMemberAction(list: GroupMember[], action: MemberAction, targetUserId: string): GroupMember[] {
+  switch (action) {
+    case 'approve':
+      return list.map((m) => (m.user_id === targetUserId ? { ...m, status: 'active' as const } : m));
+    case 'decline':
+    case 'remove':
+      return list.filter((m) => m.user_id !== targetUserId);
+    case 'promote':
+      return list.map((m) => (m.user_id === targetUserId ? { ...m, role: 'admin' as const } : m));
+    case 'demote':
+      return list.map((m) => (m.user_id === targetUserId ? { ...m, role: 'member' as const } : m));
+    default:
+      return list;
+  }
+}
 
 export default function GroupAdminScreen() {
   const route = useRoute();
@@ -25,284 +87,496 @@ export default function GroupAdminScreen() {
   const { user } = useAuth();
   const { groupId } = route.params as { groupId: string };
 
-  const [group, setGroup] = useState<any>(null);
+  const [group, setGroup] = useState<GroupData | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [rowBusy, setRowBusy] = useState<Record<string, MemberAction | undefined>>({});
+  const [resolverUpdating, setResolverUpdating] = useState<string | null>(null);
+  const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  useEffect(() => {
-    loadMembers();
-  }, [groupId]);
+  const loadData = useCallback(
+    async (opts?: { isRefresh?: boolean }) => {
+      if (!user) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
 
-  const loadMembers = async () => {
-    try {
-      const [groupData, data] = await Promise.all([
-        apiService.getGroup(groupId),
-        apiService.getGroupMembers(groupId),
-      ]);
-      setGroup(groupData);
-      setMembers(data);
-    } catch (error) {
-      console.error('Failed to load members:', error);
-      Alert.alert('Error', 'Failed to load members');
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      if (opts?.isRefresh) setIsRefreshing(true);
+      else setIsLoading(true);
+      setError(null);
+
+      try {
+        const [groupData, membersData] = await Promise.all([
+          apiService.getGroup(groupId),
+          apiService.getGroupMembers(groupId),
+        ]);
+        setGroup(groupData);
+        setMembers(membersData);
+      } catch (err) {
+        setError(err instanceof ApiError ? err : toApiError(err, '/api/groups'));
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [groupId, user]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData().catch(() => {});
+    }, [loadData])
+  );
+
+  const handleRefresh = useCallback(() => {
+    // See apiService.invalidateForRefresh — admins pull specifically to see
+    // whether a new join request landed, so serving this from cache is the
+    // worst possible place to do it.
+    apiService.invalidateForRefresh('/api/groups');
+    loadData({ isRefresh: true }).catch(() => {});
+  }, [loadData]);
+
+  const viewerIsAdmin = useMemo(
+    () => members.some((m) => m.user_id === user?.id && m.role === 'admin' && m.status === 'active'),
+    [members, user?.id]
+  );
+
+  const sections = useMemo<MemberSection[]>(() => {
+    const pending = members.filter((m) => m.status === 'pending');
+    const active = members.filter((m) => m.status === 'active');
+    const admins = active.filter((m) => m.role === 'admin');
+    const regular = active.filter((m) => m.role === 'member');
+
+    const result: MemberSection[] = [];
+    if (pending.length > 0) {
+      result.push({ key: 'pending', title: `Pending Requests (${pending.length})`, data: pending });
     }
-  };
+    result.push({ key: 'admins', title: `Admins (${admins.length})`, data: admins });
+    result.push({ key: 'members', title: `Members (${regular.length})`, data: regular });
+    return result;
+  }, [members]);
 
-  const handleResolverChange = async (member: GroupMember) => {
-    Alert.alert(
-      'Set Resolver',
-      `Make ${member.username} the resolver for paid events?`,
-      [
+  const runMemberAction = useCallback(
+    async (action: MemberAction, targetUserId: string, username: string) => {
+      if (!user || rowBusy[targetUserId]) return;
+
+      const previousMembers = members;
+      const config = ACTION_CONFIG[action];
+
+      setRowBusy((prev) => ({ ...prev, [targetUserId]: action }));
+      setMembers((prev) => applyMemberAction(prev, action, targetUserId));
+
+      try {
+        await apiService.manageGroupMember(action, groupId, user.id, targetUserId);
+        success();
+      } catch (err) {
+        setMembers(previousMembers);
+        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups/members');
+        hapticError();
+        Alert.alert(config.failTitle, apiErr.userMessage);
+      } finally {
+        setRowBusy((prev) => {
+          const next = { ...prev };
+          delete next[targetUserId];
+          return next;
+        });
+      }
+    },
+    [groupId, members, rowBusy, user]
+  );
+
+  const handleMemberAction = useCallback(
+    (action: MemberAction, targetUserId: string, username: string) => {
+      const label = username || 'this member';
+      const config = ACTION_CONFIG[action];
+
+      if (!config.destructive) {
+        tapMedium();
+        void runMemberAction(action, targetUserId, label);
+        return;
+      }
+
+      Alert.alert(config.title, config.message(label), [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Set Resolver',
-          onPress: async () => {
-            try {
-              await apiService.updateGroupSettings({ id: groupId, resolver_user_id: member.user_id });
-              Alert.alert('Updated', `${member.username} is now the resolver.`);
-              loadMembers();
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to set resolver');
-            }
+          text: config.confirmLabel,
+          style: 'destructive',
+          onPress: () => {
+            tapHeavy();
+            void runMemberAction(action, targetUserId, label);
           },
         },
-      ]
-    );
-  };
+      ]);
+    },
+    [runMemberAction]
+  );
 
-  const handlePaidToggle = async () => {
+  const runResolverChange = useCallback(
+    async (member: GroupMember) => {
+      if (resolverUpdating) return;
+      setResolverUpdating(member.user_id);
+      try {
+        const updated = await apiService.updateGroupSettings({ id: groupId, resolver_user_id: member.user_id });
+        setGroup((prev) => (prev ? { ...prev, ...updated } : (updated as GroupData)));
+        success();
+      } catch (err) {
+        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups');
+        hapticError();
+        Alert.alert("Couldn't set resolver", apiErr.userMessage);
+      } finally {
+        setResolverUpdating(null);
+      }
+    },
+    [groupId, resolverUpdating]
+  );
+
+  const handleResolverChange = useCallback(
+    (member: GroupMember) => {
+      if (!group || member.user_id === group.resolver_user_id || resolverUpdating) return;
+      const label = member.username || 'this member';
+      Alert.alert('Set Resolver', `Make ${label} the resolver for paid events? They'll decide the outcome of cash bets.`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Set Resolver', onPress: () => void runResolverChange(member) },
+      ]);
+    },
+    [group, resolverUpdating, runResolverChange]
+  );
+
+  const runVisibilityToggle = useCallback(
+    async (nextIsPublic: boolean) => {
+      if (!group || isTogglingVisibility) return;
+      warning();
+      setIsTogglingVisibility(true);
+      try {
+        const updated = await apiService.updateGroupSettings({ id: groupId, is_public: nextIsPublic });
+        setGroup((prev) => (prev ? { ...prev, ...updated } : (updated as GroupData)));
+        success();
+      } catch (err) {
+        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups');
+        hapticError();
+        Alert.alert("Couldn't update group", apiErr.userMessage);
+      } finally {
+        setIsTogglingVisibility(false);
+      }
+    },
+    [group, groupId, isTogglingVisibility]
+  );
+
+  // Audit finding B7: is_public isn't just a visibility flag — it decides
+  // whether open bets are settled in points or real cash. Flipping it
+  // retroactively changes the currency of every open bet in the group, so
+  // the confirm copy has to say that explicitly, not just "are you sure?".
+  const handleVisibilityToggle = useCallback(
+    (nextIsPublic: boolean) => {
+      if (!group) return;
+      const title = nextIsPublic ? 'Switch to free points?' : 'Switch to paid wallet betting?';
+      const message = nextIsPublic
+        ? 'Every open bet in this group is currently backed by real money held in the group wallet. Switching to free points retroactively converts those open bets to points — the currency they settle in changes for everyone, right now. This cannot be undone automatically.'
+        : 'Switching to paid wallet betting retroactively converts every open bet in this group from free points to real money, and new bets will move funds through the group wallet. This cannot be undone automatically.';
+
+      Alert.alert(title, message, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Confirm', style: 'destructive', onPress: () => void runVisibilityToggle(nextIsPublic) },
+      ]);
+    },
+    [group, runVisibilityToggle]
+  );
+
+  const runDeleteGroup = useCallback(async () => {
+    if (isDeleting) return;
+    tapHeavy();
+    setIsDeleting(true);
     try {
-      await apiService.updateGroupSettings({ id: groupId, is_public: !group?.is_public });
-      loadMembers();
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to update group');
+      await apiService.deleteGroup(groupId);
+      success();
+      // 'Home' is a tab screen inside the `Main` tab navigator, not a
+      // root-stack route — this screen sits in the root stack, so a bare
+      // navigation.navigate('Home') is not handled by any navigator and
+      // silently no-ops, leaving the (now-deleted) group screen on screen.
+      // Target the tab explicitly through its parent stack screen instead.
+      navigation.navigate('Main' as never, { screen: 'Home' } as never);
+    } catch (err) {
+      const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups');
+      hapticError();
+      Alert.alert("Couldn't delete group", apiErr.userMessage);
+    } finally {
+      setIsDeleting(false);
     }
-  };
+  }, [groupId, isDeleting, navigation]);
 
-  const handleDeleteGroup = async () => {
+  const handleDeleteGroup = useCallback(() => {
+    if (!group) return;
     Alert.alert(
       'Delete Group',
-      `Delete ${group?.name || 'this group'} and all of its events?`,
+      `This permanently deletes "${group.name}" and all of its events, bets, and history for every member. This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await apiService.deleteGroup(groupId);
-              navigation.navigate('Home' as never);
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to delete group');
-            }
-          },
-        },
+        { text: 'Delete', style: 'destructive', onPress: () => void runDeleteGroup() },
       ]
     );
-  };
+  }, [group, runDeleteGroup]);
 
-  const handleAction = async (
-    action: 'approve' | 'decline' | 'promote' | 'demote' | 'remove',
-    targetUserId: string,
-    username: string
-  ) => {
-    if (!user) return;
-
-    const actionMessages = {
-      approve: `Approve ${username}?`,
-      decline: `Decline ${username}'s request?`,
-      promote: `Promote ${username} to admin?`,
-      demote: `Demote ${username} to member?`,
-      remove: `Remove ${username} from group?`,
-    };
-
-    Alert.alert(
-      'Confirm Action',
-      actionMessages[action],
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            try {
-              await apiService.manageGroupMember(action, groupId, user.id, targetUserId);
-              Alert.alert('Success', `Action completed successfully`);
-              loadMembers();
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to perform action');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  if (isLoading) {
+  // ---- Initial load: skeleton matching the real content shape ----
+  if (isLoading && !group) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.brand2} />
-      </View>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <View style={styles.skeletonBody}>
+          <Skeleton width="55%" height={20} style={{ marginBottom: spacing.md }} />
+          <Skeleton width="100%" height={80} radius={radius.lg} style={{ marginBottom: spacing.xl }} />
+          <SkeletonList count={4} />
+        </View>
+      </SafeAreaView>
     );
   }
 
-  const pendingMembers = members.filter((m) => m.status === 'pending');
+  // ---- Initial-load failure: nothing cached, full-screen error ----
+  if (error && !group) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <SectionList
+          sections={[]}
+          renderItem={() => null}
+          keyExtractor={() => 'noop'}
+          ListEmptyComponent={<ErrorState message={error.userMessage} onRetry={handleRefresh} />}
+          contentContainerStyle={styles.emptyContentContainer}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.brand} />}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  // ---- Loaded, but the signed-in user isn't an admin: nothing to manage here ----
+  if (group && !viewerIsAdmin) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <SectionList
+          sections={[]}
+          renderItem={() => null}
+          keyExtractor={() => 'noop'}
+          ListEmptyComponent={
+            <ErrorState
+              title="Admins only"
+              message="You don't have permission to manage this group."
+              onRetry={handleRefresh}
+              retryLabel="Refresh"
+            />
+          }
+          contentContainerStyle={styles.emptyContentContainer}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.brand} />}
+        />
+      </SafeAreaView>
+    );
+  }
+
   const activeMembers = members.filter((m) => m.status === 'active');
-  const admins = activeMembers.filter((m) => m.role === 'admin');
-  const regularMembers = activeMembers.filter((m) => m.role === 'member');
+  const isCreator = !!user && !!group && user.id === group.created_by;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => { setIsRefreshing(true); loadMembers(); }} tintColor={colors.brand2} />}
-      >
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Paid Group Settings</Text>
-          <View style={styles.settingsCard}>
-            <Text style={styles.settingsText}>
-              Status: {group?.is_public ? 'Free points' : 'Paid wallet betting'}
-            </Text>
-            <TouchableOpacity style={styles.fullButtonWrap} onPress={handlePaidToggle} activeOpacity={0.85}>
-              <LinearGradient
-                colors={gradients.brand}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.fullButton}
-              >
-                <Text style={styles.fullButtonText}>
-                  {group?.is_public ? 'Enable Paid Betting' : 'Use Free Points'}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.user_id}
+        stickySectionHeadersEnabled={false}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.brand} />}
+        contentContainerStyle={styles.listContent}
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        removeClippedSubviews
+        ListHeaderComponent={
+          <View>
+            {error && group ? (
+              <ErrorState compact title="Couldn't refresh" message={error.userMessage} onRetry={handleRefresh} style={styles.inlineError} />
+            ) : null}
 
-            {!group?.is_public && (
-              <>
-                <Text style={styles.settingsText}>
-                  Resolver: @{group?.resolver?.username || 'Not set'}
-                </Text>
-                <View style={styles.resolverList}>
-                  {activeMembers.map((member) => (
-                    <TouchableOpacity
-                      key={member.user_id}
-                      style={[
-                        styles.resolverChip,
-                        group?.resolver?.user_id === member.user_id && styles.resolverChipSelected,
-                      ]}
-                      onPress={() => handleResolverChange(member)}
-                    >
-                      <Text
-                        style={[
-                          styles.resolverChipText,
-                          group?.resolver?.user_id === member.user_id && styles.resolverChipTextSelected,
-                        ]}
-                      >
-                        @{member.username}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </>
-            )}
-          </View>
-        </View>
+            <View style={styles.section}>
+              <SectionHeader title="Group Settings" />
+              <Card>
+                <Toggle
+                  label="Free points mode"
+                  description={
+                    group?.is_public
+                      ? 'Bets settle in free points, not real money.'
+                      : 'Bets move real money through the group wallet.'
+                  }
+                  value={!!group?.is_public}
+                  onValueChange={handleVisibilityToggle}
+                  disabled={isTogglingVisibility}
+                />
 
-        {/* Pending Requests */}
-        {pendingMembers.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Pending Requests ({pendingMembers.length})</Text>
-            {pendingMembers.map((member) => (
-              <View key={member.user_id} style={styles.memberCard}>
-                <View style={styles.memberInfo}>
-                  <Text style={styles.memberName}>{member.username}</Text>
-                  <Text style={styles.memberStatus}>Waiting for approval</Text>
-                </View>
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.approveBtn]}
-                    onPress={() => handleAction('approve', member.user_id, member.username || '')}
-                  >
-                    <Ionicons name="checkmark" size={20} color={colors.mint} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.declineBtn]}
-                    onPress={() => handleAction('decline', member.user_id, member.username || '')}
-                  >
-                    <Ionicons name="close" size={20} color={colors.rose} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Admins */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Admins ({admins.length})</Text>
-          {admins.map((member) => (
-            <View key={member.user_id} style={styles.memberCard}>
-              <View style={styles.memberInfo}>
-                <Text style={styles.memberName}>{member.username}</Text>
-                <View style={styles.adminBadge}>
-                  <Text style={styles.adminBadgeText}>Admin</Text>
-                </View>
-              </View>
-              {member.user_id !== user?.id && (
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.secondaryBtn]}
-                  onPress={() => handleAction('demote', member.user_id, member.username || '')}
-                >
-                  <Text style={[styles.btnText, styles.btnTextSecondary]}>Demote</Text>
-                </TouchableOpacity>
-              )}
+                {!group?.is_public && (
+                  <View style={styles.resolverBlock}>
+                    <Text style={styles.resolverLabel}>
+                      Resolver: {group?.resolver?.username ? `@${group.resolver.username}` : 'Not set'}
+                    </Text>
+                    <View style={styles.resolverList}>
+                      {activeMembers.map((member) => {
+                        const selected = group?.resolver_user_id === member.user_id;
+                        const busy = resolverUpdating === member.user_id;
+                        return (
+                          <Pressable
+                            key={member.user_id}
+                            style={[styles.resolverChip, selected && styles.resolverChipSelected]}
+                            onPress={() => handleResolverChange(member)}
+                            disabled={!!resolverUpdating}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Set @${member.username || 'member'} as resolver`}
+                          >
+                            <Text
+                              style={[styles.resolverChipText, selected && styles.resolverChipTextSelected]}
+                              numberOfLines={1}
+                              ellipsizeMode="tail"
+                            >
+                              {busy ? 'Setting…' : `@${member.username || 'member'}`}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+              </Card>
             </View>
-          ))}
-        </View>
-
-        {/* Members */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Members ({regularMembers.length})</Text>
-          {regularMembers.map((member) => (
-            <View key={member.user_id} style={styles.memberCard}>
-              <View style={styles.memberInfo}>
-                <Text style={styles.memberName}>{member.username}</Text>
+          </View>
+        }
+        renderSectionHeader={({ section }) => {
+          if (section.key === 'pending') {
+            return (
+              <View style={styles.pendingHeaderWrap}>
+                <Ionicons name="person-add-outline" size={16} color={colors.amber} />
+                <Text style={styles.pendingHeaderText}>{section.title}</Text>
               </View>
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={styles.promoteBtnWrap}
-                  onPress={() => handleAction('promote', member.user_id, member.username || '')}
-                  activeOpacity={0.85}
-                >
-                  <LinearGradient
-                    colors={gradients.brand}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.actionBtn}
-                  >
-                    <Text style={styles.btnText}>Promote</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.removeBtn]}
-                  onPress={() => handleAction('remove', member.user_id, member.username || '')}
-                >
-                  <Ionicons name="trash-outline" size={18} color={colors.rose} />
-                </TouchableOpacity>
+            );
+          }
+          return (
+            <View style={styles.sectionHeaderWrap}>
+              <SectionHeader title={section.title} />
+            </View>
+          );
+        }}
+        renderItem={({ item, section }) => {
+          const busyAction = rowBusy[item.user_id];
+          const isBusy = !!busyAction;
+          const username = item.username || 'Unknown';
+          const isSelf = item.user_id === user?.id;
+
+          if (section.key === 'pending') {
+            return (
+              <View style={styles.memberRow}>
+                <Avatar username={item.username} size="md" />
+                <View style={styles.memberTextCol}>
+                  <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">
+                    {username}
+                  </Text>
+                  <Text style={styles.memberSubtext}>Waiting for approval</Text>
+                </View>
+                <View style={styles.rowActions}>
+                  <Button
+                    title="Approve"
+                    size="sm"
+                    variant="primary"
+                    icon="checkmark"
+                    loading={busyAction === 'approve'}
+                    disabled={isBusy}
+                    onPress={() => handleMemberAction('approve', item.user_id, username)}
+                  />
+                  <Button
+                    title="Decline"
+                    size="sm"
+                    variant="danger"
+                    icon="close"
+                    loading={busyAction === 'decline'}
+                    disabled={isBusy}
+                    onPress={() => handleMemberAction('decline', item.user_id, username)}
+                  />
+                </View>
+              </View>
+            );
+          }
+
+          if (section.key === 'admins') {
+            return (
+              <View style={styles.memberRow}>
+                <Avatar username={item.username} size="md" />
+                <View style={styles.memberTextCol}>
+                  <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">
+                    {username}
+                  </Text>
+                  <Pill label="Admin" tone="brand" size="sm" />
+                </View>
+                {!isSelf && (
+                  <View style={styles.rowActions}>
+                    <Button
+                      title="Demote"
+                      size="sm"
+                      variant="secondary"
+                      loading={busyAction === 'demote'}
+                      disabled={isBusy}
+                      onPress={() => handleMemberAction('demote', item.user_id, username)}
+                    />
+                  </View>
+                )}
+              </View>
+            );
+          }
+
+          return (
+            <View style={styles.memberRow}>
+              <Avatar username={item.username} size="md" />
+              <View style={styles.memberTextCol}>
+                <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">
+                  {username}
+                </Text>
+                <Pill label="Member" tone="neutral" size="sm" />
+              </View>
+              <View style={styles.rowActions}>
+                <Button
+                  title="Promote"
+                  size="sm"
+                  variant="primary"
+                  loading={busyAction === 'promote'}
+                  disabled={isBusy}
+                  onPress={() => handleMemberAction('promote', item.user_id, username)}
+                />
+                <Button
+                  title="Remove"
+                  size="sm"
+                  variant="danger"
+                  icon="trash-outline"
+                  loading={busyAction === 'remove'}
+                  disabled={isBusy}
+                  onPress={() => handleMemberAction('remove', item.user_id, username)}
+                />
               </View>
             </View>
-          ))}
-        </View>
-
-        {user?.id === group?.created_by && (
-          <View style={styles.section}>
-            <TouchableOpacity style={styles.deleteGroupButton} onPress={handleDeleteGroup}>
-              <Ionicons name="trash-outline" size={18} color={colors.rose} />
-              <Text style={styles.deleteGroupButtonText}>Delete Group</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
+          );
+        }}
+        ListEmptyComponent={
+          members.length === 0 ? (
+            <EmptyState icon="people-outline" title="No members found" message="Pull to refresh to try loading members again." style={styles.emptyState} />
+          ) : null
+        }
+        ListFooterComponent={
+          isCreator ? (
+            <View style={styles.section}>
+              <SectionHeader title="Danger Zone" />
+              <Button
+                title="Delete Group"
+                variant="danger"
+                icon="trash-outline"
+                fullWidth
+                loading={isDeleting}
+                disabled={isDeleting}
+                onPress={handleDeleteGroup}
+              />
+            </View>
+          ) : null
+        }
+      />
     </SafeAreaView>
   );
 }
@@ -312,58 +586,53 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  loadingContainer: {
-    flex: 1,
+  skeletonBody: {
+    padding: spacing.lg,
+  },
+  emptyContentContainer: {
+    flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.bg,
+  },
+  emptyState: {
+    marginTop: spacing.xl,
+  },
+  listContent: {
+    paddingBottom: spacing.xxl,
+  },
+  inlineError: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.bg2,
+    borderRadius: radius.lg,
   },
   section: {
-    padding: 16,
+    padding: spacing.lg,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 12,
+  resolverBlock: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
-  settingsCard: {
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: 14,
-    gap: 12,
-  },
-  settingsText: {
+  resolverLabel: {
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
-    fontSize: 14,
-  },
-  fullButtonWrap: {
-    borderRadius: radius.pill,
-    ...glow(colors.brand2),
-  },
-  fullButton: {
-    paddingVertical: 11,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-  },
-  fullButtonText: {
-    color: colors.white,
-    fontWeight: '600',
+    marginBottom: spacing.sm,
   },
   resolverList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: spacing.sm,
   },
   resolverChip: {
+    minHeight: 44,
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
     backgroundColor: colors.surfaceGlass,
+    maxWidth: '100%',
   },
   resolverChipSelected: {
     backgroundColor: colors.mintFill,
@@ -371,103 +640,59 @@ const styles = StyleSheet.create({
   },
   resolverChipText: {
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: tokens.fontSize.sm,
   },
   resolverChipTextSelected: {
     color: colors.mint,
     fontWeight: '600',
   },
-  memberCard: {
+  pendingHeaderWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    marginBottom: 8,
+    gap: spacing.xs,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.xl,
+    marginBottom: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.amberFill,
   },
-  memberInfo: {
+  pendingHeaderText: {
+    fontSize: tokens.fontSize.lg,
+    fontWeight: '600',
+    color: colors.amber,
+  },
+  sectionHeaderWrap: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.xl,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+    marginHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    gap: spacing.md,
+  },
+  memberTextCol: {
     flex: 1,
+    minWidth: 0,
+    gap: spacing.xs,
   },
   memberName: {
-    fontSize: 16,
+    fontSize: tokens.fontSize.base,
     fontWeight: '500',
     color: colors.text,
-    marginBottom: 4,
   },
-  memberStatus: {
-    fontSize: 14,
+  memberSubtext: {
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
   },
-  adminBadge: {
-    backgroundColor: colors.brandFill,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-    alignSelf: 'flex-start',
-  },
-  adminBadgeText: {
-    fontSize: 12,
-    color: colors.brand2,
-  },
-  actions: {
+  rowActions: {
     flexDirection: 'row',
-    gap: 8,
-  },
-  actionBtn: {
-    padding: 8,
-    borderRadius: radius.pill,
-    minWidth: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  approveBtn: {
-    backgroundColor: colors.mintFill,
-    borderWidth: 1,
-    borderColor: colors.mint,
-  },
-  declineBtn: {
-    backgroundColor: colors.roseFill,
-    borderWidth: 1,
-    borderColor: colors.rose,
-  },
-  secondaryBtn: {
-    backgroundColor: colors.surfaceGlassStrong,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  promoteBtnWrap: {
-    borderRadius: radius.pill,
-    ...glow(colors.brand2),
-  },
-  removeBtn: {
-    backgroundColor: colors.roseFill,
-    borderWidth: 1,
-    borderColor: colors.rose,
-  },
-  deleteGroupButton: {
-    backgroundColor: colors.roseFill,
-    borderWidth: 1,
-    borderColor: colors.rose,
-    borderRadius: radius.lg,
-    paddingVertical: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  deleteGroupButtonText: {
-    color: colors.rose,
-    fontWeight: '600',
-  },
-  btnText: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  btnTextSecondary: {
-    color: colors.text,
+    gap: spacing.sm,
+    flexShrink: 0,
   },
 });

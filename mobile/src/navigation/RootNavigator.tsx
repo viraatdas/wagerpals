@@ -23,7 +23,11 @@ import JoinGroupScreen from '../screens/JoinGroupScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import EditUsernameScreen from '../screens/EditUsernameScreen';
 import CreateEventFromInviteScreen from '../screens/CreateEventFromInviteScreen';
+import WalletScreen from '../screens/WalletScreen';
+import NotificationPreferencesScreen from '../screens/NotificationPreferencesScreen';
 import notificationService from '../services/notifications';
+import ErrorBoundary from '../components/ErrorBoundary';
+import { ApiError, toApiError } from '../utils/errors';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -38,14 +42,34 @@ export default function RootNavigator() {
   useEffect(() => {
     // Listen for auth state changes
     const unsubscribe = authService.onAuthStateChanged((newUser) => {
-      setUser(newUser);
+      // Audit finding D10: auth.ts builds its AuthUser as
+      // `id: data.user_id || data.id || ''`, so a partially-successful
+      // verify-code response can produce a signed-in user whose id is the
+      // empty string. Every request then omits the identity and fails in a
+      // way that looks like a broken app rather than a broken sign-in.
+      // auth.ts is owned by an earlier node, so rather than edit it we
+      // refuse to treat an id-less user as signed in — the app falls back
+      // to the auth screen, which is recoverable, instead of a logged-in
+      // state where nothing works.
+      const usable = newUser && newUser.id ? newUser : null;
+      if (newUser && !newUser.id) {
+        console.error('[nav] auth produced a user with no id; treating as signed out (audit D10)');
+      }
+
+      setUser(usable);
       setIsLoading(false);
-      
+
       // Check if user needs to set up username
-      if (newUser) {
-        checkUserUsername(newUser.id);
+      if (usable) {
+        checkUserUsername(usable.id);
       } else {
         setNeedsUsername(false);
+        // The API layer caches GET responses keyed by URL only — it has no
+        // notion of *whose* data it holds. Without this, signing out and
+        // signing in as someone else on the same device would render the
+        // previous account's groups/activity/balance from cache until each
+        // entry's TTL lapsed.
+        apiService.clearCache();
       }
     });
 
@@ -64,8 +88,19 @@ export default function RootNavigator() {
       // If the user hasn't deliberately picked a username yet, they need to set one
       setNeedsUsername(!userData?.username_selected);
     } catch (error) {
-      // If user doesn't exist in our DB yet, they need to set up username
-      setNeedsUsername(true);
+      // Only a definitive "this user has no row yet" answer should push
+      // someone into the username picker. The old code treated EVERY failure
+      // as "needs a username", so a subway-tunnel network blip would drop an
+      // established user into first-run setup and invite them to rename
+      // themselves. A transport failure (offline/timeout) or a server error
+      // tells us nothing about their username, so we leave the flag alone
+      // and let the app render; the next successful sync corrects it.
+      const err = error instanceof ApiError ? error : toApiError(error, '/api/users');
+      if (err.status === 404) {
+        setNeedsUsername(true);
+      } else {
+        console.warn('[nav] username check inconclusive, not forcing setup:', err.kind, err.status ?? '');
+      }
     } finally {
       setCheckingUsername(false);
     }
@@ -123,8 +158,14 @@ export default function RootNavigator() {
   }
 
   return (
-    <NavigationContainer linking={linking}>
-      <Stack.Navigator 
+    // Audit finding D6: a single thrown render error used to unmount the
+    // entire tree to a blank white screen in release builds, with no way
+    // back. The boundary lives OUTSIDE NavigationContainer so it survives a
+    // crash in any screen, and its reset re-runs the auth/username check
+    // rather than just re-rendering the same broken subtree.
+    <ErrorBoundary onReset={() => { if (user) checkUserUsername(user.id); }}>
+      <NavigationContainer linking={linking}>
+        <Stack.Navigator
         screenOptions={{
           headerShown: false,
           headerStyle: { backgroundColor: colors.bg },
@@ -222,10 +263,31 @@ export default function RootNavigator() {
                 headerTintColor: colors.brand,
               }}
             />
+            <Stack.Screen
+              name="Wallet"
+              component={WalletScreen}
+              options={{
+                headerShown: true,
+                title: 'Wallet',
+                headerTintColor: colors.brand,
+                headerBackTitle: 'Back',
+              }}
+            />
+            <Stack.Screen
+              name="NotificationPreferences"
+              component={NotificationPreferencesScreen}
+              options={{
+                headerShown: true,
+                title: 'Notifications',
+                headerTintColor: colors.brand,
+                headerBackTitle: 'Back',
+              }}
+            />
           </>
         )}
-      </Stack.Navigator>
-    </NavigationContainer>
+        </Stack.Navigator>
+      </NavigationContainer>
+    </ErrorBoundary>
   );
 }
 

@@ -1,341 +1,672 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
-  FlatList,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect, useMemo, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import type { RouteProp } from '@react-navigation/native';
-import { colors, gradients, radius, glow } from '../theme';
+import { colors, radius, spacing, tokens } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
-import { Group } from '../types';
+import { Group, GroupMember, PaymentType } from '../types';
+import { ApiError, toApiError } from '../utils/errors';
 import { tapLight, tapMedium, selectionTick, success, error as hapticError } from '../utils/haptics';
+import {
+  FormScreen,
+  Field,
+  DateTimeField,
+  AmountInput,
+  SegmentedControl,
+  Toggle,
+  UserPicker,
+  BottomSheet,
+  Button,
+  LoadingState,
+  EmptyState,
+  ErrorState,
+  type SegmentedOption,
+} from '../components';
+import type { UserPickerUser } from '../components/UserPicker';
 
 type InviteRouteProps = RouteProp<RootStackParamList, 'CreateEventFromInvite'>;
+
+// Mirrors lib/payments.ts MAX_TRANSACTION_AMOUNT — kept in sync by hand since
+// this mobile bundle can't import from the Next.js server package.
+const MAX_STAKE_AMOUNT = 500;
+const MAX_TITLE_LENGTH = 100;
+const MAX_SIDE_LENGTH = 40;
+
+const PAYMENT_OPTIONS: SegmentedOption<PaymentType>[] = [
+  { value: 'none', label: 'Free' },
+  { value: 'cash', label: 'Cash', icon: 'cash-outline', tone: 'brand' },
+];
+
+interface FormErrors {
+  title?: string;
+  sideA?: string;
+  sideB?: string;
+  group?: string;
+  endTime?: string;
+  stake?: string;
+}
+
+function validateForm(input: {
+  title: string;
+  sideA: string;
+  sideB: string;
+  selectedGroup: Group | null;
+  endTime: number | null;
+  paymentType: PaymentType;
+  stakeAmount: string;
+}): FormErrors {
+  const errors: FormErrors = {};
+  const trimmedTitle = input.title.trim();
+  const trimmedA = input.sideA.trim();
+  const trimmedB = input.sideB.trim();
+
+  if (!trimmedTitle) {
+    errors.title = 'Give the wager a title.';
+  } else if (trimmedTitle.length > MAX_TITLE_LENGTH) {
+    errors.title = `Keep it under ${MAX_TITLE_LENGTH} characters.`;
+  }
+
+  if (!trimmedA) {
+    errors.sideA = 'Name side A.';
+  } else if (trimmedA.length > MAX_SIDE_LENGTH) {
+    errors.sideA = `Keep it under ${MAX_SIDE_LENGTH} characters.`;
+  }
+
+  if (!trimmedB) {
+    errors.sideB = 'Name side B.';
+  } else if (trimmedB.length > MAX_SIDE_LENGTH) {
+    errors.sideB = `Keep it under ${MAX_SIDE_LENGTH} characters.`;
+  }
+
+  if (!errors.sideA && !errors.sideB && trimmedA.toLowerCase() === trimmedB.toLowerCase()) {
+    errors.sideB = 'Side B must be different from side A.';
+  }
+
+  if (!input.selectedGroup) {
+    errors.group = 'Choose a group for this wager.';
+  }
+
+  if (input.endTime == null) {
+    errors.endTime = 'Pick when this ends.';
+  } else if (input.endTime <= Date.now()) {
+    errors.endTime = 'End time must be in the future.';
+  }
+
+  if (input.paymentType === 'cash') {
+    const stake = parseFloat(input.stakeAmount);
+    if (!input.stakeAmount || !Number.isFinite(stake) || stake <= 0) {
+      errors.stake = 'Enter a stake amount.';
+    } else if (stake > MAX_STAKE_AMOUNT) {
+      errors.stake = `Max stake is $${MAX_STAKE_AMOUNT}.`;
+    }
+  }
+
+  return errors;
+}
+
+// Turns a create-event failure into copy a user can act on. Falls back to
+// the server's own message (via ApiError.userMessage) for anything we don't
+// have a more specific story for.
+function describeCreateEventError(err: ApiError): string {
+  if (err.status === 403) {
+    return "You're not an active member of that group, so you can't create events there.";
+  }
+  if (err.status === 400 && /subject/i.test(err.message)) {
+    return 'The person you tagged is no longer an active member of this group. Remove the tag and try again.';
+  }
+  return err.userMessage;
+}
+
+/**
+ * Parses the free-text `amount` query param from an iMessage-deep-link
+ * invite into a safe positive number, or null if it's missing/garbage.
+ * Never returns NaN — a malformed link must not crash or silently become
+ * "$NaN".
+ */
+function parseInviteAmount(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
 
 export default function CreateEventFromInviteScreen() {
   const route = useRoute<InviteRouteProps>();
   const navigation = useNavigation<any>();
   const { user } = useAuth();
-  const { title, sideA, sideB, pick, amount } = route.params;
+
+  // Audit finding D1: React Navigation leaves `params` undefined when a
+  // matched deep link carries no query params at all (e.g. a bare
+  // `https://wagerpals.io/invite`). Defaulting to `{}` here — instead of the
+  // old destructure straight off `route.params` — is what stops that from
+  // crashing with "Cannot read property 'title' of undefined".
+  const params = route.params ?? {};
+  const inviteTitle = params.title?.trim() || '';
+  const inviteSideA = params.sideA?.trim() || '';
+  const inviteSideB = params.sideB?.trim() || '';
+  // A link is only useful as a preview if it carries all three core fields;
+  // partial/garbled links fall back to the same "start from scratch" flow.
+  const hasInviteBasics = !!(inviteTitle && inviteSideA && inviteSideB);
+  // `pick` must actually name one of the two sides that came with THIS
+  // invite — otherwise a malformed link could preselect a side that isn't
+  // even on the event.
+  const invitePick = params.pick && (params.pick === inviteSideA || params.pick === inviteSideB) ? params.pick : null;
+  const inviteAmount = parseInviteAmount(params.amount);
+
+  // Whether the user has moved past the "this link is incomplete" state,
+  // either because the link WAS complete, or because they tapped "Create a
+  // wager from scratch".
+  const [showForm, setShowForm] = useState(hasInviteBasics);
+
+  const [title, setTitle] = useState(inviteTitle);
+  const [sideA, setSideA] = useState(inviteSideA);
+  const [sideB, setSideB] = useState(inviteSideB);
+  const [endTime, setEndTime] = useState<number | null>(null);
+  const [paymentType, setPaymentType] = useState<PaymentType>('none');
+  const [stakeAmount, setStakeAmount] = useState('');
+  const [subjectUserId, setSubjectUserId] = useState<string | null>(null);
+  const [notifySubject, setNotifySubject] = useState(true);
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [isCreating, setIsCreating] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
-  const [endDate, setEndDate] = useState('');
-  const [endTime, setEndTime] = useState('');
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
+  const [groupsReloadKey, setGroupsReloadKey] = useState(0);
 
   useEffect(() => {
-    if (user) {
-      loadGroups();
-    }
-  }, [user]);
-
-  const loadGroups = async () => {
-    if (!user) return;
-    try {
-      const data = await apiService.getGroups(user.id);
-      setGroups(data);
-      if (data.length === 1) {
-        setSelectedGroup(data[0]);
-      }
-    } catch (error) {
-      console.error('Failed to load groups:', error);
-    } finally {
+    if (!user) {
       setIsLoadingGroups(false);
+      return;
     }
+    let cancelled = false;
+    setIsLoadingGroups(true);
+    setGroupsError(null);
+    apiService
+      .getGroups(user.id)
+      .then((data) => {
+        if (cancelled) return;
+        setGroups(data);
+        // Prefer the group the invite link named, if it's one we're in;
+        // otherwise auto-pick when there's only one candidate.
+        const fromLink = params.groupId ? data.find((g) => g.id === params.groupId) : undefined;
+        if (fromLink) {
+          setSelectedGroup(fromLink);
+        } else if (data.length === 1) {
+          setSelectedGroup(data[0]);
+        }
+        setIsLoadingGroups(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups');
+        setGroupsError(apiErr.userMessage);
+        setIsLoadingGroups(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, groupsReloadKey]);
+
+  // Audit finding D11 / A7: the creator's identity for the activity feed and
+  // membership check must come from the backend user record, never the
+  // device's OS display name. If this fails to load we refuse to submit
+  // rather than silently falling back to something else.
+  const [creatorUsername, setCreatorUsername] = useState<string | null>(null);
+  const [creatorUsernameError, setCreatorUsernameError] = useState<string | null>(null);
+  const [loadingCreator, setLoadingCreator] = useState(true);
+  const [creatorReloadKey, setCreatorReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!user) {
+      setLoadingCreator(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingCreator(true);
+    setCreatorUsernameError(null);
+    apiService
+      .getUser(user.id)
+      .then((u) => {
+        if (cancelled) return;
+        setCreatorUsername(u.username);
+        setLoadingCreator(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/users');
+        setCreatorUsernameError(apiErr.userMessage);
+        setLoadingCreator(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, creatorReloadKey]);
+
+  // Subject-tagging candidates depend on which group is selected, so they
+  // reload whenever that changes. Its own loading/error state so a slow or
+  // failing members fetch never blocks the rest of the form.
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [membersReloadKey, setMembersReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!selectedGroup) {
+      setMembers([]);
+      setMembersError(null);
+      setMembersLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setMembersLoading(true);
+    setMembersError(null);
+    apiService
+      .getGroupMembers(selectedGroup.id)
+      .then((data) => {
+        if (cancelled) return;
+        setMembers(data);
+        setMembersLoading(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups/members');
+        setMembersError(apiErr.userMessage);
+        setMembersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGroup, membersReloadKey]);
+
+  // Changing groups can invalidate a previously tagged subject who isn't a
+  // member of the newly-selected group.
+  useEffect(() => {
+    setSubjectUserId(null);
+    setNotifySubject(true);
+  }, [selectedGroup?.id]);
+
+  const subjectCandidates: UserPickerUser[] = useMemo(
+    () =>
+      members
+        .filter((m) => m.status === 'active' && m.user_id !== user?.id)
+        .map((m) => ({ id: m.user_id, username: m.username || 'Member' })),
+    [members, user?.id]
+  );
+
+  const subjectUsername = subjectCandidates.find((u) => u.id === subjectUserId)?.username;
+
+  const handleStartFromScratch = () => {
+    tapLight();
+    setShowForm(true);
   };
 
   const handleCreate = async () => {
     if (!user) {
-      Alert.alert('Error', 'You must be logged in to create an event.');
+      setSubmitError('You must be signed in to create an event.');
       return;
     }
 
-    if (!selectedGroup) {
-      Alert.alert('Select Group', 'Please choose a group for this wager.');
+    const errors = validateForm({ title, sideA, sideB, selectedGroup, endTime, paymentType, stakeAmount });
+    setFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
       return;
     }
 
-    if (!endDate.trim() || !endTime.trim()) {
-      Alert.alert('Missing Field', 'Please enter an end date and time.');
-      return;
-    }
-
-    const dateTimeString = `${endDate.trim()}T${endTime.trim()}`;
-    const parsedTime = new Date(dateTimeString).getTime();
-
-    if (isNaN(parsedTime)) {
-      Alert.alert('Invalid Date', 'Please enter date as YYYY-MM-DD and time as HH:MM.');
-      return;
-    }
-
-    if (parsedTime <= Date.now()) {
-      Alert.alert('Invalid Date', 'End time must be in the future.');
+    if (!creatorUsername) {
+      setSubmitError(
+        creatorUsernameError
+          ? 'Could not load your profile — fix that above before creating an event.'
+          : 'Still loading your profile — try again in a moment.'
+      );
       return;
     }
 
     tapMedium();
+    setSubmitError(null);
     setIsCreating(true);
 
     try {
       const newEvent = await apiService.createEvent({
-        title,
-        side_a: sideA,
-        side_b: sideB,
-        end_time: parsedTime,
-        group_id: selectedGroup.id,
+        title: title.trim(),
+        side_a: sideA.trim(),
+        side_b: sideB.trim(),
+        end_time: endTime as number,
+        group_id: (selectedGroup as Group).id,
+        creator_user_id: user.id,
+        creator_username: creatorUsername,
+        payment_type: paymentType,
+        stake_amount: paymentType === 'cash' ? parseFloat(stakeAmount) : undefined,
+        subject_user_id: subjectUserId ?? undefined,
+        notify_subject: subjectUserId ? notifySubject : undefined,
       });
 
-      const parsedAmount = amount ? parseFloat(amount) : NaN;
-      if (pick && !isNaN(parsedAmount) && parsedAmount > 0) {
-        await apiService.createBet({
-          event_id: newEvent.id,
-          user_id: user.id,
-          username: user.displayName || user.email || 'User',
-          side: pick,
-          amount: parsedAmount,
-          note: 'Placed from iMessage',
-        });
+      // The suggested iMessage bet (pick + amount) is a separate, best-effort
+      // action on top of event creation — its failure shouldn't undo an
+      // otherwise-successful event create, so it's caught on its own.
+      if (invitePick && inviteAmount != null) {
+        try {
+          await apiService.createBet({
+            event_id: newEvent.id,
+            user_id: user.id,
+            username: creatorUsername,
+            side: invitePick,
+            amount: inviteAmount,
+            note: 'Placed from iMessage',
+          });
+        } catch (betErr) {
+          console.warn('[CreateEventFromInvite] suggested bet failed:', betErr);
+        }
       }
 
       success();
-      Alert.alert('Wager Created!', `"${title}" has been created in ${selectedGroup.name}.${pick && amount ? ` Your $${amount} bet on ${pick} was placed.` : ''}`, [
-        {
-          text: 'View Event',
-          onPress: () =>
-            navigation.navigate('EventDetail' as never, { eventId: newEvent.id } as never),
-        },
-      ]);
-    } catch (error: any) {
+      navigation.navigate('EventDetail' as never, { eventId: newEvent.id } as never);
+    } catch (err) {
       hapticError();
-      Alert.alert('Error', error.message || 'Failed to create event.');
+      const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/events');
+      setSubmitError(describeCreateEventError(apiErr));
     } finally {
       setIsCreating(false);
     }
   };
 
-  return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Header */}
-          <Text style={styles.heading}>Wager Invite</Text>
-          <Text style={styles.subheading}>Someone challenged you!</Text>
+  const canSubmit = !isCreating && !loadingCreator;
 
-          {/* Invite Preview Card */}
-          <View style={styles.card}>
-            <Text style={styles.eventTitle}>{title}</Text>
-            <View style={styles.sidesRow}>
-              <View style={styles.sideBox}>
-                <Text style={styles.sideLabel}>Side A</Text>
-                <Text style={[styles.sideValue, styles.sideValueA]}>{sideA}</Text>
-              </View>
-              <Text style={styles.vs}>vs</Text>
-              <View style={styles.sideBox}>
-                <Text style={styles.sideLabel}>Side B</Text>
-                <Text style={[styles.sideValue, styles.sideValueB]}>{sideB}</Text>
-              </View>
-            </View>
-            {pick && amount && (
-              <View style={styles.suggestedBetBox}>
-                <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.brand2} />
-                <Text style={styles.suggestedBetText}>
-                  iMessage bet: ${amount} on {pick}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* Group Picker */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Select Group</Text>
-            {isLoadingGroups ? (
-              <ActivityIndicator color={colors.brand2} style={styles.groupLoader} />
-            ) : groups.length === 0 ? (
-              <View style={styles.noGroupsBox}>
-                <Ionicons name="people-outline" size={24} color={colors.textFaint} />
-                <Text style={styles.noGroupsText}>
-                  You need to join or create a group first.
-                </Text>
-                <TouchableOpacity
-                  style={styles.goHomeButton}
-                  onPress={() => navigation.navigate('Main' as any)}
-                >
-                  <Text style={styles.goHomeButtonText}>Go to Home</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={styles.groupPickerButton}
-                onPress={() => { tapLight(); setShowGroupPicker(true); }}
-                activeOpacity={0.7}
-              >
-                {selectedGroup ? (
-                  <View style={styles.selectedGroupRow}>
-                    <View style={styles.groupAvatar}>
-                      <Text style={styles.groupAvatarText}>
-                        {selectedGroup.name.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <View style={styles.selectedGroupInfo}>
-                      <Text style={styles.selectedGroupName}>{selectedGroup.name}</Text>
-                      <Text style={styles.selectedGroupMeta}>
-                        {selectedGroup.member_count ?? 0} members
-                      </Text>
-                    </View>
-                  </View>
-                ) : (
-                  <Text style={styles.groupPickerPlaceholder}>Choose a group...</Text>
-                )}
-                <Ionicons name="chevron-down" size={20} color={colors.textFaint} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* End Date/Time */}
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>When does this end?</Text>
-            <View style={styles.dateTimeRow}>
-              <View style={styles.dateTimeField}>
-                <Ionicons name="calendar-outline" size={18} color={colors.brand2} style={styles.dateIcon} />
-                <TextInput
-                  style={styles.dateTimeInput}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={colors.textFaint}
-                  value={endDate}
-                  onChangeText={setEndDate}
-                  keyboardType="numbers-and-punctuation"
-                  returnKeyType="next"
-                />
-              </View>
-              <View style={styles.dateTimeField}>
-                <Ionicons name="time-outline" size={18} color={colors.brand2} style={styles.dateIcon} />
-                <TextInput
-                  style={styles.dateTimeInput}
-                  placeholder="HH:MM"
-                  placeholderTextColor={colors.textFaint}
-                  value={endTime}
-                  onChangeText={setEndTime}
-                  keyboardType="numbers-and-punctuation"
-                  returnKeyType="done"
-                />
-              </View>
-            </View>
-            <Text style={styles.hint}>Use 24-hour format (e.g. 14:30)</Text>
-          </View>
-
-          {/* Create Button */}
-          <TouchableOpacity
-            onPress={handleCreate}
-            disabled={isCreating || !selectedGroup}
-            activeOpacity={0.85}
-            style={(isCreating || !selectedGroup) && styles.createButtonDisabled}
-          >
-            <LinearGradient
-              colors={gradients.brand}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.createButton}
-            >
-              {isCreating ? (
-                <ActivityIndicator color={colors.white} size="small" />
-              ) : (
-                <>
-                  <Ionicons name="flash" size={20} color={colors.white} />
-                  <Text style={styles.createButtonText}>Create Wager</Text>
-                </>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {/* Fallback: just open the app */}
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => navigation.navigate('Main' as any)}
-          >
-            <Text style={styles.secondaryButtonText}>Skip and Open WagerPals</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
-
-      {/* Group Picker Modal */}
-      <Modal
-        visible={showGroupPicker}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowGroupPicker(false)}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Select Group</Text>
-            <TouchableOpacity onPress={() => setShowGroupPicker(false)}>
-              <Ionicons name="close-circle" size={28} color={colors.textFaint} />
-            </TouchableOpacity>
-          </View>
-          <FlatList
-            data={groups}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.modalList}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.groupListItem,
-                  selectedGroup?.id === item.id && styles.groupListItemSelected,
-                ]}
-                onPress={() => {
-                  selectionTick();
-                  setSelectedGroup(item);
-                  setShowGroupPicker(false);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[
-                  styles.groupAvatar,
-                  selectedGroup?.id === item.id && styles.groupAvatarSelected,
-                ]}>
-                  <Text style={styles.groupAvatarText}>
-                    {item.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.groupListInfo}>
-                  <Text style={styles.groupListName}>{item.name}</Text>
-                  <Text style={styles.groupListMeta}>
-                    {item.member_count ?? 0} members
-                  </Text>
-                </View>
-                {selectedGroup?.id === item.id && (
-                  <Ionicons name="checkmark-circle" size={24} color={colors.brand2} />
-                )}
-              </TouchableOpacity>
-            )}
+  // First-class "this invite link is incomplete" state — never render a
+  // half-blank form when the deep link carried no usable data.
+  if (!showForm) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.invalidWrap}>
+          <EmptyState
+            icon="link-outline"
+            title="This invite link is incomplete"
+            message="We couldn't find the wager details in that link. You can start a new wager from scratch, or head back home."
           />
-        </SafeAreaView>
-      </Modal>
-    </SafeAreaView>
+          <View style={styles.invalidActions}>
+            <Button title="Create a Wager From Scratch" onPress={handleStartFromScratch} icon="add-circle-outline" fullWidth />
+            <Button
+              title="Go Home"
+              onPress={() => navigation.navigate('Main' as never)}
+              variant="secondary"
+              fullWidth
+              style={styles.invalidSecondaryButton}
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <FormScreen
+        footer={
+          <>
+            {submitError ? (
+              <View style={styles.errorBanner}>
+                <Ionicons name="alert-circle" size={16} color={colors.rose} />
+                <Text style={styles.errorBannerText}>{submitError}</Text>
+              </View>
+            ) : null}
+            <Button
+              title="Create Wager"
+              onPress={handleCreate}
+              icon="flash"
+              loading={isCreating}
+              disabled={!canSubmit}
+              fullWidth
+              haptic="none"
+            />
+          </>
+        }
+      >
+        <Text style={styles.heading}>{hasInviteBasics ? 'Wager Invite' : 'Create a Wager'}</Text>
+        <Text style={styles.subheading}>
+          {hasInviteBasics ? 'Someone challenged you!' : 'Fill in the details below'}
+        </Text>
+
+        {creatorUsernameError ? (
+          <ErrorState
+            compact
+            title="Couldn't load your profile"
+            message={creatorUsernameError}
+            onRetry={() => setCreatorReloadKey((k) => k + 1)}
+          />
+        ) : null}
+
+        {hasInviteBasics && invitePick && inviteAmount != null ? (
+          <View style={styles.suggestedBetBox}>
+            <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.brand2} />
+            <Text style={styles.suggestedBetText}>
+              iMessage bet: ${inviteAmount} on {invitePick}
+            </Text>
+          </View>
+        ) : null}
+
+        <Field
+          label="Event Title"
+          value={title}
+          onChangeText={(t) => {
+            setTitle(t);
+            if (formErrors.title) setFormErrors((prev) => ({ ...prev, title: undefined }));
+          }}
+          placeholder="Will it rain tomorrow?"
+          error={formErrors.title}
+          maxLength={MAX_TITLE_LENGTH}
+          showCount
+          returnKeyType="next"
+        />
+
+        <Field
+          label="Side A"
+          value={sideA}
+          onChangeText={(t) => {
+            setSideA(t);
+            if (formErrors.sideA || formErrors.sideB) {
+              setFormErrors((prev) => ({ ...prev, sideA: undefined, sideB: undefined }));
+            }
+          }}
+          placeholder="e.g. Yes"
+          error={formErrors.sideA}
+          maxLength={MAX_SIDE_LENGTH}
+          returnKeyType="next"
+        />
+
+        <Field
+          label="Side B"
+          value={sideB}
+          onChangeText={(t) => {
+            setSideB(t);
+            if (formErrors.sideA || formErrors.sideB) {
+              setFormErrors((prev) => ({ ...prev, sideA: undefined, sideB: undefined }));
+            }
+          }}
+          placeholder="e.g. No"
+          error={formErrors.sideB}
+          maxLength={MAX_SIDE_LENGTH}
+          returnKeyType="done"
+        />
+
+        <Text style={styles.sectionLabel}>Select Group</Text>
+        {isLoadingGroups ? (
+          <LoadingState compact label="Loading your groups…" />
+        ) : groupsError ? (
+          <ErrorState compact message={groupsError} onRetry={() => setGroupsReloadKey((k) => k + 1)} />
+        ) : groups.length === 0 ? (
+          <EmptyState
+            compact
+            icon="people-outline"
+            title="No groups yet"
+            message="You're not in any groups yet. Join or create one first."
+            actionLabel="Go to Home"
+            onAction={() => navigation.navigate('Main' as never)}
+          />
+        ) : (
+          <>
+            <Pressable
+              style={({ pressed }) => [
+                styles.groupPickerButton,
+                formErrors.group && styles.groupPickerButtonError,
+                pressed && styles.groupPickerButtonPressed,
+              ]}
+              onPress={() => {
+                tapLight();
+                setShowGroupPicker(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={selectedGroup ? `Group: ${selectedGroup.name}` : 'Choose a group'}
+            >
+              {selectedGroup ? (
+                <View style={styles.selectedGroupRow}>
+                  <View style={styles.groupAvatar}>
+                    <Text style={styles.groupAvatarText}>{selectedGroup.name.charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <View style={styles.selectedGroupInfo}>
+                    <Text style={styles.selectedGroupName} numberOfLines={1}>
+                      {selectedGroup.name}
+                    </Text>
+                    <Text style={styles.selectedGroupMeta}>{selectedGroup.member_count ?? 0} members</Text>
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.groupPickerPlaceholder}>Choose a group...</Text>
+              )}
+              <Ionicons name="chevron-down" size={20} color={colors.textFaint} />
+            </Pressable>
+            {formErrors.group ? (
+              <View style={styles.fieldErrorRow}>
+                <Ionicons name="alert-circle" size={14} color={colors.rose} />
+                <Text style={styles.fieldErrorText}>{formErrors.group}</Text>
+              </View>
+            ) : null}
+          </>
+        )}
+
+        <DateTimeField
+          label="When does this end?"
+          value={endTime}
+          onChange={(ts) => {
+            setEndTime(ts);
+            if (formErrors.endTime) setFormErrors((prev) => ({ ...prev, endTime: undefined }));
+          }}
+          minimumDate={new Date()}
+          error={formErrors.endTime}
+        />
+
+        <Text style={styles.sectionLabel}>Payment</Text>
+        <SegmentedControl options={PAYMENT_OPTIONS} value={paymentType} onChange={setPaymentType} />
+        {paymentType === 'cash' ? (
+          <View style={styles.stakeWrap}>
+            <AmountInput
+              label="Stake Amount"
+              value={stakeAmount}
+              onChangeText={(v) => {
+                setStakeAmount(v);
+                if (formErrors.stake) setFormErrors((prev) => ({ ...prev, stake: undefined }));
+              }}
+              max={MAX_STAKE_AMOUNT}
+              error={formErrors.stake}
+            />
+            <View style={styles.infoRow}>
+              <Ionicons name="lock-closed-outline" size={14} color={colors.textFaint} />
+              <Text style={styles.infoText}>
+                Each participant's stake is escrowed from their wallet until the event resolves.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {selectedGroup ? (
+          <>
+            <Text style={styles.sectionLabel}>Tag Someone (optional)</Text>
+            {membersLoading ? (
+              <LoadingState compact label="Loading group members…" />
+            ) : membersError ? (
+              <ErrorState compact message={membersError} onRetry={() => setMembersReloadKey((k) => k + 1)} />
+            ) : (
+              <>
+                <UserPicker
+                  users={subjectCandidates}
+                  value={subjectUserId}
+                  onChange={setSubjectUserId}
+                  placeholder="No one — general bet"
+                  hint="Tag the group member this wager is about."
+                />
+                {subjectUserId ? (
+                  <Toggle
+                    label={`Notify ${subjectUsername ?? 'them'}`}
+                    value={notifySubject}
+                    onValueChange={setNotifySubject}
+                    description={
+                      notifySubject
+                        ? undefined
+                        : `Quiet bet — ${subjectUsername ?? 'they'} won't be notified.`
+                    }
+                  />
+                ) : null}
+              </>
+            )}
+          </>
+        ) : null}
+
+        {/* Fallback: bail out to the app without creating anything */}
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={() => navigation.navigate('Main' as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Skip and open WagerPals"
+        >
+          <Text style={styles.secondaryButtonText}>Skip and Open WagerPals</Text>
+        </Pressable>
+      </FormScreen>
+
+      {/* Group Picker Sheet */}
+      <BottomSheet visible={showGroupPicker} onClose={() => setShowGroupPicker(false)} title="Select Group">
+        <FlatList
+          data={groups}
+          keyExtractor={(item) => item.id}
+          style={styles.modalList}
+          renderItem={({ item }) => (
+            <Pressable
+              style={({ pressed }) => [
+                styles.groupListItem,
+                selectedGroup?.id === item.id && styles.groupListItemSelected,
+                pressed && styles.groupListItemPressed,
+              ]}
+              onPress={() => {
+                selectionTick();
+                setSelectedGroup(item);
+                setFormErrors((prev) => ({ ...prev, group: undefined }));
+                setShowGroupPicker(false);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={item.name}
+              accessibilityState={{ selected: selectedGroup?.id === item.id }}
+            >
+              <View style={[styles.groupAvatar, selectedGroup?.id === item.id && styles.groupAvatarSelected]}>
+                <Text style={styles.groupAvatarText}>{item.name.charAt(0).toUpperCase()}</Text>
+              </View>
+              <View style={styles.groupListInfo}>
+                <Text style={styles.groupListName} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <Text style={styles.groupListMeta}>{item.member_count ?? 0} members</Text>
+              </View>
+              {selectedGroup?.id === item.id ? (
+                <Ionicons name="checkmark-circle" size={24} color={colors.brand2} />
+              ) : null}
+            </Pressable>
+          )}
+        />
+      </BottomSheet>
+    </View>
   );
 }
 
@@ -344,156 +675,105 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  flex: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 24,
-    paddingBottom: 40,
-  },
   heading: {
-    fontSize: 28,
+    fontSize: tokens.fontSize['2xl'],
     fontWeight: '700',
     color: colors.text,
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   subheading: {
-    fontSize: 15,
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.xl,
+  },
+  sectionLabel: {
+    fontSize: tokens.fontSize.sm,
+    fontWeight: '600',
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
   },
 
-  // Invite Preview Card
-  card: {
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.xl,
-    padding: 24,
-    marginBottom: 24,
-  },
-  eventTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  sidesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sideBox: {
+  // Invalid-invite state
+  invalidWrap: {
     flex: 1,
-    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
   },
-  sideLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textFaint,
-    textTransform: 'uppercase',
-    marginBottom: 4,
+  invalidActions: {
+    gap: spacing.md,
+    marginTop: spacing.xl,
   },
-  sideValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
+  invalidSecondaryButton: {
+    marginTop: 0,
   },
-  sideValueA: {
-    color: colors.mint,
-  },
-  sideValueB: {
-    color: colors.rose,
-  },
-  vs: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textFaint,
-    marginHorizontal: 12,
-  },
+
+  // Suggested bet banner
   suggestedBetBox: {
-    marginTop: 18,
+    marginBottom: spacing.lg,
     backgroundColor: colors.brandFill,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    padding: 12,
+    padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.sm,
   },
   suggestedBetText: {
     color: colors.brand2,
-    fontSize: 13,
+    fontSize: tokens.fontSize.sm,
     fontWeight: '600',
+    flexShrink: 1,
   },
 
-  // Fields
-  fieldGroup: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 10,
-  },
-  groupLoader: {
-    marginTop: 12,
-  },
-  noGroupsBox: {
-    alignItems: 'center',
-    paddingVertical: 20,
-    gap: 8,
-  },
-  noGroupsText: {
-    fontSize: 14,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  goHomeButton: {
-    marginTop: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: colors.brandFill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-  },
-  goHomeButtonText: {
-    color: colors.brand2,
-    fontWeight: '600',
-    fontSize: 14,
-  },
+  // Group picker button
   groupPickerButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surfaceGlass,
+    minHeight: 44,
+    backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  groupPickerButtonError: {
+    borderColor: colors.rose,
+  },
+  groupPickerButtonPressed: {
+    opacity: 0.7,
   },
   groupPickerPlaceholder: {
-    fontSize: 15,
+    fontSize: tokens.fontSize.base,
     color: colors.textFaint,
+  },
+  fieldErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    minHeight: 16,
+  },
+  fieldErrorText: {
+    fontSize: tokens.fontSize.xs,
+    color: colors.rose,
+    flexShrink: 1,
   },
   selectedGroupRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    flexShrink: 1,
+    minWidth: 0,
+    gap: spacing.sm,
   },
   groupAvatar: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: radius.md,
     backgroundColor: colors.brandFill,
     borderWidth: 1,
@@ -507,130 +787,99 @@ const styles = StyleSheet.create({
   },
   groupAvatarText: {
     color: colors.brand2,
-    fontSize: 16,
+    fontSize: tokens.fontSize.base,
     fontWeight: '700',
   },
   selectedGroupInfo: {
+    flexShrink: 1,
+    minWidth: 0,
     gap: 2,
   },
   selectedGroupName: {
-    fontSize: 15,
+    fontSize: tokens.fontSize.sm,
     fontWeight: '600',
     color: colors.text,
   },
   selectedGroupMeta: {
-    fontSize: 12,
+    fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
   },
 
-  // Date/Time
-  dateTimeRow: {
+  stakeWrap: {
+    marginTop: spacing.sm,
+  },
+  infoRow: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    marginTop: -spacing.sm,
+    marginBottom: spacing.lg,
   },
-  dateTimeField: {
+  infoText: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
-  dateIcon: {
-    marginLeft: 14,
-  },
-  dateTimeInput: {
-    flex: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: colors.text,
-  },
-  hint: {
-    fontSize: 12,
+    fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
-    marginTop: 6,
+    lineHeight: tokens.lineHeight.xs,
   },
 
-  // Buttons
-  createButton: {
-    borderRadius: radius.pill,
-    paddingVertical: 16,
+  errorBanner: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 12,
-    ...glow(colors.brand2),
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
   },
-  createButtonDisabled: {
-    opacity: 0.5,
+  errorBannerText: {
+    flex: 1,
+    fontSize: tokens.fontSize.xs,
+    color: colors.rose,
   },
-  createButtonText: {
-    color: colors.white,
-    fontSize: 17,
-    fontWeight: '700',
-  },
+
   secondaryButton: {
-    paddingVertical: 14,
+    minHeight: 44,
+    justifyContent: 'center',
     alignItems: 'center',
+    marginTop: spacing.sm,
   },
   secondaryButtonText: {
     color: colors.textMuted,
-    fontSize: 15,
+    fontSize: tokens.fontSize.sm,
     fontWeight: '500',
   },
 
-  // Modal
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-  },
   modalList: {
-    padding: 16,
+    maxHeight: 420,
   },
   groupListItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surfaceGlass,
     borderRadius: radius.lg,
-    padding: 14,
-    marginBottom: 10,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 12,
+    gap: spacing.md,
+    minHeight: 44,
   },
   groupListItemSelected: {
     borderColor: colors.brand2,
     backgroundColor: colors.brandFill,
   },
+  groupListItemPressed: {
+    opacity: 0.7,
+  },
   groupListInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 2,
   },
   groupListName: {
-    fontSize: 16,
+    fontSize: tokens.fontSize.base,
     fontWeight: '600',
     color: colors.text,
   },
   groupListMeta: {
-    fontSize: 13,
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
   },
 });

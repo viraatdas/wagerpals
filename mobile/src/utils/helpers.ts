@@ -1,4 +1,6 @@
 // Utility functions
+import { formatRelativeTime } from './format';
+
 export function generateId(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
@@ -10,26 +12,11 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+// The "how long ago" logic now lives in utils/format.ts as formatRelativeTime
+// (alongside the rest of the display-formatting helpers). Re-exported here
+// under its original name so existing `formatDate` call sites keep working.
 export function formatDate(timestamp: number): string {
-  const date = new Date(timestamp);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (seconds < 60) {
-    return 'just now';
-  } else if (minutes < 60) {
-    return `${minutes}m ago`;
-  } else if (hours < 24) {
-    return `${hours}h ago`;
-  } else if (days < 7) {
-    return `${days}d ago`;
-  } else {
-    return date.toLocaleDateString();
-  }
+  return formatRelativeTime(timestamp);
 }
 
 // Mirrors lib/utils.ts's validateUsername exactly — the server is the source of truth.

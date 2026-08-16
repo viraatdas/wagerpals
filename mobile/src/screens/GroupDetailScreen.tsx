@@ -1,16 +1,19 @@
-// Group Detail Screen - Shows group info, events, and members
-import React, { useState, useEffect, useCallback } from 'react';
+// Group Detail Screen - Shows group info and events. Events render in a
+// FlatList (not a ScrollView + .map()) so a group with hundreds of events
+// only mounts the rows currently on/near screen.
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
+  FlatList,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
-  ActivityIndicator,
-  Alert,
   RefreshControl,
   Share,
   Linking,
+  Clipboard,
+  ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -18,9 +21,70 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
-import { Event, GroupMember, Wallet } from '../types';
-import { formatDate, formatCurrency } from '../utils/helpers';
-import { colors, gradients, radius, glow } from '../theme';
+import { Event, EventWithStats, Group, GroupMember, WalletSummary } from '../types';
+import { ApiError, toApiError } from '../utils/errors';
+import { formatCountdown } from '../utils/format';
+import { tapLight } from '../utils/haptics';
+import { colors, gradients, radius, spacing, tokens, glow } from '../theme';
+import {
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Money,
+  Pill,
+  SectionHeader,
+  Skeleton,
+  SkeletonCard,
+  SkeletonList,
+  SplitBar,
+} from '../components';
+
+type GroupData = Group & { members?: GroupMember[]; pending_requests?: GroupMember[] };
+
+type EventListItem =
+  | { kind: 'section'; id: string; label: string }
+  | { kind: 'event'; id: string; event: Event };
+
+const EventRow = React.memo(function EventRow({
+  event,
+  onPress,
+}: {
+  event: Event;
+  onPress: (eventId: string) => void;
+}) {
+  const isResolved = event.status === 'resolved';
+  const countdown = formatCountdown(event.end_time);
+  // GET /api/events (list) includes side_stats/total_bets/total_participants
+  // at runtime even though the plain `Event` type (shared with POST bodies)
+  // doesn't declare them — narrow locally rather than touching shared types.
+  const stats = (event as EventWithStats).side_stats;
+  const aTotal = stats?.[event.side_a]?.total ?? 0;
+  const bTotal = stats?.[event.side_b]?.total ?? 0;
+  const pot = aTotal + bTotal;
+
+  return (
+    <Card onPress={() => onPress(event.id)} style={styles.eventCard} accessibilityLabel={event.title}>
+      <View style={styles.eventHeaderRow}>
+        <Text style={styles.eventTitle} numberOfLines={2} ellipsizeMode="tail">
+          {event.title}
+        </Text>
+        <Money amount={pot} tone="neutral" size="sm" />
+      </View>
+
+      <SplitBar aValue={aTotal} bValue={bTotal} aLabel={event.side_a} bLabel={event.side_b} />
+
+      <View style={styles.eventFooterRow}>
+        {isResolved ? (
+          <Pill label="Resolved" tone="yes" />
+        ) : (
+          <Pill label={countdown.label} tone={countdown.isPast ? 'neutral' : 'brand'} />
+        )}
+        {event.payment_type === 'cash' && <Pill label="Cash" tone="info" />}
+      </View>
+    </Card>
+  );
+});
 
 export default function GroupDetailScreen() {
   const navigation = useNavigation<any>();
@@ -28,269 +92,349 @@ export default function GroupDetailScreen() {
   const { user } = useAuth();
   const { groupId } = route.params as { groupId: string };
 
-  const [group, setGroup] = useState<any>(null);
+  const [group, setGroup] = useState<GroupData | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [members, setMembers] = useState<GroupMember[]>([]);
-  const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [walletSummary, setWalletSummary] = useState<WalletSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userStatus, setUserStatus] = useState<'active' | 'pending'>('active');
+  const [copied, setCopied] = useState(false);
+
+  const loadSeq = useRef(0);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
+
+  const loadGroupData = useCallback(
+    async (opts?: { isRefresh?: boolean }) => {
+      // Early return BEFORE the try block — still has to clear the loading
+      // flags on this path or the screen spins forever for a signed-out user.
+      if (!user) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
+
+      const seq = ++loadSeq.current;
+      if (opts?.isRefresh) setIsRefreshing(true);
+      else setIsLoading(true);
+      setError(null);
+
+      try {
+        const { group: groupData, events: eventsData } = await apiService.getGroupScreenData(groupId);
+        if (seq !== loadSeq.current) return; // superseded by a newer load
+
+        const userMember = groupData.members?.find((m) => m.user_id === user.id);
+        const nextIsAdmin = userMember?.role === 'admin';
+        const nextStatus: 'active' | 'pending' = userMember?.status || 'pending';
+
+        // Members and wallet are independent of each other and of the
+        // group/events fetch above — fire them concurrently. The wallet leg
+        // is optional context (balance shown in the paid-group card) and
+        // must degrade to null rather than failing the whole screen.
+        const [membersData, walletData] = await Promise.all([
+          groupData.members
+            ? Promise.resolve(groupData.members)
+            : apiService.getGroupMembers(groupId).catch((err) => {
+                console.warn('[GroupDetail] members leg failed:', err);
+                return [] as GroupMember[];
+              }),
+          !groupData.is_public
+            ? apiService.getWallet(user.id).catch((err) => {
+                console.warn('[GroupDetail] optional wallet leg failed:', err);
+                return null;
+              })
+            : Promise.resolve(null),
+        ]);
+
+        if (seq !== loadSeq.current) return;
+
+        setGroup(groupData);
+        setEvents(eventsData);
+        setIsAdmin(nextIsAdmin);
+        setUserStatus(nextStatus);
+        setMembers(membersData);
+        setWalletSummary(walletData);
+      } catch (err) {
+        if (seq !== loadSeq.current) return;
+        setError(err instanceof ApiError ? err : toApiError(err, '/api/groups'));
+      } finally {
+        if (seq === loadSeq.current) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
+      }
+    },
+    [groupId, user]
+  );
 
   useFocusEffect(
     useCallback(() => {
-      loadGroupData();
-    }, [groupId, user])
+      loadGroupData().catch(() => {});
+    }, [loadGroupData])
   );
 
-  const loadGroupData = async () => {
-    if (!user) return;
+  const handleRefresh = useCallback(() => {
+    // See apiService.invalidateForRefresh — both legs of this screen are
+    // SWR-cached (groups 15s, events 5s).
+    apiService.invalidateForRefresh('/api/groups', '/api/events');
+    loadGroupData({ isRefresh: true }).catch(() => {});
+  }, [loadGroupData]);
 
+  // Audit finding D12: this used to be
+  // `Linking.openURL('https://wagerpals.io/profile?wallet=deposit')`, which
+  // ejected the user into Safari mid-flow — and against a hardcoded
+  // production domain, so in development it sent you to the live site. There
+  // is a real in-app Wallet screen now, so route there instead.
+  const handleDeposit = useCallback(() => {
+    navigation.navigate('Wallet' as never);
+  }, [navigation]);
+
+  const handleShareInvite = useCallback(async () => {
     try {
-      const [groupData, eventsData] = await Promise.all([
-        apiService.getGroup(groupId),
-        apiService.getEvents(groupId),
-      ]);
-      setGroup(groupData);
-      setEvents(eventsData);
-
-      // Check user's role and status
-      const userMember = groupData.members?.find((m: GroupMember) => m.user_id === user.id);
-      setIsAdmin(userMember?.role === 'admin');
-      setUserStatus(userMember?.status || 'pending');
-
-      // Fetch members
-      const membersData = groupData.members || await apiService.getGroupMembers(groupId);
-      setMembers(membersData);
-
-      if (!groupData.is_public) {
-        apiService.getWallet(user.id)
-          .then((data) => setWallet(data.wallet))
-          .catch((error) => console.error('Failed to load wallet:', error));
-      }
-    } catch (error) {
-      console.error('Failed to load group data:', error);
-      Alert.alert('Error', 'Failed to load group data');
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      const groupName = group?.name || 'my group';
+      const message = `Join my betting group "${groupName}" on WagerPals!\n\nUse code: ${groupId}\n\nOr click: wagerpals://groups/join/${groupId}`;
+      await Share.share({ message, title: `Join ${groupName} on WagerPals` });
+    } catch (err) {
+      console.warn('[GroupDetail] failed to share invite:', err);
     }
-  };
+  }, [group?.name, groupId]);
 
-  const handleDeposit = () => {
-    Linking.openURL('https://wagerpals.io/profile?wallet=deposit');
-  };
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    loadGroupData();
-  };
-
-  const handleShareInvite = async () => {
+  const handleCopyCode = useCallback(() => {
     try {
-      const message = `Join my betting group "${group.name}" on WagerPals!\n\nUse code: ${groupId}\n\nOr click: wagerpals://groups/join/${groupId}`;
-      
-      await Share.share({
-        message,
-        title: `Join ${group.name} on WagerPals`,
-      });
-    } catch (error) {
-      console.error('Failed to share:', error);
+      Clipboard.setString(groupId);
+      tapLight();
+      setCopied(true);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      // Best-effort — the code is still visible on screen to copy manually.
+      console.warn('[GroupDetail] clipboard copy failed:', err);
     }
-  };
+  }, [groupId]);
 
-  const categorizeEvents = () => {
+  const handleEventPress = useCallback(
+    (eventId: string) => {
+      navigation.navigate('EventDetail' as never, { eventId } as never);
+    },
+    [navigation]
+  );
+
+  const handleCreateEvent = useCallback(() => {
+    navigation.navigate('CreateEvent' as never, { groupId } as never);
+  }, [navigation, groupId]);
+
+  const handleManageGroup = useCallback(() => {
+    navigation.navigate('GroupAdmin' as never, { groupId } as never);
+  }, [navigation, groupId]);
+
+  const { activeEvents, endedEvents } = useMemo(() => {
     const now = Date.now();
-    const active = events.filter((e) => e.status === 'active' && e.end_time > now);
-    const ended = events.filter((e) => e.status === 'resolved' || (e.status === 'active' && e.end_time <= now));
-    return { active, ended };
-  };
+    return {
+      activeEvents: events.filter((e) => e.status === 'active' && e.end_time > now),
+      endedEvents: events.filter((e) => e.status === 'resolved' || (e.status === 'active' && e.end_time <= now)),
+    };
+  }, [events]);
 
-  const renderEventCard = (event: Event) => {
-    const isActive = event.status === 'active' && event.end_time > Date.now();
-    const isResolved = event.status === 'resolved';
+  const listItems = useMemo<EventListItem[]>(() => {
+    const items: EventListItem[] = [];
+    if (activeEvents.length > 0) {
+      items.push({ kind: 'section', id: 'section-active', label: `Active Events (${activeEvents.length})` });
+      activeEvents.forEach((e) => items.push({ kind: 'event', id: e.id, event: e }));
+    }
+    if (endedEvents.length > 0) {
+      items.push({ kind: 'section', id: 'section-ended', label: `Ended Events (${endedEvents.length})` });
+      endedEvents.forEach((e) => items.push({ kind: 'event', id: e.id, event: e }));
+    }
+    return items;
+  }, [activeEvents, endedEvents]);
 
-    return (
-      <TouchableOpacity
-        key={event.id}
-        style={styles.eventCard}
-        onPress={() => navigation.navigate('EventDetail' as never, { eventId: event.id } as never)}
-      >
-        <View style={styles.eventHeader}>
-          <Text style={styles.eventTitle} numberOfLines={1}>
-            {event.title}
-          </Text>
-          <View style={[styles.statusBadge, isActive ? styles.activeBadge : styles.endedBadge]}>
-            <Text style={styles.statusText}>{isActive ? 'Active' : isResolved ? 'Resolved' : 'Ended'}</Text>
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<EventListItem>) => {
+      if (item.kind === 'section') {
+        return (
+          <View style={styles.sectionHeaderWrap}>
+            <SectionHeader title={item.label} />
           </View>
-        </View>
+        );
+      }
+      return <EventRow event={item.event} onPress={handleEventPress} />;
+    },
+    [handleEventPress]
+  );
 
-        <View style={styles.sidesRow}>
-          <View style={styles.sideBox}>
-            <Text style={styles.sideText} numberOfLines={1}>{event.side_a}</Text>
-          </View>
-          <Text style={styles.vsText}>vs</Text>
-          <View style={styles.sideBox}>
-            <Text style={styles.sideText} numberOfLines={1}>{event.side_b}</Text>
-          </View>
-        </View>
-
-        {isActive ? (
-          <Text style={styles.eventTime}>Ends {formatDate(event.end_time)}</Text>
-        ) : isResolved && event.resolution ? (
-          <Text style={styles.winnerText}>Winner: {event.resolution.winning_side}</Text>
-        ) : (
-          <Text style={styles.eventTime}>Betting closed</Text>
-        )}
-      </TouchableOpacity>
-    );
-  };
-
-  if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.brand2} />
-      </View>
-    );
-  }
-
-  // Show pending approval message
-  if (userStatus === 'pending') {
+  // ---- Initial load: full-screen skeleton matching the real content shape ----
+  if (isLoading && !group) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <View style={styles.pendingContainer}>
-          <Ionicons name="hourglass-outline" size={64} color={colors.amber} />
-          <Text style={styles.pendingTitle}>Pending Approval</Text>
-          <Text style={styles.pendingText}>
-            Your request to join "{group?.name}" is waiting for admin approval.
-          </Text>
-          <Text style={styles.pendingSubtext}>
-            You'll receive a notification when you're approved.
-          </Text>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.backButtonText}>Go Back</Text>
-          </TouchableOpacity>
+        <View style={styles.header}>
+          <Skeleton width="65%" height={26} style={{ marginBottom: spacing.sm }} />
+          <Skeleton width="45%" height={14} />
+        </View>
+        <View style={styles.skeletonBody}>
+          <SkeletonCard />
+          <View style={{ marginTop: spacing.lg }}>
+            <SkeletonList count={4} />
+          </View>
         </View>
       </SafeAreaView>
     );
   }
 
-  const { active, ended } = categorizeEvents();
+  // ---- Initial-load failure: nothing cached to show, full-screen error ----
+  if (error && !group) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <ScrollView
+          contentContainerStyle={styles.centerFill}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.brand} />}
+        >
+          <ErrorState message={error.userMessage} onRetry={handleRefresh} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ---- Pending approval ----
+  if (userStatus === 'pending') {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <ScrollView
+          contentContainerStyle={styles.centerFill}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.brand} />}
+        >
+          <View style={styles.pendingContainer}>
+            <View style={styles.pendingIconChip}>
+              <Ionicons name="hourglass-outline" size={32} color={colors.amber} />
+            </View>
+            <Text style={styles.pendingTitle}>Pending Approval</Text>
+            <Text style={styles.pendingText} numberOfLines={3} ellipsizeMode="tail">
+              Your request to join "{group?.name}" is waiting for admin approval.
+            </Text>
+            <Text style={styles.pendingSubtext}>You'll be notified when you're approved.</Text>
+            <Button title="Go Back" variant="secondary" onPress={() => navigation.goBack()} style={styles.pendingButton} />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  const isPaidGroup = !group?.is_public;
+  const available = walletSummary?.available ?? walletSummary?.wallet.balance ?? 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.brand2} />}
-      >
-        {/* Group Header */}
-        <View style={styles.header}>
-          <Text style={styles.groupName}>{group?.name}</Text>
-          <View style={styles.groupInfo}>
-            <Text style={styles.groupCode}>Code: {groupId}</Text>
-            <Text style={styles.dot}>•</Text>
-            <Text style={styles.memberCount}>{members.length} members</Text>
-          </View>
-        </View>
+      <FlatList
+        data={listItems}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        ListHeaderComponent={
+          <View>
+            <View style={styles.header}>
+              <Text style={styles.groupName} numberOfLines={1} ellipsizeMode="tail">
+                {group?.name}
+              </Text>
 
-        {!group?.is_public && (
-          <View style={styles.walletCard}>
-            <View style={styles.walletHeader}>
-              <View>
-                <Text style={styles.walletLabel}>Paid group wallet</Text>
-                <Text style={styles.walletBalance}>{formatCurrency(wallet?.balance || 0)}</Text>
+              <Pressable
+                onPress={handleCopyCode}
+                accessibilityRole="button"
+                accessibilityLabel="Copy join code"
+                style={({ pressed }) => [styles.codeRow, pressed && styles.codeRowPressed]}
+                hitSlop={4}
+              >
+                <Text style={styles.groupCode}>Code: {groupId}</Text>
+                <Ionicons
+                  name={copied ? 'checkmark' : 'copy-outline'}
+                  size={16}
+                  color={copied ? colors.mint : colors.textMuted}
+                  style={styles.copyIcon}
+                />
+                <Text style={[styles.copyLabel, copied && styles.copyLabelDone]}>
+                  {copied ? 'Copied' : 'Tap to copy'}
+                </Text>
+              </Pressable>
+
+              <View style={styles.metaRow}>
+                <Text style={styles.memberCount}>{members.length} members</Text>
+                {isPaidGroup && group?.resolver?.username ? (
+                  <>
+                    <Text style={styles.dot}>•</Text>
+                    <Text style={styles.memberCount} numberOfLines={1} ellipsizeMode="tail">
+                      Resolver @{group.resolver.username}
+                    </Text>
+                  </>
+                ) : null}
               </View>
-              <TouchableOpacity style={styles.depositButtonWrap} onPress={handleDeposit} activeOpacity={0.85}>
-                <LinearGradient
-                  colors={gradients.brand}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.depositButton}
-                >
-                  <Ionicons name="card-outline" size={18} color={colors.white} />
-                  <Text style={styles.depositButtonText}>Deposit</Text>
-                </LinearGradient>
-              </TouchableOpacity>
+
+              <View style={styles.pillsRow}>
+                {isAdmin && <Pill label="Admin" tone="brand" size="sm" />}
+                <Pill label={group?.is_public ? 'Free Points' : 'Paid'} tone={group?.is_public ? 'neutral' : 'pending'} size="sm" />
+              </View>
             </View>
-            <Text style={styles.resolverText}>
-              Resolver: @{group.resolver?.username || 'Not set'}
-            </Text>
-          </View>
-        )}
 
-        {/* Action Buttons */}
-        <View style={styles.actionsRow}>
-          <TouchableOpacity style={styles.actionButton} onPress={handleShareInvite}>
-            <Ionicons name="share-outline" size={20} color={colors.brand2} />
-            <Text style={styles.actionButtonText}>Invite</Text>
-          </TouchableOpacity>
+            {error && group ? (
+              <ErrorState compact title="Couldn't refresh" message={error.userMessage} onRetry={handleRefresh} style={styles.inlineError} />
+            ) : null}
 
-          {isAdmin && (
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => navigation.navigate('GroupAdmin' as never, { groupId } as never)}
-            >
-              <Ionicons name="settings-outline" size={20} color={colors.brand2} />
-              <Text style={styles.actionButtonText}>Manage</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('CreateEvent' as never, { groupId } as never)}
-          >
-            <Ionicons name="add-circle-outline" size={20} color={colors.brand2} />
-            <Text style={styles.actionButtonText}>New Event</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Active Events */}
-        {active.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Active Events</Text>
-            {active.map(renderEventCard)}
-          </View>
-        )}
-
-        {/* Ended Events */}
-        {ended.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Ended Events</Text>
-            {ended.slice(0, 5).map(renderEventCard)}
-          </View>
-        )}
-
-        {events.length === 0 && (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No events yet</Text>
-            <Text style={styles.emptyStateSubtext}>
-              Create your first event to get started!
-            </Text>
-          </View>
-        )}
-
-        {/* Members Preview */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Members ({members.length})</Text>
-          {members.filter(m => m.status === 'active').slice(0, 5).map((member) => (
-            <View key={member.user_id} style={styles.memberItem}>
-              <Text style={styles.memberName}>{member.username}</Text>
-              {member.role === 'admin' && (
-                <View style={styles.adminBadge}>
-                  <Text style={styles.adminBadgeText}>Admin</Text>
+            {isPaidGroup && (
+              <View style={styles.walletCard}>
+                <View style={styles.walletHeader}>
+                  <View style={styles.walletTextCol}>
+                    <Text style={styles.walletLabel}>Paid group wallet</Text>
+                    <Money amount={available} tone="neutral" size="lg" />
+                  </View>
+                  <Pressable style={styles.depositButtonWrap} onPress={handleDeposit} accessibilityRole="button" accessibilityLabel="Deposit funds">
+                    <LinearGradient colors={gradients.brand} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.depositButton}>
+                      <Ionicons name="card-outline" size={18} color={colors.white} />
+                      <Text style={styles.depositButtonText}>Deposit</Text>
+                    </LinearGradient>
+                  </Pressable>
                 </View>
-              )}
+              </View>
+            )}
+
+            <View style={styles.actionsRow}>
+              <Pressable style={styles.actionButton} onPress={handleShareInvite} accessibilityRole="button" accessibilityLabel="Invite others">
+                <Ionicons name="share-outline" size={20} color={colors.brand} />
+                <Text style={styles.actionButtonText}>Invite</Text>
+              </Pressable>
             </View>
-          ))}
-          {members.filter(m => m.status === 'active').length > 5 && (
-            <Text style={styles.moreText}>
-              +{members.filter(m => m.status === 'active').length - 5} more
-            </Text>
-          )}
-        </View>
-      </ScrollView>
+          </View>
+        }
+        ListEmptyComponent={
+          events.length === 0 ? (
+            <EmptyState
+              icon="calendar-outline"
+              title="No events yet"
+              message="Create the first event to get this group betting."
+              actionLabel="Create the first bet"
+              onAction={handleCreateEvent}
+              style={styles.emptyState}
+            />
+          ) : null
+        }
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.brand} />}
+        contentContainerStyle={events.length === 0 ? styles.emptyContentContainer : styles.listContent}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        windowSize={7}
+        removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
+      />
+
+      <View style={styles.bottomBar}>
+        <Button title="Create Event" onPress={handleCreateEvent} variant="primary" style={styles.bottomBarButton} icon="add-circle-outline" />
+        {isAdmin && (
+          <Button title="Manage Group" onPress={handleManageGroup} variant="secondary" style={styles.bottomBarButton} icon="settings-outline" />
+        )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -300,86 +444,114 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  loadingContainer: {
-    flex: 1,
+  centerFill: {
+    flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.bg,
+  },
+  skeletonBody: {
+    padding: spacing.lg,
   },
   pendingContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: spacing.xl,
+  },
+  pendingIconChip: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.pill,
+    backgroundColor: colors.amberFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
   },
   pendingTitle: {
-    fontSize: 24,
+    fontSize: tokens.fontSize.xl,
     fontWeight: '600',
     color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   pendingText: {
-    fontSize: 16,
+    fontSize: tokens.fontSize.base,
     color: colors.textMuted,
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   pendingSubtext: {
-    fontSize: 14,
+    fontSize: tokens.fontSize.sm,
     color: colors.textFaint,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.xl,
   },
-  backButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-  },
-  backButtonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '500',
+  pendingButton: {
+    minWidth: 160,
   },
   header: {
-    padding: 16,
-    borderBottomWidth: 1,
+    padding: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   groupName: {
-    fontSize: 28,
-    fontWeight: '600',
+    fontSize: tokens.fontSize['2xl'],
+    fontWeight: '700',
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
-  groupInfo: {
+  codeRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 44,
+    alignSelf: 'flex-start',
+  },
+  codeRowPressed: {
+    opacity: 0.6,
   },
   groupCode: {
-    fontSize: 14,
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
+    fontVariant: ['tabular-nums'],
   },
-  dot: {
-    marginHorizontal: 8,
-    color: colors.textMuted,
+  copyIcon: {
+    marginLeft: spacing.sm,
+  },
+  copyLabel: {
+    fontSize: tokens.fontSize.xs,
+    color: colors.textFaint,
+    marginLeft: spacing.xs,
+  },
+  copyLabelDone: {
+    color: colors.mint,
+    fontWeight: '600',
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginTop: spacing.xs,
   },
   memberCount: {
-    fontSize: 14,
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
+    flexShrink: 1,
   },
-  actionsRow: {
+  dot: {
+    marginHorizontal: spacing.sm,
+    color: colors.textFaint,
+  },
+  pillsRow: {
     flexDirection: 'row',
-    padding: 16,
-    gap: 12,
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  inlineError: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    backgroundColor: colors.bg2,
+    borderRadius: radius.lg,
   },
   walletCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 16,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    padding: spacing.lg,
     backgroundColor: colors.surfaceGlass,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -389,173 +561,101 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
+  },
+  walletTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
   walletLabel: {
-    fontSize: 13,
+    fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
-    marginBottom: 4,
-  },
-  walletBalance: {
-    fontSize: 24,
-    color: colors.mint,
-    fontWeight: '700',
+    marginBottom: spacing.xs,
   },
   depositButtonWrap: {
     borderRadius: radius.pill,
-    ...glow(colors.brand2),
+    ...glow(colors.brand),
   },
   depositButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
   },
   depositButtonText: {
     color: colors.white,
     fontWeight: '600',
   },
-  resolverText: {
-    marginTop: 10,
-    color: colors.textMuted,
-    fontSize: 13,
+  actionsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    gap: spacing.md,
   },
   actionButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 12,
+    minHeight: 44,
+    paddingHorizontal: spacing.lg,
     backgroundColor: colors.surfaceGlass,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    gap: 6,
+    gap: spacing.xs,
   },
   actionButtonText: {
-    color: colors.brand2,
-    fontSize: 14,
+    color: colors.brand,
+    fontSize: tokens.fontSize.sm,
     fontWeight: '600',
   },
-  section: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 12,
+  sectionHeaderWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
   },
   eventCard: {
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: 16,
-    marginBottom: 12,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
   },
-  eventHeader: {
+  eventHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    gap: spacing.md,
+    marginBottom: spacing.md,
   },
   eventTitle: {
     flex: 1,
-    fontSize: 18,
-    fontWeight: '500',
-    color: colors.text,
-    marginRight: 8,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-  },
-  activeBadge: {
-    backgroundColor: colors.mintFill,
-  },
-  endedBadge: {
-    backgroundColor: colors.surfaceGlassStrong,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: tokens.fontSize.base,
+    fontWeight: '600',
     color: colors.text,
   },
-  sidesRow: {
+  eventFooterRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sideBox: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: colors.surfaceGlassStrong,
-    borderRadius: radius.md,
-  },
-  sideText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  vsText: {
-    marginHorizontal: 8,
-    fontSize: 12,
-    color: colors.textFaint,
-  },
-  eventTime: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
-  winnerText: {
-    fontSize: 14,
-    color: colors.mint,
-    fontWeight: '500',
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
   emptyState: {
-    padding: 48,
-    alignItems: 'center',
+    marginTop: spacing.xxl,
   },
-  emptyStateText: {
-    fontSize: 20,
-    color: colors.textMuted,
-    marginBottom: 8,
+  emptyContentContainer: {
+    flexGrow: 1,
   },
-  emptyStateSubtext: {
-    fontSize: 16,
-    color: colors.textFaint,
-    textAlign: 'center',
+  listContent: {
+    paddingBottom: spacing.xl,
   },
-  memberItem: {
+  bottomBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  memberName: {
+  bottomBarButton: {
     flex: 1,
-    fontSize: 16,
-    color: colors.text,
-  },
-  adminBadge: {
-    backgroundColor: colors.brandFill,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-  },
-  adminBadgeText: {
-    fontSize: 12,
-    color: colors.brand2,
-  },
-  moreText: {
-    marginTop: 8,
-    fontSize: 14,
-    color: colors.textMuted,
-    fontStyle: 'italic',
   },
 });
