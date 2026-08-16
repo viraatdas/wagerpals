@@ -13,8 +13,13 @@
     "db:add-push": "tsx scripts/add-push-subscriptions.ts",
     "db:migrate-mobile": "tsx scripts/migrate-mobile.ts",
     "db:migrate-wallet": "tsx scripts/migrate-wallet.ts",
+    "db:migrate": "tsx scripts/migrate-comeback.ts",
     "verify-pwa": "tsx scripts/verify-pwa-setup.ts",
-    "test:push": "tsx scripts/test-push-notification.ts"
+    "test:push": "tsx scripts/test-push-notification.ts",
+    "identity:check": "tsx scripts/check-identity.ts",
+    "identity:backfill": "tsx scripts/backfill-user-emails.ts",
+    "users:merge": "tsx scripts/merge-duplicate-users.ts",
+    "stack:link-accounts": "tsx scripts/set-stack-account-linking.ts"
   },
   "dependencies": {
     "@stackframe/stack": "^2.8.41",

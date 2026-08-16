@@ -93,7 +93,7 @@ Mobile App → Opens Browser → Stack Auth → Google Sign In
      ↑                                            ↓
      └──────── Redirects with code ←─────────────┘
                     ↓
-          Backend (/api/auth/mobile-callback)
+          Backend (/api/auth/mobile-oauth-callback)
                     ↓
           Exchange code for user tokens
                     ↓
@@ -148,7 +148,7 @@ wagerpals://oauth/callback?code=AUTHORIZATION_CODE
 
 ### Problem: "User info not returned"
 
-**Solution:** Check backend logs at `/api/auth/mobile-callback` for errors. The endpoint should successfully exchange the auth code for tokens.
+**Solution:** Check backend logs at `/api/auth/mobile-oauth-callback` for errors. The endpoint should successfully exchange the auth code for tokens.
 
 ---
 

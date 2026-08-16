@@ -55,9 +55,14 @@ export default function RootNavigator() {
   const checkUserUsername = async (userId: string) => {
     setCheckingUsername(true);
     try {
+      await apiService.syncUser();
+    } catch (error) {
+      // A sync failure should not block the flow — fall through to getUser.
+    }
+    try {
       const userData = await apiService.getUser(userId);
-      // If user has no username or it's empty, they need to set one
-      setNeedsUsername(!userData?.username);
+      // If the user hasn't deliberately picked a username yet, they need to set one
+      setNeedsUsername(!userData?.username_selected);
     } catch (error) {
       // If user doesn't exist in our DB yet, they need to set up username
       setNeedsUsername(true);
