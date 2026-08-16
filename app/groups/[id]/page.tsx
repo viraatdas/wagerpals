@@ -48,11 +48,19 @@ export default function GroupPage() {
 
       const groupData = await groupResponse.json();
       const eventsData = await eventsResponse.json();
+
+      // The API only hands the roster to active members; a non-member gets an
+      // invite preview instead, so send them to the page built for that.
+      if (groupData.is_member === false) {
+        router.push(`/groups/join/${params.id}`);
+        return;
+      }
+
       setGroup(groupData);
       setEvents(Array.isArray(eventsData) ? eventsData : []);
 
       // Check if user is admin
-      const userMember = groupData.members.find((m: any) => m.user_id === uid);
+      const userMember = (groupData.members || []).find((m: any) => m.user_id === uid);
       setIsAdmin(userMember?.role === 'admin');
 
       if (!groupData.is_public) {

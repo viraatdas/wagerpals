@@ -96,6 +96,12 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  // Same disclosure as GET /api/groups?id= — this returns the full roster
+  // (user ids, usernames, roles, pending requests) for a group, so it is
+  // gated the same way: authenticated, and an active member of that group.
+  const authResult = await requireAuth(request);
+  if (authResult instanceof NextResponse) return authResult;
+
   const { searchParams } = new URL(request.url);
   const groupId = searchParams.get('groupId');
 
@@ -104,6 +110,15 @@ export async function GET(request: NextRequest) {
   }
 
   const members = await db.groupMembers.getByGroup(groupId);
+
+  const viewerMembership = members.find(m => m.user_id === authResult.userId);
+  if (viewerMembership?.status !== 'active') {
+    return NextResponse.json(
+      { error: 'You must be an active member of this group to view its members' },
+      { status: 403 }
+    );
+  }
+
   return NextResponse.json(members);
 }
 

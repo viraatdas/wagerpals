@@ -217,6 +217,7 @@ it requires `POSTGRES_URL` (and in two cases, permission to `CREATE DATABASE`) i
 | `scripts/verify-comments.ts` | `verify:comments` | Pure function tests of `lib/comments.ts` (validation, mention parsing, threading, rate limiting) — no I/O at all. | No |
 | `scripts/verify-escrow-chips.ts` | `verify:escrow-chips` | Drives the real `GET /api/events` handler and `lib/payments.ts` against the shared Neon dev database, then server-renders the real `Ledger` component, to prove escrow chips are shown for every bettor, not just the viewer. | Yes (shared dev DB) |
 | `scripts/verify-constraint-status.ts` | `verify:constraints` | Proves `constraintStatus()` in `scripts/migrate-comeback.ts` is table-scoped (not just constraint-name-scoped) using throwaway `zz_probe_*` objects, dropped in a `finally`. | Yes |
+| `scripts/verify-groups-auth.ts` | `verify:groups-auth` | Drives the real `GET /api/groups` and `GET /api/groups/members` handlers against the **real** `lib/auth.ts` — only Stack Auth itself is stubbed (`scripts/testing/stack-auth-stub.ts`, via the same `module.registerHooks` redirect `test:auth` uses), with `lib/db`/`lib/push` faked in memory. Proves a group's roster, pending-join queue and admin/resolver info reach only an authenticated **active member of that group**, that `?public=true` stays anonymous, and that `?userId=` cannot name anyone but the caller. | No |
 | `scripts/verify-comeback.ts` | `db:verify` | Structural + functional proof that the comeback migration landed; read-only (write checks roll back). | Yes |
 | `scripts/check-identity.ts` | `identity:check` | Part A (no DB): the forged `x-stack-user-id` header does not authenticate, unauthenticated requests get a clean 401 before touching the DB. Part B (needs DB): scans for duplicate emails, missing emails, broken tombstones, dangling FK references to tombstoned users. | Part A: No. Part B: skipped with a message if `POSTGRES_URL` is unset (does not fail). |
 | `scripts/test-sync-user.ts` | `test:sync-user` | Integration test of `lib/sync-user.ts` against an in-memory mirror of the `users` table's real constraints. | No |
@@ -291,6 +292,30 @@ must keep passing.
 `users` row (create or refresh) — both web and mobile funnel through it via `POST
 /api/users`. `scripts/merge-duplicate-users.ts` (§3) is the recovery tool for rows that
 already split into duplicates before this was fixed.
+
+### Group membership is the read boundary
+
+A group's **roster, pending-join queue, and admin/resolver identities** are only ever
+returned to an authenticated caller with an `active` membership row **in that group**. The
+two endpoints that can disclose them — `GET /api/groups?id=` and
+`GET /api/groups/members?groupId=` — both call `requireAuth` before touching the database
+and then check the caller's own membership row.
+
+- Auth is checked **before** the group is looked up, so an anonymous caller can't use the
+  404-vs-200 difference to enumerate the 6-digit group id space.
+- An authenticated non-member (including someone whose join request is still `pending`) gets
+  an **invite preview** from `?id=`: `name`, `is_public`, `member_count`/`admin_count`, and
+  `viewer_status` — their own membership state, so the join page can tell them where they
+  stand. Never `members`, `pending_requests`, `resolver`, `created_by` or `resolver_user_id`.
+  `GET /api/groups/members` has no preview mode at all: a non-member gets 403.
+- `GET /api/groups?public=true` is the one deliberately anonymous read — it lists public
+  groups with counts only, never rosters. Do not add member data to it.
+- `?userId=` must equal the caller (`verifyUserMatch`, 403 otherwise); omitting it derives the
+  caller from the session. Never re-add a code path where a query param names whose data to
+  return — that's the same class of bug as the `x-stack-user-id` header above.
+
+Proven by `npm run verify:groups-auth` (`scripts/verify-groups-auth.ts`) — no database
+required, and it drives the real `lib/auth.ts` (only Stack Auth is stubbed).
 
 ### The central notification filter
 
