@@ -720,6 +720,131 @@ async function runSuite(testUrl: string): Promise<void> {
     const listed = await get(webRequest(undefined, ''));
     assert(!listed.body.some((u: any) => u.id === tombstoneId), 'the API list skips tombstones too');
   });
+
+  // =========================================================================
+  section('11. Signing in on a merged-away account');
+  // =========================================================================
+  //
+  // scripts/merge-duplicate-users.ts --keep-tombstones leaves the loser's row
+  // behind with `merged_into` set and its email cleared. Stack Auth still
+  // knows that account, so the human can sign in on it — and every sync used
+  // to patch the tombstone and hand it straight back, quietly resurrecting the
+  // duplicate identity the merge had just retired.
+
+  /** Retire `loserId` onto `survivorId`, exactly as --keep-tombstones does. */
+  async function tombstone(loserId: string, survivorId: string): Promise<void> {
+    await sql`UPDATE users SET merged_into = ${survivorId}, email = NULL WHERE id = ${loserId}`;
+  }
+
+  const mergedAwayId = randomUUID();
+  const mergedAwayEmail = `bob.${tag}@example.test`;
+  const mergedAwaySession = (extra: Partial<StubStackUser> = {}): StubStackUser =>
+    stackUser({
+      id: mergedAwayId,
+      primaryEmail: mergedAwayEmail,
+      primaryEmailVerified: true,
+      displayName: 'Bob Merged',
+      hasPassword: true,
+      ...extra,
+    });
+
+  // last_seen_at comes back from `pg` as a Date; normalise before comparing.
+  const stamp = (value: unknown): string | null =>
+    value instanceof Date ? value.toISOString() : (value as string | null);
+
+  let mergedAwayLastSeen: string | null = null;
+
+  await test('a merged-away account starts life as an ordinary row', async () => {
+    resetSessions();
+    signInWeb(mergedAwaySession());
+    const res = await post(webRequest({ id: mergedAwayId }));
+    assertEqual(res.status, 200, 'sign-up should succeed');
+    assertEqual(res.body.id, mergedAwayId, 'it is its own account, for now');
+
+    await tombstone(mergedAwayId, adaStackId);
+    const row = await sql`SELECT last_seen_at FROM users WHERE id = ${mergedAwayId}`;
+    mergedAwayLastSeen = stamp(row.rows[0].last_seen_at);
+    assert(mergedAwayLastSeen, 'the pre-merge sync stamped last_seen_at');
+  });
+
+  await test('signing in on the merged-away id resolves to the surviving account', async () => {
+    resetSessions();
+    // A provider the survivor has never seen, so the sync has something to write.
+    signInWeb(mergedAwaySession({ oauthProviders: [{ id: 'apple' }] }));
+    const res = await post(webRequest({ id: mergedAwayId }));
+
+    assertEqual(res.status, 200, 'sign-in must keep working');
+    assertEqual(res.body.id, adaStackId, 'the session resolves to the survivor, NOT the tombstone');
+    assertEqual(res.body.username, 'ada_l', 'and carries the surviving account’s identity');
+    assertEqual(res.body.merged_into, null, 'the row handed back is a live account');
+  });
+
+  await test('the tombstone is left retired, not revived', async () => {
+    const row = await sql`SELECT merged_into, email, last_seen_at FROM users WHERE id = ${mergedAwayId}`;
+    const tomb = row.rows[0];
+    assertEqual(tomb.merged_into, adaStackId, 'it still points at the survivor');
+    assertEqual(tomb.email, null, 'it did not take an email back');
+    assertEqual(stamp(tomb.last_seen_at), mergedAwayLastSeen, 'the tombstone was not written to at all');
+
+    const all = await db.users.getAll();
+    assert(!all.some((u) => u.id === mergedAwayId), 'and it stays out of the listings');
+  });
+
+  await test('the survivor keeps its own email and picks up the new sign-in method', async () => {
+    const ada = await db.users.get(adaStackId);
+    assertEqual(ada!.email, adaEmail, 'a retired account never renames the one that absorbed it');
+    assertEqual(await rowsWithEmail(mergedAwayEmail), 0, 'the retired address is not copied across');
+    assertEqual(methodFor(ada, 'apple')?.identifier, mergedAwayEmail, 'the apple login is linked to the survivor');
+    assert(methodFor(ada, 'password'), 'the survivor’s original methods are untouched');
+    assert(methodFor(ada, 'google'), 'the survivor’s original methods are untouched');
+  });
+
+  await test('a multi-hop merge chain resolves to the account at the end of it', async () => {
+    // A → B → ada. merge-duplicate-users re-points tombstones, but a chain can
+    // still be built by hand, and following only one hop would land on B —
+    // itself a tombstone.
+    const hopAId = randomUUID();
+    const hopBId = randomUUID();
+    for (const [id, name] of [[hopAId, 'Hop A'], [hopBId, 'Hop B']] as const) {
+      resetSessions();
+      signInWeb(
+        stackUser({ id, primaryEmail: `${id.slice(0, 8)}@example.test`, primaryEmailVerified: true, displayName: name, hasPassword: true })
+      );
+      assertEqual((await post(webRequest({ id }))).status, 200, `${name} should sign up`);
+    }
+    await tombstone(hopBId, adaStackId);
+    await tombstone(hopAId, hopBId);
+
+    resetSessions();
+    signInWeb(stackUser({ id: hopAId, primaryEmail: `${hopAId.slice(0, 8)}@example.test`, primaryEmailVerified: true, displayName: 'Hop A', hasPassword: true }));
+    const res = await post(webRequest({ id: hopAId }));
+    assertEqual(res.status, 200, 'sign-in still works two hops down the chain');
+    assertEqual(res.body.id, adaStackId, 'both hops are followed to the live account');
+
+    const mid = await db.users.get(hopBId);
+    assertEqual(mid!.merged_into, adaStackId, 'the intermediate tombstone is left alone');
+  });
+
+  await test('a merge cycle is refused rather than resurrecting either row', async () => {
+    const loopXId = randomUUID();
+    const loopYId = randomUUID();
+    for (const [id, name] of [[loopXId, 'Loop X'], [loopYId, 'Loop Y']] as const) {
+      resetSessions();
+      signInWeb(stackUser({ id, primaryEmail: `${id.slice(0, 8)}@example.test`, primaryEmailVerified: true, displayName: name, hasPassword: true }));
+      assertEqual((await post(webRequest({ id }))).status, 200, `${name} should sign up`);
+    }
+    await tombstone(loopXId, loopYId);
+    await tombstone(loopYId, loopXId);
+
+    resetSessions();
+    signInWeb(stackUser({ id: loopXId, primaryEmail: `${loopXId.slice(0, 8)}@example.test`, primaryEmailVerified: true, displayName: 'Loop X', hasPassword: true }));
+    const res = await post(webRequest({ id: loopXId }));
+    assertEqual(res.status, 500, 'an unresolvable chain fails closed');
+    assert(!res.body.id, 'no account is handed back');
+
+    const x = await db.users.get(loopXId);
+    assertEqual(x!.merged_into, loopYId, 'and neither tombstone is patched back to life');
+  });
 }
 
 // ---------------------------------------------------------------------------
