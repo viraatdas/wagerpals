@@ -24,7 +24,8 @@
     "users:merge": "tsx scripts/merge-duplicate-users.ts",
     "stack:link-accounts": "tsx scripts/set-stack-account-linking.ts",
     "verify:notifications": "tsx scripts/verify-notifications.ts",
-    "verify:imessage": "tsx scripts/verify-imessage.ts"
+    "verify:imessage": "tsx scripts/verify-imessage.ts",
+    "verify:comments": "tsx scripts/verify-comments.ts"
   },
   "dependencies": {
     "@stackframe/stack": "^2.8.41",

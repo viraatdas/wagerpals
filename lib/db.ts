@@ -406,7 +406,8 @@ export const db = {
               COALESCE(SUM(CASE WHEN b.side = e.side_a THEN 1 ELSE 0 END), 0)::int as side_a_count,
               COALESCE(SUM(CASE WHEN b.side = e.side_a THEN b.amount ELSE 0 END), 0)::numeric as side_a_total,
               COALESCE(SUM(CASE WHEN b.side = e.side_b THEN 1 ELSE 0 END), 0)::int as side_b_count,
-              COALESCE(SUM(CASE WHEN b.side = e.side_b THEN b.amount ELSE 0 END), 0)::numeric as side_b_total
+              COALESCE(SUM(CASE WHEN b.side = e.side_b THEN b.amount ELSE 0 END), 0)::numeric as side_b_total,
+              (SELECT COUNT(*) FROM comments c WHERE c.event_id = e.id AND c.deleted_at IS NULL)::int AS comment_count
             FROM events e
             LEFT JOIN bets b ON e.id = b.event_id
             WHERE e.group_id = ${groupId}
@@ -423,7 +424,8 @@ export const db = {
               COALESCE(SUM(CASE WHEN b.side = e.side_a THEN 1 ELSE 0 END), 0)::int as side_a_count,
               COALESCE(SUM(CASE WHEN b.side = e.side_a THEN b.amount ELSE 0 END), 0)::numeric as side_a_total,
               COALESCE(SUM(CASE WHEN b.side = e.side_b THEN 1 ELSE 0 END), 0)::int as side_b_count,
-              COALESCE(SUM(CASE WHEN b.side = e.side_b THEN b.amount ELSE 0 END), 0)::numeric as side_b_total
+              COALESCE(SUM(CASE WHEN b.side = e.side_b THEN b.amount ELSE 0 END), 0)::numeric as side_b_total,
+              (SELECT COUNT(*) FROM comments c WHERE c.event_id = e.id AND c.deleted_at IS NULL)::int AS comment_count
             FROM events e
             LEFT JOIN bets b ON e.id = b.event_id
             GROUP BY e.id
@@ -452,6 +454,7 @@ export const db = {
           },
           total_bets: parseInt(row.total_bets),
           total_participants: parseInt(row.total_participants),
+          comment_count: parseInt(row.comment_count) || 0,
         };
 
         if (row.winning_side) {

@@ -86,6 +86,8 @@ export interface EventWithStats extends Event {
   total_bets: number;
   total_participants: number;
   bets: Bet[];
+  // Populated only by db.events.getAllWithStats (the list query); absent elsewhere.
+  comment_count?: number;
 }
 
 export interface NetResult {

@@ -35,9 +35,14 @@ export default function EventCard({ event, isPublic = false }: EventCardProps) {
               <span className="live-dot" /> Ends in {timeLeft}
             </span>
           )}
-          <span className="text-xs font-medium text-muted">
-            👥 {event.total_participants} {event.total_participants === 1 ? 'player' : 'players'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted">
+              👥 {event.total_participants} {event.total_participants === 1 ? 'player' : 'players'}
+            </span>
+            {typeof event.comment_count === 'number' && event.comment_count > 0 && (
+              <span className="text-xs font-medium text-muted">💬 {event.comment_count}</span>
+            )}
+          </div>
         </div>
 
         <h3 className="font-display text-lg font-semibold text-foreground leading-snug break-words mb-1 group-hover:text-brand-2 transition-colors">
