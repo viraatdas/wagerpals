@@ -32,21 +32,26 @@ export function formatDate(timestamp: number): string {
   }
 }
 
+// Mirrors lib/utils.ts's validateUsername exactly — the server is the source of truth.
 export function validateUsername(username: string): { valid: boolean; error?: string } {
-  if (!username || username.trim().length === 0) {
+  const trimmed = username.trim();
+
+  if (trimmed.length === 0) {
     return { valid: false, error: 'Username is required' };
   }
 
-  if (username.length < 3) {
-    return { valid: false, error: 'Username must be at least 3 characters' };
+  if (trimmed.length < 2) {
+    return { valid: false, error: 'Username must be at least 2 characters' };
   }
 
-  if (username.length > 20) {
-    return { valid: false, error: 'Username must be less than 20 characters' };
+  if (trimmed.length > 20) {
+    return { valid: false, error: 'Username must be 20 characters or less' };
   }
 
-  if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
-    return { valid: false, error: 'Username can only contain letters, numbers, dashes, and underscores' };
+  // Only allow alphanumeric characters and underscores
+  const validPattern = /^[a-zA-Z0-9_]+$/;
+  if (!validPattern.test(trimmed)) {
+    return { valid: false, error: 'Username can only contain letters, numbers, and underscores' };
   }
 
   return { valid: true };

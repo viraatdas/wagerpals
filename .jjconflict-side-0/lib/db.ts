@@ -235,6 +235,16 @@ export const db = {
       return mapUser(result.rows[0]);
     },
 
+    // Identity lookup keyed on the (case-insensitive) email address. Backed by
+    // idx_users_email_lower, which is UNIQUE, so at most one row can match.
+    // Tombstoned rows are still returned: a merged account's email must not be
+    // handed out to a different human.
+    getByEmail: async (email: string): Promise<User | null> => {
+      const result = await sql`SELECT * FROM users WHERE LOWER(email) = LOWER(${email})`;
+      if (result.rows.length === 0) return null;
+      return mapUser(result.rows[0]);
+    },
+
     // Tombstoned (merged/deduped) users are excluded so they stop showing
     // up on the leaderboard; db.users.get(id) still returns them directly.
     getAll: async (): Promise<User[]> => {

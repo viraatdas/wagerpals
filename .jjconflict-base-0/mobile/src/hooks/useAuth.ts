@@ -21,6 +21,7 @@ export function useAuth() {
     isLoading,
     isAuthenticated: !!user,
     signOut: () => authService.signOut(),
+    syncUser: () => authService.syncUser(),
   };
 }
 

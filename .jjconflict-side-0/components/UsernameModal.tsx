@@ -50,9 +50,9 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
           <h2 className="font-display text-3xl font-semibold text-foreground mb-2">
             Welcome to <span className="text-gradient">WagerPals</span>
           </h2>
-          <p className="text-muted">Enter your username to continue</p>
+          <p className="text-muted">Pick your username to continue</p>
           <p className="text-sm text-muted-2 mt-2">
-            Returning user? Just enter your existing username
+            This is how friends will find you. You can change it later.
           </p>
         </div>
 
@@ -96,7 +96,7 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
         </form>
 
         <p className="text-xs text-muted-2 text-center mt-6 relative">
-          No password needed. Just pick a name and start betting!
+          You&apos;re signed in — email and Google with the same address share one account.
         </p>
       </div>
     </div>

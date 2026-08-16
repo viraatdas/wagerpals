@@ -42,7 +42,7 @@ export default function UsernameSetupScreen({ onUsernameSet }: UsernameSetupScre
     setError('');
 
     try {
-      await apiService.createOrUpdateUser(user.id, username);
+      await apiService.setUsername(username.trim());
       // Notify parent that username is set
       if (onUsernameSet) {
         onUsernameSet();
@@ -54,7 +54,7 @@ export default function UsernameSetupScreen({ onUsernameSet }: UsernameSetupScre
     }
   };
 
-  const isValid = username.length >= 3;
+  const isValid = validateUsername(username).valid;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -91,7 +91,7 @@ export default function UsernameSetupScreen({ onUsernameSet }: UsernameSetupScre
                 placeholderTextColor={colors.textFaint}
                 value={username}
                 onChangeText={(text) => {
-                  setUsername(text.toLowerCase().replace(/[^a-z0-9_-]/g, ''));
+                  setUsername(text.toLowerCase().replace(/[^a-z0-9_]/g, ''));
                   setError('');
                 }}
                 autoCapitalize="none"
@@ -113,7 +113,7 @@ export default function UsernameSetupScreen({ onUsernameSet }: UsernameSetupScre
               </View>
             ) : (
               <Text style={styles.hint}>
-                3-20 characters • Letters, numbers, dashes, underscores
+                2-20 characters • Letters, numbers, underscores
               </Text>
             )}
 

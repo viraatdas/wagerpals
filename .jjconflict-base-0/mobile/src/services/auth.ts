@@ -20,9 +20,26 @@ class AuthService {
       if (storedUser && storedToken) {
         this.currentUser = JSON.parse(storedUser);
         this.notifyListeners();
+        // Refresh last_seen_at and any newly-linked auth method for a returning user.
+        // Not awaited — must not block session restore.
+        this.syncUser().catch((error) => {
+          console.warn('Failed to sync user on init:', error);
+        });
       }
     } catch (error) {
       console.error('Failed to restore session:', error);
+    }
+  }
+
+  // Pure identity sync — ensures the backend row exists and is up to date
+  // (verified email, display name, avatar, auth methods, last_seen_at).
+  // Never renames the user. Failure is non-fatal; callers should not block on it.
+  async syncUser(): Promise<void> {
+    try {
+      const { default: apiService } = await import('./api');
+      await apiService.syncUser();
+    } catch (error) {
+      console.warn('User sync failed:', error);
     }
   }
 
@@ -68,6 +85,7 @@ class AuthService {
     };
 
     await this.setUser(user);
+    await this.syncUser();
     return user;
   }
 
@@ -115,6 +133,7 @@ class AuthService {
         };
 
         await this.setUser(user);
+        await this.syncUser();
         return user;
       }
 

@@ -66,7 +66,7 @@ export default function EditUsernameScreen() {
     setError('');
 
     try {
-      await apiService.createOrUpdateUser(user.id, username);
+      await apiService.setUsername(username.trim());
       Alert.alert('Success', 'Username updated successfully');
       navigation.goBack();
     } catch (error: any) {
@@ -108,7 +108,7 @@ export default function EditUsernameScreen() {
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
           <Text style={styles.hint}>
-            3-20 characters • Letters, numbers, dashes, and underscores only
+            2-20 characters • Letters, numbers, and underscores only
           </Text>
 
           <TouchableOpacity

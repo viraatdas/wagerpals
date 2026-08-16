@@ -17,9 +17,8 @@ class ApiService {
   ): Promise<T> {
     const url = `${API_BASE_URL}${endpoint}`;
     
-    // Get access token and user ID for authenticated requests
+    // Get access token for authenticated requests
     const token = await authService.getAccessToken();
-    const currentUser = authService.getCurrentUser();
 
     try {
       const response = await fetch(url, {
@@ -27,14 +26,13 @@ class ApiService {
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-          ...(currentUser?.id ? { 'x-stack-user-id': currentUser.id } : {}),
           ...options.headers,
         },
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'API request failed');
+        const error = await response.json().catch(() => ({} as { error?: string }));
+        throw new Error(error.error || `API request failed (${response.status})`);
       }
 
       return await response.json();
@@ -45,10 +43,19 @@ class ApiService {
   }
 
   // User APIs
-  async createOrUpdateUser(id: string, username: string): Promise<User> {
+  // Pure identity sync — call right after sign-in and on app resume. Never renames.
+  async syncUser(): Promise<User> {
     return this.request<User>('/api/users', {
       method: 'POST',
-      body: JSON.stringify({ id, username }),
+      body: JSON.stringify({}),
+    });
+  }
+
+  // Deliberate username choice by the human.
+  async setUsername(username: string): Promise<User> {
+    return this.request<User>('/api/users', {
+      method: 'POST',
+      body: JSON.stringify({ username, username_selected: true }),
     });
   }
 
