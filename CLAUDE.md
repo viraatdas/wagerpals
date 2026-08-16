@@ -218,6 +218,7 @@ it requires `POSTGRES_URL` (and in two cases, permission to `CREATE DATABASE`) i
 | `scripts/verify-escrow-chips.ts` | `verify:escrow-chips` | Drives the real `GET /api/events` handler and `lib/payments.ts` against the shared Neon dev database, then server-renders the real `Ledger` component, to prove escrow chips are shown for every bettor, not just the viewer. | Yes (shared dev DB) |
 | `scripts/verify-constraint-status.ts` | `verify:constraints` | Proves `constraintStatus()` in `scripts/migrate-comeback.ts` is table-scoped (not just constraint-name-scoped) using throwaway `zz_probe_*` objects, dropped in a `finally`. | Yes |
 | `scripts/verify-groups-auth.ts` | `verify:groups-auth` | Drives the real `GET /api/groups` and `GET /api/groups/members` handlers against the **real** `lib/auth.ts` — only Stack Auth itself is stubbed (`scripts/testing/stack-auth-stub.ts`, via the same `module.registerHooks` redirect `test:auth` uses), with `lib/db`/`lib/push` faked in memory. Proves a group's roster, pending-join queue and admin/resolver info reach only an authenticated **active member of that group**, that `?public=true` stays anonymous, and that `?userId=` cannot name anyone but the caller. | No |
+| `scripts/verify-users-auth.ts` | `verify:users-auth` | Drives the real `GET /api/users` handler against the **real** `lib/auth.ts` — only Stack Auth itself is stubbed (`scripts/testing/stack-auth-stub.ts`, same `module.registerHooks` redirect as `verify:groups-auth`), with `lib/db` faked in memory. Proves the no-params user directory is 401 for an anonymous caller (and that the gate runs *before* `db.users.getAll()`), while `?id=<self>`, `?id=<other>` and `?username=` keep their existing shapes. | No |
 | `scripts/verify-comeback.ts` | `db:verify` | Structural + functional proof that the comeback migration landed; read-only (write checks roll back). | Yes |
 | `scripts/check-identity.ts` | `identity:check` | Part A (no DB): the forged `x-stack-user-id` header does not authenticate, unauthenticated requests get a clean 401 before touching the DB. Part B (needs DB): scans for duplicate emails, missing emails, broken tombstones, dangling FK references to tombstoned users. | Part A: No. Part B: skipped with a message if `POSTGRES_URL` is unset (does not fail). |
 | `scripts/test-sync-user.ts` | `test:sync-user` | Integration test of `lib/sync-user.ts` against an in-memory mirror of the `users` table's real constraints. | No |
@@ -315,6 +316,24 @@ and then check the caller's own membership row.
   return — that's the same class of bug as the `x-stack-user-id` header above.
 
 Proven by `npm run verify:groups-auth` (`scripts/verify-groups-auth.ts`) — no database
+required, and it drives the real `lib/auth.ts` (only Stack Auth is stubbed).
+
+### The user directory is never anonymous
+
+`GET /api/users` with **no query params** returns every row on the platform
+(`db.users.getAll()`). That is a bulk scrape of the whole member list — username,
+display_name, avatar_url, net_total, streak — so the handler calls `requireAuth` before it
+touches the database and returns 401 to an anonymous caller. Auth is checked **first** so an
+anonymous request can't learn the user count or infer anything from timing either.
+
+- The two lookup branches are deliberately narrower and unchanged: `?id=` returns the
+  caller's own full row when the session matches, otherwise the redacted `toPublicUser`
+  shape; `?username=` returns the redacted shape. They resolve one named row at a time,
+  not the directory.
+- `toPublicUser()` is what keeps `email`, `auth_methods`, `merged_into` and `last_seen_at`
+  out of every response except a caller reading their own row. Do not widen it.
+
+Proven by `npm run verify:users-auth` (`scripts/verify-users-auth.ts`) — no database
 required, and it drives the real `lib/auth.ts` (only Stack Auth is stubbed).
 
 ### The central notification filter
