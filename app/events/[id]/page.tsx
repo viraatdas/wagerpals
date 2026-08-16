@@ -9,6 +9,7 @@ import Ledger from '@/components/Ledger';
 import CommentForm from '@/components/CommentForm';
 import ResolutionBanner from '@/components/ResolutionBanner';
 import ConfirmationModal from '@/components/ConfirmationModal';
+import Toast, { ToastType } from '@/components/Toast';
 import { EventWithStats, NetResult, Comment } from '@/lib/types';
 import { calculateNetResults } from '@/lib/utils';
 
@@ -20,6 +21,9 @@ type EventPageData = EventWithStats & {
     user_id: string;
     username?: string;
   } | null;
+  payment_type?: 'none' | 'cash';
+  stake_amount?: number | null;
+  escrow_total?: number;
 };
 
 type ConfirmationModalConfig = {
@@ -42,6 +46,7 @@ export default function EventPage() {
   const [deleting, setDeleting] = useState(false);
   const [netResults, setNetResults] = useState<NetResult[]>([]);
   const [isPublic, setIsPublic] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [confirmationModal, setConfirmationModal] = useState<ConfirmationModalConfig>({
     isOpen: false,
     title: '',
@@ -94,6 +99,8 @@ export default function EventPage() {
       if (data.status === 'resolved' && data.resolution) {
         const results = calculateNetResults(data.bets, data.resolution.winning_side);
         setNetResults(results);
+      } else {
+        setNetResults([]);
       }
     } catch (error) {
       console.error('Failed to fetch event:', error);
@@ -132,11 +139,17 @@ export default function EventPage() {
         }),
       });
 
-      if (response.ok) {
-        fetchEvent();
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setToast({ message: data.error || 'Failed to resolve event', type: 'error' });
+        return;
       }
+
+      setToast({ message: 'Event resolved', type: 'success' });
+      fetchEvent();
     } catch (error) {
       console.error('Failed to resolve event:', error);
+      setToast({ message: 'Failed to resolve event', type: 'error' });
     } finally {
       setResolving(false);
     }
@@ -168,11 +181,61 @@ export default function EventPage() {
         }),
       });
 
-      if (response.ok) {
-        fetchEvent();
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setToast({ message: data.error || 'Failed to unresolve event', type: 'error' });
+        return;
       }
+
+      fetchEvent();
     } catch (error) {
       console.error('Failed to unresolve event:', error);
+      setToast({ message: 'Failed to unresolve event', type: 'error' });
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!event || !user) return;
+
+    setConfirmationModal({
+      isOpen: true,
+      title: 'Cancel Event',
+      message: 'This refunds every escrowed stake to the players who placed them. The event cannot be un-cancelled.',
+      confirmText: 'Cancel & Refund',
+      type: 'warning',
+      onConfirm: confirmCancel,
+    });
+  };
+
+  const confirmCancel = async () => {
+    if (!user) return;
+
+    setConfirmationModal(prev => ({ ...prev, isOpen: false }));
+    setResolving(true);
+
+    try {
+      const response = await fetch('/api/events/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-stack-user-id': user.id },
+        body: JSON.stringify({
+          event_id: event!.id,
+          action: 'cancel',
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setToast({ message: data.error || 'Failed to cancel event', type: 'error' });
+        return;
+      }
+
+      setToast({ message: 'Event cancelled and stakes refunded', type: 'success' });
+      fetchEvent();
+    } catch (error) {
+      console.error('Failed to cancel event:', error);
+      setToast({ message: 'Failed to cancel event', type: 'error' });
     } finally {
       setResolving(false);
     }
@@ -204,11 +267,16 @@ export default function EventPage() {
         }),
       });
 
-      if (response.ok) {
-        router.push('/');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setToast({ message: data.error || 'Failed to delete event', type: 'error' });
+        return;
       }
+
+      router.push('/');
     } catch (error) {
       console.error('Failed to delete event:', error);
+      setToast({ message: 'Failed to delete event', type: 'error' });
     } finally {
       setDeleting(false);
     }
@@ -248,6 +316,8 @@ export default function EventPage() {
   const paidResolver = !isPublic ? event.resolver : null;
   const canResolve = event.status === 'active' && (!paidResolver || paidResolver.user_id === user.id);
   const username = user.displayName || user.primaryEmail || 'User';
+  const isCash = event.payment_type === 'cash';
+  const isCancelled = event.status === 'resolved' && !event.resolution;
 
   return (
     <>
@@ -261,7 +331,13 @@ export default function EventPage() {
         type={confirmationModal.type}
         loading={deleting || resolving}
       />
-      
+      <Toast
+        isOpen={toast !== null}
+        onClose={() => setToast(null)}
+        message={toast?.message || ''}
+        type={toast?.type || 'info'}
+      />
+
       <div className="max-w-4xl mx-auto px-4 py-8 mobile-page animate-rise">
         <div className="mb-6 relative">
           <button
@@ -282,15 +358,33 @@ export default function EventPage() {
                 <span className="live-dot" /> <Countdown endTime={event.end_time} />
               </span>
             )}
-            {event.status === 'resolved' && (
+            {event.status === 'resolved' && !isCancelled && (
               <span className="chip chip-yes">✓ Resolved</span>
+            )}
+            {isCancelled && (
+              <span className="chip text-amber-700 bg-amber-50 border-amber-200">Cancelled</span>
             )}
             {paidResolver && (
               <span className="chip text-sky-700 bg-sky-50 border-sky-200 break-all">
                 Resolver: @{paidResolver.username || 'Unknown'}
               </span>
             )}
+            {isCash && (
+              <span className="chip text-green-700 bg-green-50 border-green-200">💵 Real money</span>
+            )}
+            {isCash && (
+              typeof event.stake_amount === 'number' && event.stake_amount > 0 ? (
+                <span className="chip">Stake ${event.stake_amount.toFixed(2)}</span>
+              ) : (
+                <span className="chip">Open stakes</span>
+              )
+            )}
           </div>
+          {isCash && (event.escrow_total ?? 0) > 0 && (
+            <p className="text-sm text-muted mt-2">
+              $<b>{(event.escrow_total ?? 0).toFixed(2)}</b> held in escrow across all players.
+            </p>
+          )}
           <button
             onClick={handleDelete}
             disabled={deleting}
@@ -301,7 +395,13 @@ export default function EventPage() {
           </button>
         </div>
 
-        {event.status === 'resolved' && netResults.length > 0 && (
+        {isCancelled && (
+          <div className="glass rounded-2xl p-4 mb-6 border-amber-200">
+            <p className="text-amber-700 font-medium">Event cancelled — every stake was refunded.</p>
+          </div>
+        )}
+
+        {event.status === 'resolved' && !isCancelled && netResults.length > 0 && (
           <>
             <ResolutionBanner event={event} netResults={netResults} isPublic={isPublic} />
             <div className="mb-6">
@@ -339,6 +439,17 @@ export default function EventPage() {
                 </button>
               ))}
             </div>
+            {isCash && (
+              <div className="flex gap-2 flex-wrap mt-3">
+                <button
+                  onClick={handleCancel}
+                  disabled={resolving}
+                  className="w-full sm:w-auto px-4 py-2 text-amber-700 bg-amber-50 border border-amber-200 text-sm font-medium rounded-full hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                >
+                  Cancel & refund all stakes
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -368,7 +479,7 @@ export default function EventPage() {
                 }`}>{side}</h3>
                 <div className="text-sm text-muted font-light">
                   <div>{stats.count} participants</div>
-                  <div className="text-3xl font-semibold text-foreground mt-1 tabular-nums">${stats.total}</div>
+                  <div className="text-3xl font-semibold text-foreground mt-1 tabular-nums">${stats.total.toFixed(2)}</div>
                 </div>
               </div>
             );
@@ -384,6 +495,9 @@ export default function EventPage() {
               username={username}
               onBetPlaced={fetchEvent}
               isPublic={isPublic}
+              paymentType={event.payment_type}
+              stakeAmount={event.stake_amount}
+              onWalletChanged={fetchEvent}
             />
           </div>
         )}
@@ -410,6 +524,8 @@ export default function EventPage() {
               onBetDeleted={fetchEvent}
               onCommentDeleted={fetchEvent}
               isPublic={isPublic}
+              paymentType={event.payment_type}
+              eventId={event.id}
             />
           </div>
         </div>

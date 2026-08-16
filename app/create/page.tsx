@@ -14,6 +14,9 @@ function CreateEventForm() {
   const user = useUser({ or: "return-null" });
   const [title, setTitle] = useState('');
   const [sides, setSides] = useState(['Yes', 'No']);
+  const [paymentType, setPaymentType] = useState<'none' | 'cash'>('none');
+  const [stakeMode, setStakeMode] = useState<'fixed' | 'open'>('fixed');
+  const [stake, setStake] = useState('10');
   const [endDate, setEndDate] = useState('');
   const [endTime, setEndTime] = useState('');
   const [loading, setLoading] = useState(false);
@@ -87,6 +90,16 @@ function CreateEventForm() {
       return;
     }
 
+    let stakeAmount: number | null = null;
+    if (paymentType === 'cash' && stakeMode === 'fixed') {
+      const parsedStake = parseFloat(stake);
+      if (isNaN(parsedStake) || parsedStake <= 0 || parsedStake > 500) {
+        setToast({ message: 'Stake per player must be between $0.01 and $500.', type: 'warning' });
+        return;
+      }
+      stakeAmount = Math.round(parsedStake * 100) / 100;
+    }
+
     setLoading(true);
 
     try {
@@ -101,6 +114,8 @@ function CreateEventForm() {
         group_id: selectedGroupId,
         creator_user_id: user.id,
         creator_username: username,
+        payment_type: paymentType,
+        stake_amount: stakeAmount,
       };
 
       const response = await fetch('/api/events', {
@@ -301,6 +316,92 @@ function CreateEventForm() {
               >
                 + Add another option
               </button>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-muted mb-2">
+              How are people playing?
+            </label>
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <button
+                type="button"
+                onClick={() => setPaymentType('none')}
+                className={`px-4 py-3.5 rounded-xl border text-left transition-all ${
+                  paymentType === 'none'
+                    ? 'border-brand-2 bg-brand-2/10 text-brand-2'
+                    : 'border-gray-200 bg-white text-foreground hover:bg-gray-50'
+                }`}
+              >
+                <div className="font-semibold">Just for fun</div>
+                <div className="text-sm font-light opacity-80">Points only, no money</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentType('cash')}
+                className={`px-4 py-3.5 rounded-xl border text-left transition-all ${
+                  paymentType === 'cash'
+                    ? 'border-brand-2 bg-brand-2/10 text-brand-2'
+                    : 'border-gray-200 bg-white text-foreground hover:bg-gray-50'
+                }`}
+              >
+                <div className="font-semibold">Real money</div>
+                <div className="text-sm font-light opacity-80">Stakes are escrowed from wallets</div>
+              </button>
+            </div>
+
+            {paymentType === 'cash' && (
+              <div className="mt-5 space-y-4">
+                <div className="flex gap-2.5">
+                  {(['fixed', 'open'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setStakeMode(mode)}
+                      className={`px-4 py-2 text-sm font-medium rounded-xl border transition-all ${
+                        stakeMode === mode
+                          ? 'border-brand-2 bg-brand-2/10 text-brand-2'
+                          : 'border-gray-200 bg-white text-foreground hover:bg-gray-50'
+                      }`}
+                    >
+                      {mode === 'fixed' ? 'Fixed stake' : 'Open stake'}
+                    </button>
+                  ))}
+                </div>
+
+                {stakeMode === 'fixed' ? (
+                  <div>
+                    <label htmlFor="stake" className="block text-sm font-medium text-muted mb-2">
+                      Stake per player
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-2">$</span>
+                      <input
+                        type="number"
+                        id="stake"
+                        value={stake}
+                        onChange={(e) => setStake(e.target.value)}
+                        min="0.01"
+                        step="0.01"
+                        inputMode="decimal"
+                        placeholder="10.00"
+                        className="w-full pl-8 pr-5 py-3.5 bg-white border border-gray-200 shadow-sm text-foreground placeholder:text-muted-2 rounded-xl focus:outline-none focus:border-brand-2/50 focus:ring-2 focus:ring-brand-2/20 transition"
+                      />
+                    </div>
+                    <p className="text-sm text-muted-2 font-light mt-2">
+                      Everyone puts in the same amount. Winners split the whole pot.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-2 font-light">
+                    Each player chooses their own stake. Winners split the pot in proportion to what they staked.
+                  </p>
+                )}
+
+                <p className="text-sm text-muted-2 font-light">
+                  Stakes are held in escrow until you resolve the event. Maximum $500 per bet.
+                </p>
+              </div>
             )}
           </div>
 
