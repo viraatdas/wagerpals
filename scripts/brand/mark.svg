@@ -1,22 +1,41 @@
 <!--
   WagerPals mark — full colour, transparent background.
-  Two mirrored chevrons meeting at a raised centre apex, crowned by a gold coin:
-  the two sides of a bet meeting in the middle, with the stake at the meeting point.
-  Geometry validated down to 16px — do not adjust coordinates, stroke widths or radii
-  without re-running `npm run brand:assets` and re-checking the small sizes.
+
+  THIS FILE AND components/Logo.tsx MUST DRAW THE SAME GLYPH.
+  Logo.tsx is the on-screen mark; this file is what scripts/generate-brand-assets.ts
+  rasterizes into every favicon, PWA icon, OG card and mobile app icon. The path
+  data, stroke width and coin radius below are copied verbatim from LogoMark in
+  components/Logo.tsx — change one and you must change the other, or the header
+  and the installed app icon stop being the same logo.
+
+  The only deliberate difference is the wrapper transform. Logo.tsx uses
+  translate(0,-1.5) to optically seat the bare mark in a header; here the offset
+  is -0.5, which is what actually centres the ink in the 64-unit viewBox:
+
+    ink x: 6 - 4.2 .. 58 + 4.2  =  1.8 .. 62.2   -> centre 32.0
+    ink y: 13 - 4.2 .. 52 + 4.2 =   8.8 .. 56.2  -> centre 32.5, hence -0.5
+
+  The generator centres artwork by viewBox, not by ink bounds, so that half-unit
+  is the difference between a centred app icon and one that sits low.
+
+  Contract relied on by the generator: square viewBox, no background fill,
+  artwork optically centred. Gradient ids are prefixed `wpMark` so they cannot
+  collide with the `brandGrad`/`ogTileGrad` ids the generator injects around it.
 -->
 <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="wpMarkW" x1="6" y1="12" x2="58" y2="12" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/>
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
     </linearGradient>
-    <linearGradient id="wpMarkC" x1="26" y1="10" x2="38" y2="22" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f59e0b"/><stop offset="1" stop-color="#d97706"/>
+    <linearGradient id="wpMarkCoin" x1="26" y1="10" x2="38" y2="22" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#d97706"/>
     </linearGradient>
   </defs>
-  <g transform="translate(0,-1.5)">
+  <g transform="translate(0,-0.5)">
     <path d="M6,13 L18,52 L32,21" fill="none" stroke="url(#wpMarkW)" stroke-width="8.4" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M32,21 L46,52 L58,13" fill="none" stroke="url(#wpMarkW)" stroke-width="8.4" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="32" cy="15" r="5.9" fill="url(#wpMarkC)"/>
+    <circle cx="32" cy="15" r="5.9" fill="url(#wpMarkCoin)"/>
   </g>
 </svg>

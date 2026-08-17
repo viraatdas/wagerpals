@@ -1,11 +1,14 @@
 <!--
-  WagerPals mark — flat all-white silhouette.
-  Android renders notification icons from the alpha channel only, so every
-  element must be white here; any colour would be discarded anyway.
-  Geometry mirrors mark.svg exactly.
+  WagerPals mark — flat single-colour silhouette. Same glyph as mark.svg.
+
+  Android notification icons are rendered from the alpha channel alone, so
+  every element here is fully opaque white with no gradients and no interior
+  detail: the coin's gold gradient is deliberately flattened, since any colour
+  information is discarded the moment the OS masks the icon.
+  See mark.svg for why the wrapper offset is -0.5.
 -->
 <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-  <g transform="translate(0,-1.5)">
+  <g transform="translate(0,-0.5)">
     <path d="M6,13 L18,52 L32,21" fill="none" stroke="#ffffff" stroke-width="8.4" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M32,21 L46,52 L58,13" fill="none" stroke="#ffffff" stroke-width="8.4" stroke-linecap="round" stroke-linejoin="round"/>
     <circle cx="32" cy="15" r="5.9" fill="#ffffff"/>

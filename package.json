@@ -27,7 +27,8 @@
     "verify:escrow-chips": "tsx scripts/verify-escrow-chips.ts",
     "verify:constraints": "tsx scripts/verify-constraint-status.ts",
     "verify:groups-auth": "tsx scripts/verify-groups-auth.ts",
-    "verify:users-auth": "tsx scripts/verify-users-auth.ts"
+    "verify:users-auth": "tsx scripts/verify-users-auth.ts",
+    "brand:verify": "tsx scripts/verify-brand.ts"
   },
   "dependencies": {
     "@stackframe/stack": "^2.8.41",
