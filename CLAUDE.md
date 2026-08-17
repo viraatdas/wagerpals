@@ -215,7 +215,7 @@ it requires `POSTGRES_URL` (and in two cases, permission to `CREATE DATABASE`) i
 | `scripts/verify-notifications.ts` | `verify:notifications` | Drives real `lib/push.ts` functions against an in-memory fake of `lib/db` and a recording `PushTransport` (no sockets). Proves the filter pipeline: subject suppression, mutes, preferences, dedupe, actor exclusion, audience scoping, pruning, Expo batching. | No |
 | `scripts/verify-imessage.ts` | `verify:imessage` | Drives the real `app/api/imessage/*` and `app/api/events/preview` route handlers with `lib/db`/`lib/auth`/`lib/sync-user`/`lib/push`/`lib/payments` swapped for in-memory fakes via `require.cache` pre-population. Proves the share-token compose/take-a-side flow. | No |
 | `scripts/verify-comments.ts` | `verify:comments` | Pure function tests of `lib/comments.ts` (validation, mention parsing, threading, rate limiting) — no I/O at all. | No |
-| `scripts/verify-escrow-chips.ts` | `verify:escrow-chips` | Drives the real `GET /api/events` handler and `lib/payments.ts` against the shared Neon dev database, then server-renders the real `Ledger` component, to prove escrow chips are shown for every bettor, not just the viewer. | Yes (shared dev DB) |
+| `scripts/verify-escrow-chips.ts` | `verify:escrow-chips` | Drives the real `GET /api/events` handler and `lib/payments.ts` against the shared Neon dev database, then server-renders the real `Ledger` component, to prove escrow chips are shown for every bettor, not just the viewer. Also proves the iPhone app's copy of the chip (`mobile/src/screens/EventDetailScreen.tsx`) reads the same `escrow_by_bet` payload and uses the same three labels — see the escrow-chip invariant in §8. | Yes (shared dev DB) |
 | `scripts/verify-constraint-status.ts` | `verify:constraints` | Proves `constraintStatus()` in `scripts/migrate-comeback.ts` is table-scoped (not just constraint-name-scoped) using throwaway `zz_probe_*` objects, dropped in a `finally`. | Yes |
 | `scripts/verify-groups-auth.ts` | `verify:groups-auth` | Drives the real `GET /api/groups` and `GET /api/groups/members` handlers against the **real** `lib/auth.ts` — only Stack Auth itself is stubbed (`scripts/testing/stack-auth-stub.ts`, via the same `module.registerHooks` redirect `test:auth` uses), with `lib/db`/`lib/push` faked in memory. Proves a group's roster, pending-join queue and admin/resolver info reach only an authenticated **active member of that group**, that `?public=true` stays anonymous, and that `?userId=` cannot name anyone but the caller. | No |
 | `scripts/verify-users-auth.ts` | `verify:users-auth` | Drives the real `GET /api/users` handler against the **real** `lib/auth.ts` — only Stack Auth itself is stubbed (`scripts/testing/stack-auth-stub.ts`, same `module.registerHooks` redirect as `verify:groups-auth`), with `lib/db` faked in memory. Proves the no-params user directory is 401 for an anonymous caller (and that the gate runs *before* `db.users.getAll()`), while `?id=<self>`, `?id=<other>` and `?username=` keep their existing shapes. | No |
@@ -354,6 +354,29 @@ web subscription) so a user with multiple devices/tabs is never double-notified.
 
 **No call site may broadcast to all subscribers or bypass this filter.** Proven by `npm run
 verify:notifications` (`scripts/verify-notifications.ts`) — no database required.
+
+### Escrow chips describe every player, and describe them in the present tense
+
+A cash bet's escrow chip must render on **every** bettor's row (not just the viewer's), and must
+say what the stake is doing **now** (`Escrowed` / `Settled` / `Refunded`). The single source for
+this is `escrow_by_bet` on the `GET /api/events?id=` response — a bet id → `EscrowHoldStatus` map
+built by `db.escrowHolds.getStatusByBetForEvent`, covering every bet in the event. Both surfaces
+read it: `components/Ledger.tsx` (`HOLD_CHIPS`) on web, `mobile/src/screens/EventDetailScreen.tsx`
+(`HOLD_PILLS`) on iOS, with the same three labels.
+
+Two sources have already been wrong here, and neither may come back:
+
+- **`GET /api/wallet`** is scoped to one user (`getWalletSummary` selects `WHERE user_id = $me`),
+  so building the map from it showed the viewer a chip on their own bet and nothing on anyone
+  else's — as if the other players had no money at stake.
+- **`bets.escrow_hold_id`** is never cleared. `settleCashEvent` / `reverseCashSettlement` only move
+  `escrow_holds.status`, so the column still points at the hold long after payout or refund. It can
+  answer "was this ever escrowed", never "is it escrowed now" — gating a chip on it pins every row
+  at `Escrowed` forever.
+
+Proven by `npm run verify:escrow-chips` (`scripts/verify-escrow-chips.ts`) — **needs `POSTGRES_URL`**.
+It settles a real event and asserts both halves: that `escrow_hold_id` survives settlement while
+`escrow_by_bet` correctly reads `released`, and that neither surface gates on the stale column.
 
 ### Tokens-only styling
 

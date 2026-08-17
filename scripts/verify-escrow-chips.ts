@@ -24,6 +24,8 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
+import { readFileSync } from 'fs';
+import { resolve as pathResolve } from 'path';
 import { NextRequest } from 'next/server';
 import { sql } from '@vercel/postgres';
 import React from 'react';
@@ -285,6 +287,72 @@ async function main(): Promise<void> {
       const html = await renderLedger({ bets: body.bets, currentUserId: bobId, paymentType: 'cash', escrowByBet: map });
       assert(countChips(html, 'Settled') === 2, `both bets show a Settled chip (got ${countChips(html, 'Settled')})`);
       assert(mentionsStakeOf(html, usernames[carolId], 'left escrow'), "the other player's Settled chip names them");
+    });
+
+    // The iPhone app renders the same chip off the same payload. React Native
+    // components can't be server-rendered here, so this step proves the two
+    // halves that actually matter: (1) live, that `bets[].escrow_hold_id` — the
+    // column the mobile screen used to gate on — is STILL set on a settled
+    // event, so that gate is provably stale; and (2) statically, that the
+    // screen now reads `escrow_by_bet` and that its chip labels match the web's.
+    await step('The iPhone app reads the same per-bet escrow status as the web', async () => {
+      const { body } = await getEvent(resolveEventId);
+      const map: Record<string, EscrowHoldStatus> = body.escrow_by_bet;
+      const bets: Bet[] = body.bets;
+
+      // (1) The stale-gate proof.
+      assert(
+        bets.length === 2 && bets.every((b) => !!b.escrow_hold_id),
+        'every settled bet STILL carries escrow_hold_id (so it cannot mean "currently escrowed")',
+      );
+      assert(
+        bets.every((b) => map?.[b.id] === 'released'),
+        'yet escrow_by_bet reports all of them as released — the two disagree, and escrow_by_bet is right',
+      );
+
+      // (2) The mobile source must consume the right one.
+      const screen = readFileSync(pathResolve(process.cwd(), 'mobile/src/screens/EventDetailScreen.tsx'), 'utf8');
+      const types = readFileSync(pathResolve(process.cwd(), 'mobile/src/types/index.ts'), 'utf8');
+
+      assert(
+        !/bet\.escrow_hold_id\s*\?/.test(screen),
+        'EventDetailScreen no longer gates its escrow chip on bet.escrow_hold_id',
+      );
+      assert(
+        screen.includes('event.escrow_by_bet?.[bet.id]'),
+        'EventDetailScreen feeds each BetRow the escrow status from event.escrow_by_bet',
+      );
+      assert(
+        /escrow_by_bet\?:\s*Record<string,\s*EscrowHoldStatus>/.test(types),
+        'mobile EventWithStats declares escrow_by_bet, so the field survives the API boundary',
+      );
+
+      // (3) Web and mobile must agree on what each status is called. Read both
+      // chip tables out of source rather than restating the labels here, so a
+      // future rename on one side fails this check instead of drifting.
+      const ledger = readFileSync(pathResolve(process.cwd(), 'components/Ledger.tsx'), 'utf8');
+      const labelsFrom = (src: string, table: string): string[] => {
+        const block = src.slice(src.indexOf(table));
+        const body = block.slice(block.indexOf('{'), block.indexOf('};'));
+        return (['held', 'released', 'refunded'] as const).map((status) => {
+          const m = new RegExp(`${status}:\\s*\\{[^}]*label:\\s*'([^']+)'`).exec(body);
+          return m ? m[1] : `<missing:${status}>`;
+        });
+      };
+      const webLabels = labelsFrom(ledger, 'HOLD_CHIPS');
+      const mobileLabels = labelsFrom(screen, 'HOLD_PILLS');
+      assert(
+        webLabels.join('|') === 'Escrowed|Settled|Refunded',
+        `the web chip labels are the expected three (got ${webLabels.join(', ')})`,
+      );
+      assert(
+        mobileLabels.join('|') === webLabels.join('|'),
+        `mobile chip labels match the web's (web: ${webLabels.join(', ')} / mobile: ${mobileLabels.join(', ')})`,
+      );
+      assert(
+        /isOwnBet\s*\?\s*'your stake'/.test(screen),
+        "mobile's chip label names whose stake it is, exactly as the web tooltip does",
+      );
     });
 
     await step('Cancelling an event flips every chip to Refunded', async () => {

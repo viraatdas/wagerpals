@@ -80,6 +80,14 @@ export interface EventWithStats extends Event {
   // Kept optional rather than required so any other EventWithStats-shaped
   // value assembled elsewhere doesn't have to fabricate this field.
   escrow_total?: number;
+  // Escrow status of EVERY bet in this event, keyed by bet id, from the same
+  // single-event response (`{}` for 'none' events). The per-bet escrow chip
+  // must read from this, never from `bet.escrow_hold_id`: that column keeps
+  // pointing at the hold after settlement/cancellation, so it can only answer
+  // "was this ever escrowed", not "is it still". See app/api/events/route.ts
+  // (`db.escrowHolds.getStatusByBetForEvent`) and components/Ledger.tsx,
+  // which renders the web half of the same chip off the same field.
+  escrow_by_bet?: Record<string, EscrowHoldStatus>;
 }
 
 export interface NetResult {

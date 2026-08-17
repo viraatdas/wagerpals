@@ -24,7 +24,7 @@ import { colors, radius, spacing, tokens } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
-import { EventWithStats, Bet, Comment, WalletSummary } from '../types';
+import { EventWithStats, Bet, Comment, EscrowHoldStatus, WalletSummary } from '../types';
 import { formatMoney, formatCountdown, formatRelativeTime, truncate } from '../utils/format';
 import { tapLight, tapMedium, tapHeavy, success, error as hapticError } from '../utils/haptics';
 import { ApiError, toApiError } from '../utils/errors';
@@ -78,17 +78,49 @@ function useCountdown(endTime: number | undefined) {
   return formatCountdown(endTime ?? 0);
 }
 
+// The escrow chip, mirroring components/Ledger.tsx's HOLD_CHIPS so web and
+// mobile never disagree about what a stake is doing.
+const HOLD_PILLS: Record<EscrowHoldStatus, { label: string; tone: PillTone }> = {
+  held: { label: 'Escrowed', tone: 'pending' },
+  released: { label: 'Settled', tone: 'neutral' },
+  refunded: { label: 'Refunded', tone: 'yes' },
+};
+
+/** Chips render on everyone's bets, so the label has to name whose stake it is. */
+function holdPillLabel(status: EscrowHoldStatus, isOwnBet: boolean, username: string): string {
+  const stake = isOwnBet ? 'your stake' : `@${username}'s stake`;
+  switch (status) {
+    case 'held':
+      return `${isOwnBet ? 'Your stake' : stake} is held until this event is resolved or cancelled.`;
+    case 'released':
+      return `This event was resolved and ${stake} left escrow.`;
+    case 'refunded':
+      return `This event was cancelled and ${stake} was returned.`;
+  }
+}
+
 function BetRow({
   bet,
+  holdStatus,
+  isOwnBet,
   canDelete,
   isDeleting,
   onDelete,
 }: {
   bet: Bet;
+  /**
+   * Live escrow status of THIS bet, from the event payload's `escrow_by_bet`.
+   * Undefined for free events and for any bet with no hold. Deliberately not
+   * derived from `bet.escrow_hold_id` — that stays set after settlement, so it
+   * would pin every chip at "Escrowed" forever.
+   */
+  holdStatus?: EscrowHoldStatus;
+  isOwnBet: boolean;
   canDelete: boolean;
   isDeleting: boolean;
   onDelete: (bet: Bet) => void;
 }) {
+  const holdPill = holdStatus ? HOLD_PILLS[holdStatus] : null;
   return (
     <View style={styles.rowItem}>
       <Avatar username={bet.username} size="sm" />
@@ -107,7 +139,11 @@ function BetRow({
         ) : null}
         <View style={styles.rowMetaRow}>
           {bet.is_late ? <Pill label="Late" tone="pending" size="sm" /> : null}
-          {bet.escrow_hold_id ? <Pill label="Escrowed" tone="info" size="sm" /> : null}
+          {holdPill && holdStatus ? (
+            <View accessibilityLabel={holdPillLabel(holdStatus, isOwnBet, bet.username)}>
+              <Pill label={holdPill.label} tone={holdPill.tone} size="sm" />
+            </View>
+          ) : null}
           <Text style={styles.rowTime}>{formatRelativeTime(bet.timestamp)}</Text>
         </View>
       </View>
@@ -856,6 +892,10 @@ export default function EventDetailScreen() {
                 <BetRow
                   key={bet.id}
                   bet={bet}
+                  // Every player's chip, not just the viewer's — see
+                  // scripts/verify-escrow-chips.ts.
+                  holdStatus={event.escrow_by_bet?.[bet.id]}
+                  isOwnBet={!!user && user.id === bet.user_id}
                   // Cash bets are immutable once placed — the stake is
                   // escrowed and deleting the bet would strand it (see
                   // app/api/bets/route.ts DELETE, CASH_BET_IMMUTABLE). Don't
