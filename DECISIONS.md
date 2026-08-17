@@ -805,3 +805,10 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   - Drain the review-ready backlog of 30 agents [out of lane] — RUDDER.md shows 30 review-ready / merge-ready workspaces, several divergent or conflicted, which is the source of the repeated lost-work and dirty-checkout incidents.
 - **By:** worker · 2026-08-16T17:55:44.118Z
 
+## soxmrmox: Resolved the 3-file jj merge conflict (CLAUDE.md, DECISIONS.md, package.json)
+- **Did:** Resolved the 3-file jj merge conflict (CLAUDE.md, DECISIONS.md, package.json) between the sync-user/users-auth side (kntxutzu 3e7d3486) and the groups-auth side (tqmspppk 4a5eecf9). In all three files the kntxutzu side was a strict superset of the other side (verified programmatically: every line the groups-auth side added was already present verbatim in the kntxutzu side, 0 missing), so the resolution keeps the kntxutzu content and loses nothing from the groups-auth work. package.json now has all three aliases (verify:constraints, verify:groups-auth, verify:users-auth); CLAUDE.md keeps both section-6 table rows and both section-8 invariants (Group membership is the read boundary + The user directory is never anonymous); DECISIONS.md keeps both E1 part-1 entries exactly once each.
+- **Interfaces:** No code interfaces changed - documentation and npm-script aliases only. package.json scripts: verify:groups-auth -> scripts/verify-groups-auth.ts, verify:users-auth -> scripts/verify-users-auth.ts (both script files confirmed present on disk).
+- **Follow-ups:**
+  - DECISIONS.md has 9 pre-existing duplicate headings from double-appending workers [out of lane] — Not introduced by this resolution - the log itself flags it at the 16:24 entry. Someone should own a dedup pass.
+- **By:** soxmrmox · 2026-08-17T06:06:05.147Z
+
