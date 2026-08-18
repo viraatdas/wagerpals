@@ -36,10 +36,16 @@ export const tokens = {
     textSecondary: '#6B7280',
     textMuted: '#9CA3AF',
     textInverse: '#FFFFFF',
-    accent: '#2563EB',
-    accentHover: '#1D4ED8',
-    accentSoft: '#3B82F6',
-    accentFill: 'rgba(37,99,235,0.08)',
+    // Phosphor-green brand, tuned for THIS light surface. The web's #24E17A is
+    // only 1.7:1 on white and cannot carry text here, so the accent is the deep
+    // end of the same ramp (white label on it = 4.8:1) and the bright value is
+    // kept for fills and graphics. The iOS app keeps its light background until
+    // its own dark pass — see PRODUCT.md §Platform — but the BRAND colour has to
+    // match the icon set, which is green.
+    accent: '#0A7C43',
+    accentHover: '#075C32',
+    accentSoft: '#12B45E',
+    accentFill: 'rgba(36,225,122,0.14)',
     yes: '#16A34A',
     yesFill: 'rgba(22,163,74,0.08)',
     no: '#DC2626',
@@ -60,7 +66,7 @@ export const tokens = {
     elev2: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 3, elevation: 2 },
     elev3: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 16, elevation: 4 },
     elev4: { shadowColor: '#0F172A', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.14, shadowRadius: 32, elevation: 8 },
-    accent: { shadowColor: '#2563EB', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 3 },
+    accent: { shadowColor: '#0A7C43', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 3 },
   },
   duration: { instant: 100, fast: 150, base: 220, slow: 360, slower: 600 },
   easing: { out: 'cubic-bezier(0.16, 1, 0.3, 1)', inOut: 'cubic-bezier(0.65, 0, 0.35, 1)', spring: 'cubic-bezier(0.34, 1.56, 0.64, 1)' },
@@ -92,11 +98,11 @@ export const colors = {
   text: tokens.color.text, // '#1E2530'
   textMuted: tokens.color.textSecondary, // '#6B7280' — identical to tokens.color.textSecondary
   textFaint: tokens.color.textMuted, // '#9CA3AF' — identical to tokens.color.textMuted (name collision with the local `textMuted` above is intentional/pre-existing)
-  // Brand blue ramp
-  brand1: tokens.color.accentSoft, // '#3B82F6'
-  brand2: tokens.color.accent, // '#2563EB'
-  brand3: tokens.color.accentHover, // '#1D4ED8'
-  brand: tokens.color.accent, // '#2563EB'
+  // Brand green ramp
+  brand1: tokens.color.accentSoft, // '#12B45E'
+  brand2: tokens.color.accent, // '#0A7C43'
+  brand3: tokens.color.accentHover, // '#075C32'
+  brand: tokens.color.accent, // '#0A7C43'
   // Accents (names kept from the dark theme; values are now light-palette)
   violet: '#4F46E5',
   // NOTE: cyan is intentionally NOT re-pointed at tokens.color.info — the
@@ -108,7 +114,7 @@ export const colors = {
   // Translucent accent fills
   mintFill: tokens.color.yesFill, // 'rgba(22,163,74,0.08)'
   roseFill: tokens.color.noFill, // 'rgba(220,38,38,0.08)'
-  brandFill: tokens.color.accentFill, // 'rgba(37,99,235,0.08)'
+  brandFill: tokens.color.accentFill, // 'rgba(36,225,122,0.14)'
   // NOTE: cyanFill is intentionally NOT re-pointed at tokens.color.infoFill —
   // the values differ ('rgba(14,165,233,0.08)' vs 'rgba(2,132,199,0.08)').
   cyanFill: 'rgba(14,165,233,0.08)',
@@ -120,8 +126,8 @@ export const colors = {
 } as const;
 
 export const gradients = {
-  brand: ['#3B82F6', '#2563EB', '#1D4ED8'] as const, // blue ramp
-  cool: ['#0EA5E9', '#2563EB'] as const,
+  brand: ['#12B45E', '#0A7C43', '#075C32'] as const, // green ramp
+  cool: ['#0EA5E9', '#0A7C43'] as const,
   mint: ['#22C55E', '#16A34A'] as const,
   rose: ['#EF4444', '#DC2626'] as const,
   card: ['#FFFFFF', '#F9FAFB'] as const, // near-flat white
