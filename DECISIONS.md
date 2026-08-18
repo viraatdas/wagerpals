@@ -939,7 +939,7 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
 - **By:** worker · 2026-08-18T04:29:46.390Z
 
 
-## main: iOS store build is blocked by a LOCAL resource limit, not by the project — everything else for the release is ready
+## main: iOS store build — local resource limit SOLVED, build now runs; remaining blocker is Apple provisioning (needs the owner's Apple login)
 - **The blocker, precisely.** `eas build --platform ios --profile production` fails at its first step: eas-cli shells out to `node_modules/expo/bin/cli config --json` and that child is **SIGKILLed** every time. Running the exact same command directly (`node ./node_modules/expo/bin/cli config --json`) succeeds, exit 0. So the config itself is valid; the machine cannot hold eas-cli and the Expo CLI in memory at once — at the time of the attempts `vm_stat` showed **~190 MB free with 2.6 GB of 4 GB swap already used**. Ruled out in turn: the Claude sandbox (retried with it disabled), the harness's background supervision (retried detached via `nohup … & disown`), a runaway heap (retried with `NODE_OPTIONS=--max-old-space-size=1024`), and npx overhead (retried with a global `eas-cli` install). All four produced the identical SIGKILL. `expo prebuild` dies the same way, which is why `mobile/ios/` could not be generated locally either.
 - **Everything the build depends on is verified present and correct.** EAS is authenticated as `birud` (the `owner` in app.json). EAS project `749a2dc6-bdc5-44e4-907b-3c77e36bb760`, Apple team `3C4383262W`, App Store Connect app `6754625373`, `credentialsSource: remote` so EAS holds the signing certs, and `submit.production.ios` is fully populated. `npx expo config --type prebuild` exits 0.
 - **Did:** Brought mobile to release-ready state. The icon set had gone green while the entire RN UI was still blue `#2563EB` — an app whose installed icon and first screen disagree. Moved the mobile brand ramp onto the green, using the **deep** end (`#0A7C43`, white label at 4.8:1) because the web's `#24E17A` is 1.7:1 on white and cannot carry text; `#12B45E` is kept for fills. The iOS app deliberately keeps its light background — the dark pass is still deferred. Also fixed the Android adaptive-icon tile and the `expo-notifications` tint (both still `#2563eb`), removed a dead Vercel preview host from `associatedDomains`, and bumped the marketing version 1.0.1 → 1.1.0.
@@ -949,4 +949,20 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   - `cd mobile && eas build --platform ios --profile production`
   - then `eas submit --platform ios --profile production` (appleId, ascAppId and teamId are already in eas.json)
 - **App review itself is Apple's process** and cannot be performed from here; submission is the last step available to any tool.
+- **By:** main · 2026-08-18
+
+## main: the iOS build now runs on EAS — the local SIGKILL is solved, and the real blocker is two missing Apple capabilities
+- **The local blocker is fixed, and the fix is a one-liner worth keeping.** eas-cli shells out to `expo/bin/cli config --json`, and on a machine this tight (~190 MB free, 2.6 GB of 4 GB swap used) the two Node processes together get the child OOM-killed. Capping **eas-cli's own** heap leaves room for the child:
+  `node --max-old-space-size=512 $(readlink -f $(which eas)) build --platform ios --profile production`
+  Capping *both* via `NODE_OPTIONS` does not work (it constrains the child too); disabling the sandbox, detaching with `nohup … & disown`, and a global vs npx install all made no difference. With the cap, `eas project:info`, `eas build` and `eas build:view` all run normally — including under the default sandbox.
+- **Build 3f1a29b7-09eb-47f2-826f-e51ab1f67b92 was queued and reached Xcode** (version 1.1.0, build 5, commit 8a410cbf, distribution `store`, credentials valid to Apr 2027). It failed in `Run fastlane` with `XCODE_BUILD_ERROR`.
+- **Good news buried in the failure: the iMessage extension is real.** Xcode reported `No profiles for 'com.wagerpals.app.messages' … in target 'WagerPalsMessages'`, which proves the config plugin **did** inject the extension target on EAS's machine. The earlier worry — that `WagerPalsMessages` was missing because a stale local `ios/` had no such target — is answered: the plugin works, and the only thing missing is a provisioning profile for it.
+- **The actual blocker is two Apple Developer portal capabilities, not code:**
+  1. App ID `com.wagerpals.app` has **no App Groups capability**, so the cached App Store profile (issued 2026-04-03, before the entitlement existed) does not carry `com.apple.security.application-groups` or `group.com.wagerpals.app`.
+  2. App ID `com.wagerpals.app.messages` **does not exist**, so the extension target has no profile at all.
+- **Why this could not be finished from here.** EAS creates both automatically, but only after authenticating to the Apple Developer portal, and `eas credentials` has no non-interactive mode (`eas credentials --help` exposes only `-p`). `--non-interactive` therefore reused the stale cached profile instead of re-syncing. Completing it needs the owner's Apple ID password and a 2FA code, which an agent must not enter.
+- **To finish — one interactive command, answer the Apple prompts:**
+  `cd mobile && node --max-old-space-size=512 $(readlink -f $(which eas)) build --platform ios --profile production`
+  EAS will log into Apple, add App Groups to `com.wagerpals.app`, register `com.wagerpals.app.messages`, regenerate both profiles and rebuild. Then `eas submit --platform ios --profile production` (appleId / ascAppId / appleTeamId are already in eas.json).
+- **`eas submit` uploads to App Store Connect; it does not submit for review.** Releasing still means picking the build in ASC and submitting it, and Apple's review takes days — no tool can make review *pass*.
 - **By:** main · 2026-08-18
