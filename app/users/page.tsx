@@ -238,7 +238,7 @@ export default function UsersPage() {
                       >
                         <div
                           className={`flex h-9 w-9 flex-none items-center justify-center rounded-[var(--radius-chip)] text-xs font-bold ${
-                            active ? 'bg-[var(--color-accent)] text-white' : 'bg-[var(--color-surface-sunken)] text-muted'
+                            active ? 'bg-[var(--color-accent)] text-ink-inverse' : 'bg-[var(--color-surface-sunken)] text-muted'
                           }`}
                         >
                           {initialOf(group.name)}

@@ -1,18 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Bricolage_Grotesque } from "next/font/google";
+import { IBM_Plex_Sans, Oswald } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/Header";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import MobileAppBanner from "@/components/MobileAppBanner";
 import { ClientProviders } from "@/components/ClientProviders";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
-// Display face. Wide, slightly quirky grotesque — gives headlines and the
-// wordmark a voice that Inter alone can't carry, while staying legible at
-// data-dense sizes. Variable weight so .display-* / .market-title can ask
-// for 650 without loading another file.
-const bricolage = Bricolage_Grotesque({
+// UI face. Humanist rather than neutral-grotesque: this product's content is
+// people arguing with each other, and Plex has a spoken warmth Inter doesn't.
+// Carries everything that is language rather than quantity.
+const plex = IBM_Plex_Sans({
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-sans",
+  display: "swap",
+});
+// Display face. Condensed and chunky with tabular lining figures — reserved for
+// quantities and verdicts (stakes, odds, side counts, countdown, SETTLED), so a
+// column of money aligns and the numbers read before the labels. See DESIGN.md.
+const oswald = Oswald({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
   variable: "--font-display",
   display: "swap",
 });
@@ -81,7 +89,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${bricolage.variable}`}>
+    <html lang="en" className={`${plex.variable} ${oswald.variable}`}>
       <body className="font-sans antialiased text-foreground">
         <ClientProviders>
           <ServiceWorkerRegistration />

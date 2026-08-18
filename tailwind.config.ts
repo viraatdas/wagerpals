@@ -38,6 +38,7 @@ const config: Config = {
           elevated: "var(--color-surface-elevated)",
           sunken: "var(--color-surface-sunken)",
         },
+        ground: "var(--color-bg)",
         hairline: {
           DEFAULT: "var(--color-border)",
           strong: "var(--color-border-strong)",
@@ -61,8 +62,8 @@ const config: Config = {
         info: "rgb(var(--color-info-rgb) / <alpha-value>)",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
-        display: ["var(--font-display)", "var(--font-inter)", "system-ui", "sans-serif"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-display)", "var(--font-sans)", "system-ui", "sans-serif"],
       },
       fontSize: {
         xs: ["var(--text-xs)", { lineHeight: "var(--leading-xs)" }],
@@ -107,15 +108,18 @@ const config: Config = {
         "cool-gradient":
           "linear-gradient(110deg, var(--neon-cyan), var(--neon-violet))",
         "glass-sheen":
-          "linear-gradient(180deg, rgba(255,255,255,0.5), rgba(255,255,255,0))",
+          "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0))",
       },
       boxShadow: {
-        glow: "0 2px 8px -2px rgba(37, 99, 235, 0.18)",
-        "glow-ember": "0 2px 8px -2px rgba(37, 99, 235, 0.25)",
-        "glow-mint": "0 2px 8px -2px rgba(22, 163, 74, 0.2)",
-        "glow-rose": "0 2px 8px -2px rgba(220, 38, 38, 0.2)",
-        "glow-cyan": "0 2px 8px -2px rgba(2, 132, 199, 0.18)",
-        glass: "0 1px 3px rgba(0,0,0,0.06)",
+        glow: "0 4px 16px -4px rgb(var(--color-accent-rgb) / 0.30)",
+        "glow-ember": "0 4px 16px -4px rgb(var(--color-accent-rgb) / 0.35)",
+        "glow-mint": "0 4px 16px -4px rgb(var(--color-win-rgb) / 0.30)",
+        "glow-rose": "0 4px 16px -4px rgb(var(--color-loss-rgb) / 0.30)",
+        "glow-cyan": "0 4px 16px -4px rgb(var(--color-info-rgb) / 0.30)",
+        glass: "0 1px 3px rgba(0,0,0,0.4)",
+        // The world's signature: colored edge + bloom for a card with recent
+        // activity. Sits on top of an elevation shadow, never replaces it.
+        live: "var(--shadow-live)",
         // Canonical elevation scale — additive alongside the glow*/glass keys above.
         "elev-1": "var(--shadow-elev-1)",
         "elev-2": "var(--shadow-elev-2)",

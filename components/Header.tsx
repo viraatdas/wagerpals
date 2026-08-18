@@ -101,7 +101,7 @@ export default function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/90 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-hairline bg-ground/85 backdrop-blur-xl">
         <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3.5">
           <div className="flex justify-between items-center gap-2 sm:gap-3">
             <Link href="/" className="flex min-w-0 items-center gap-2 flex-shrink whitespace-nowrap group">
@@ -155,7 +155,7 @@ export default function Header() {
               </Link>
 
               {user && (
-                <div className="hidden md:flex items-center gap-3 ml-1 pl-5 border-l border-gray-200">
+                <div className="hidden md:flex items-center gap-3 ml-1 pl-5 border-l border-hairline">
                   <span className="text-sm font-medium text-muted truncate max-w-[120px]">
                     {user.displayName || user.primaryEmail || 'User'}
                   </span>
@@ -185,7 +185,7 @@ export default function Header() {
         </div>
       </header>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white/95 backdrop-blur-xl mobile-bottom-nav">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-hairline bg-ground/95 backdrop-blur-xl mobile-bottom-nav">
         <div className="grid grid-cols-6 px-1 pt-1">
           {navItems.map((item) => {
             const active = isActive(item.href);

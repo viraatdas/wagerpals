@@ -594,17 +594,22 @@ export default function ProfilePage() {
                   stripe={stripePromise}
                   options={{
                     clientSecret: depositClientSecret,
+                    // Stripe Elements renders in its own iframe and its appearance API
+                    // only accepts literal colour strings — CSS custom properties do not
+                    // cross that boundary. This is the documented exception to the
+                    // tokens-only rule (CLAUDE.md §8); the values below are copied from
+                    // app/globals.css :root and must be updated in lockstep with it.
                     appearance: {
-                      theme: 'stripe',
+                      theme: 'night',
                       variables: {
-                        colorPrimary: '#2563eb',
-                        colorBackground: '#ffffff',
-                        colorText: '#1e2530',
-                        colorTextSecondary: '#6b7280',
-                        colorTextPlaceholder: '#9ca3af',
-                        colorDanger: '#dc2626',
+                        colorPrimary: '#24E17A',      // --color-accent
+                        colorBackground: '#121417',   // --color-surface
+                        colorText: '#E9ECEF',         // --color-text
+                        colorTextSecondary: '#A2A9B2',// --color-text-secondary
+                        colorTextPlaceholder: '#6B737D', // --color-text-muted
+                        colorDanger: '#FF5C63',       // --color-no
                         borderRadius: '12px',
-                        fontFamily: 'Inter, system-ui, sans-serif',
+                        fontFamily: 'IBM Plex Sans, system-ui, sans-serif',
                       },
                     },
                   }}
@@ -841,11 +846,11 @@ function ToggleSwitch({
       disabled={disabled}
       onClick={onChange}
       className={`press relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-        checked ? 'bg-[--color-accent]' : 'bg-gray-200'
+        checked ? 'bg-accent' : 'bg-surface-elevated'
       }`}
     >
       <span
-        className={`inline-flex h-4 w-4 transform items-center justify-center rounded-full bg-white shadow-sm transition-transform ${
+        className={`inline-flex h-4 w-4 transform items-center justify-center rounded-full bg-ink shadow-elev-1 transition-transform ${
           checked ? 'translate-x-6' : 'translate-x-1'
         }`}
       >

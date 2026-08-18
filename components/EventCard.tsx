@@ -82,15 +82,17 @@ export default function EventCard({ event, isPublic = false }: EventCardProps) {
           </div>
         </div>
 
-        {/* sides */}
-        <div className="grid grid-cols-2 gap-2.5">
+        {/* Sides. One split panel divided down the middle — NOT two bordered
+            boxes. A card inside a card is the template tell this design avoids;
+            the tone fill alone carries which side is which. */}
+        <div className="grid grid-cols-2 divide-x divide-hairline overflow-hidden rounded-xl">
           {[
             { side: event.side_a, stats: statsA, tone: 'tone-yes', pct: pctA, wins: aWins },
             { side: event.side_b, stats: statsB, tone: 'tone-no', pct: 100 - pctA, wins: bWins },
           ].map(({ side, stats, tone, pct, wins }) => (
             <div
               key={side}
-              className={`tone-surface border rounded-xl p-3 min-w-0 ${isResolved && !wins ? 'opacity-60' : ''} ${isResolved && wins ? 'tone-win' : tone}`}
+              className={`tone-surface p-3 min-w-0 ${isResolved && !wins ? 'opacity-60' : ''} ${isResolved && wins ? 'tone-win' : tone}`}
             >
               <div className="flex items-center justify-between gap-2 mb-0.5">
                 <span className="text-sm font-medium text-foreground break-words min-w-0 truncate">{side}</span>

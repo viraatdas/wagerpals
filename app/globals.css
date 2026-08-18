@@ -9,86 +9,97 @@
    ============================================================ */
 
 :root {
+  /* ============================================================
+     WagerPals — "after-hours ticker" (see DESIGN.md)
+     A near-black room with one live green readout. Green means
+     live / up / won and nothing else; every structural surface is
+     quiet charcoal so the numbers read first.
+
+     NOTE: mobile/src/theme.ts is deliberately NOT mirroring this
+     palette yet — the iOS app stays on its light theme until a
+     follow-up pass (PRODUCT.md §Platform). That divergence is
+     intentional, not drift.
+     ============================================================ */
+
   /* Base canvas */
-  --bg: #ffffff;
-  --bg-2: #f7f8fa;
-  --surface: 30 37 48; /* slate ink channels — rgb(var(--surface) / a) yields subtle gray tints on white */
-  --foreground: #1e2530;
-  --muted: #6b7280;
-  --muted-2: #9ca3af;
+  --bg: #0A0B0D;
+  --bg-2: #121417;
+  --surface: 233 236 239;  /* light ink channels — rgb(var(--surface)/a) yields subtle lifts on near-black */
+  --foreground: #E9ECEF;
+  --muted: #A2A9B2;
+  --muted-2: #6B737D;
 
-  /* Brand ramp — the single blue accent (light → base → deep) */
-  --brand-1: #3b82f6;
-  --brand-2: #2563eb;
-  --brand-3: #1d4ed8;
-  /* RGB channels of the same colors — lets Tailwind alpha modifiers
-     (bg-brand-2/10, ring-brand-2/20, …) actually apply the alpha */
-  --brand-1-rgb: 59 130 246;
-  --brand-2-rgb: 37 99 235;
-  --brand-3-rgb: 29 78 216;
+  /* Brand ramp — the single phosphor-green accent (light → base → deep) */
+  --brand-1: #6EF9A5;
+  --brand-2: #24E17A;
+  --brand-3: #0F9E56;
+  --brand-1-rgb: 110 249 165;
+  --brand-2-rgb: 36 225 122;
+  --brand-3-rgb: 15 158 86;
 
-  /* Semantic accents (legacy neon names, light-theme values) */
-  --neon-violet: #4f46e5;
-  --neon-cyan: #0284c7;
-  --neon-mint: #16a34a; /* yes / win */
-  --neon-rose: #dc2626; /* no / loss */
-  --neon-amber: #d97706;
-  --neon-violet-rgb: 79 70 229;
-  --neon-cyan-rgb: 2 132 199;
-  --neon-mint-rgb: 22 163 74;
-  --neon-rose-rgb: 220 38 38;
-  --neon-amber-rgb: 217 119 6;
+  /* Semantic accents (legacy neon names, dark-theme values) */
+  --neon-violet: #A78BFA;
+  --neon-cyan: #4CC2FF;
+  --neon-mint: #24E17A; /* yes / win */
+  --neon-rose: #FF5C63; /* no / loss */
+  --neon-amber: #FFB020;
+  --neon-violet-rgb: 167 139 250;
+  --neon-cyan-rgb: 76 194 255;
+  --neon-mint-rgb: 36 225 122;
+  --neon-rose-rgb: 255 92 99;
+  --neon-amber-rgb: 255 176 32;
 
-  --border: 31 41 55; /* slate channels — rgb(var(--border) / 0.1) ≈ #e5e7eb hairline on white */
+  --border: 255 255 255; /* white channels — rgb(var(--border)/0.08) ≈ #252A31 hairline on near-black */
 
-  color-scheme: light;
+  color-scheme: dark;
 
   /* ============================================================
      Canonical design tokens — single source of truth
-     ------------------------------------------------------------
-     This block is the canonical token vocabulary for the visual
-     system. mobile/src/theme.ts mirrors these same names/values
-     for the React Native app. The --bg / --bg-2 / --brand-* /
-     --neon-* vars above are kept as the legacy vocabulary that
-     existing components still consume — they are unchanged.
      ============================================================ */
 
   /* Surfaces */
-  --color-surface: #ffffff;
-  --color-surface-elevated: #ffffff;
-  --color-surface-sunken: #f7f8fa;
+  --color-bg: #0A0B0D;
+  --color-surface: #121417;
+  /* "sunken" steps AWAY from the card toward the page ground, exactly as it did
+     in the light theme (white card -> grey well). On near-black that means
+     darker, so row hovers recede rather than glare. */
+  --color-surface-sunken: #0E1013;
+  --color-surface-elevated: #1B1F25;
   /* Borders */
-  --color-border: #e5e7eb;
-  --color-border-strong: #d1d5db;
+  --color-border: #252A31;
+  --color-border-strong: #333A43;
   /* Text */
-  --color-text: #1e2530;
-  --color-text-secondary: #6b7280;
-  --color-text-muted: #9ca3af;
-  --color-text-inverse: #ffffff;
-  /* Signature accent */
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
-  --color-accent-soft: #3b82f6;
-  --color-accent-fill: rgba(37, 99, 235, 0.08);
+  --color-text: #E9ECEF;
+  --color-text-secondary: #A2A9B2;
+  --color-text-muted: #6B737D;
+  --color-text-inverse: #0A0B0D;
+  /* Signature accent — phosphor green.
+     ALWAYS dark-text-on-green: #24E17A carries #0A0B0D at 11.4:1 and white at
+     1.8:1, so a green button labels itself with --color-text-inverse. */
+  --color-accent: #24E17A;
+  --color-accent-hover: #6EF9A5;
+  --color-accent-soft: #6EF9A5;
+  --color-accent-deep: #0F9E56;
+  --color-accent-fill: rgba(36, 225, 122, 0.12);
   /* Semantic */
-  --color-yes: #16a34a;      --color-yes-fill: rgba(22, 163, 74, 0.08);
-  --color-no: #dc2626;       --color-no-fill: rgba(220, 38, 38, 0.08);
-  --color-win: #16a34a;      --color-loss: #dc2626;
-  --color-pending: #d97706;  --color-pending-fill: rgba(217, 119, 6, 0.08);
-  --color-info: #0284c7;     --color-info-fill: rgba(2, 132, 199, 0.08);
+  --color-yes: #24E17A;      --color-yes-fill: rgba(36, 225, 122, 0.12);
+  --color-no: #FF5C63;       --color-no-fill: rgba(255, 92, 99, 0.12);
+  --color-win: #24E17A;      --color-loss: #FF5C63;
+  --color-pending: #FFB020;  --color-pending-fill: rgba(255, 176, 32, 0.12);
+  --color-info: #4CC2FF;     --color-info-fill: rgba(76, 194, 255, 0.12);
   /* RGB channel twins so Tailwind alpha modifiers (bg-accent/10) work */
-  --color-accent-rgb: 37 99 235;
-  --color-accent-hover-rgb: 29 78 216;
-  --color-accent-soft-rgb: 59 130 246;
-  --color-yes-rgb: 22 163 74;
-  --color-no-rgb: 220 38 38;
-  --color-win-rgb: 22 163 74;
-  --color-loss-rgb: 220 38 38;
-  --color-pending-rgb: 217 119 6;
-  --color-info-rgb: 2 132 199;
-  --color-surface-rgb: 255 255 255;
-  --color-border-rgb: 229 231 235;
-  --color-text-rgb: 30 37 48;
+  --color-accent-rgb: 36 225 122;
+  --color-accent-hover-rgb: 110 249 165;
+  --color-accent-soft-rgb: 110 249 165;
+  --color-yes-rgb: 36 225 122;
+  --color-no-rgb: 255 92 99;
+  --color-win-rgb: 36 225 122;
+  --color-loss-rgb: 255 92 99;
+  --color-pending-rgb: 255 176 32;
+  --color-info-rgb: 76 194 255;
+  --color-surface-rgb: 18 20 23;
+  --color-border-rgb: 37 42 49;
+  --color-text-rgb: 233 236 239;
 
   /* Type scale — values are Tailwind's defaults so nothing reflows */
   --text-xs: 0.75rem;   --leading-xs: 1rem;
@@ -115,12 +126,18 @@
   --radius-panel: 1.75rem;    /* 28px */
   --radius-pill: 9999px;
 
-  /* Elevation */
-  --shadow-elev-1: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-elev-2: 0 1px 3px rgba(15, 23, 42, 0.06);
-  --shadow-elev-3: 0 4px 16px -4px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05);
-  --shadow-elev-4: 0 12px 32px -12px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.05);
-  --shadow-accent: 0 2px 8px -2px rgba(37, 99, 235, 0.25);
+  /* Elevation — the room is lit from above, so every level carries a real
+     offset and a soft blur. On near-black a light-theme whisper is invisible. */
+  --shadow-elev-1: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-elev-2: 0 4px 12px -2px rgba(0, 0, 0, 0.50), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-elev-3: 0 12px 32px -6px rgba(0, 0, 0, 0.60), 0 2px 6px rgba(0, 0, 0, 0.40);
+  --shadow-elev-4: 0 24px 56px -12px rgba(0, 0, 0, 0.70), 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-accent: 0 4px 16px -4px rgba(36, 225, 122, 0.35);
+  /* The world's signature: a colored edge plus bloom that sits ON TOP of the
+     normal elevation shadow. Only ever applied to a card with recent activity. */
+  --shadow-live:
+    0 0 0 1px rgba(36, 225, 122, 0.35),
+    0 0 24px -6px rgba(36, 225, 122, 0.25);
 
   /* Motion */
   --duration-instant: 100ms;
@@ -150,7 +167,7 @@ html {
 body {
   color: var(--foreground);
   background: var(--bg);
-  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI',
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI',
     'Roboto', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -255,17 +272,19 @@ input, select, textarea {
     justify-content: center;
     gap: 0.5rem;
     font-weight: 600;
-    color: #fff;
+    /* Dark ink on green, never white: --color-accent carries #0A0B0D at 11.4:1
+       and white at 1.8:1. See DESIGN.md §Palette. */
+    color: var(--color-text-inverse);
     border-radius: 9999px;
     padding: 0.625rem 1.25rem;
     background: linear-gradient(180deg, var(--brand-1), var(--brand-2));
-    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.3),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+    box-shadow: 0 1px 2px rgb(var(--color-accent-rgb) / 0.35),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.18);
     transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, filter 0.2s ease;
   }
   .btn-primary:hover {
-    box-shadow: 0 2px 8px -1px rgba(37, 99, 235, 0.35),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
+    box-shadow: 0 2px 10px -1px rgb(var(--color-accent-rgb) / 0.45),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.24);
     filter: brightness(1.05);
   }
   .btn-primary:active { transform: scale(0.96); }
@@ -280,14 +299,17 @@ input, select, textarea {
     color: var(--foreground);
     border-radius: 9999px;
     padding: 0.625rem 1.25rem;
-    background: #ffffff;
-    border: 1px solid rgb(var(--border) / 0.14);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    /* The secondary button is a raised surface, not a white slab — on a dark
+       ground #ffffff reads as a hole punched in the page and drops its own
+       label to ~1.5:1. */
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-border-strong);
+    box-shadow: var(--shadow-elev-1);
     transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, border-color 0.2s ease;
   }
   .btn-glass:hover {
-    background: var(--bg-2);
-    border-color: rgb(var(--border) / 0.22);
+    background: var(--color-surface-raised, #232830);
+    border-color: rgb(var(--border) / 0.28);
   }
   .btn-glass:active { transform: scale(0.96); }
 
@@ -366,8 +388,8 @@ input, select, textarea {
 }
 
 @keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
-  50% { box-shadow: 0 2px 12px -2px rgba(37, 99, 235, 0.25); }
+  0%, 100% { box-shadow: 0 0 0 0 rgb(var(--color-accent-rgb) / 0); }
+  50% { box-shadow: 0 2px 12px -2px rgb(var(--color-accent-rgb) / 0.30); }
 }
 .animate-pulse-glow { animation: pulseGlow 2.4s ease-in-out infinite; }
 
@@ -433,9 +455,10 @@ input, select, textarea {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
-/* Elements that sit on an accent fill get a light ring instead */
+/* Elements sitting ON an accent fill need a ring that contrasts with the accent,
+   which on this palette means the dark ground rather than white. */
 .on-accent:focus-visible {
-  outline-color: #ffffff;
+  outline-color: var(--color-text-inverse);
 }
 /* Skip link — first tab stop in the layout */
 .skip-link {
@@ -446,7 +469,7 @@ input, select, textarea {
   transform: translateY(-200%);
   transition: transform var(--duration-fast) var(--ease-out);
   background: var(--color-accent);
-  color: #fff;
+  color: var(--color-text-inverse);
   font-size: var(--text-sm);
   font-weight: 600;
   padding: 0.5rem 0.9rem;
@@ -476,7 +499,7 @@ input, select, textarea {
 
   /* Page-level display headings. Fluid, tight, display face. */
   .display-1 {
-    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
     font-size: clamp(2rem, 1.4rem + 2.6vw, 3.25rem);
     line-height: 1.02;
     letter-spacing: -0.035em;
@@ -484,7 +507,7 @@ input, select, textarea {
     color: var(--color-text);
   }
   .display-2 {
-    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
     font-size: clamp(1.625rem, 1.3rem + 1.4vw, 2.25rem);
     line-height: 1.08;
     letter-spacing: -0.03em;
@@ -492,7 +515,7 @@ input, select, textarea {
     color: var(--color-text);
   }
   .display-3 {
-    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
     font-size: clamp(1.25rem, 1.1rem + 0.7vw, 1.5rem);
     line-height: 1.15;
     letter-spacing: -0.02em;
@@ -501,7 +524,7 @@ input, select, textarea {
   }
   /* The market question itself — the thing people actually read. */
   .market-title {
-    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
     font-weight: 650;
     letter-spacing: -0.015em;
     line-height: 1.2;
@@ -510,7 +533,7 @@ input, select, textarea {
   }
   /* Big money / percentage figures. */
   .numeral {
-    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
     font-weight: 700;
     letter-spacing: -0.03em;
@@ -559,7 +582,7 @@ input, select, textarea {
     --tone-ink: var(--color-accent-hover);
     --tone-solid: var(--color-accent);
     --tone-fill: var(--color-accent-fill);
-    --tone-line: rgba(37, 99, 235, 0.26);
+    --tone-line: rgb(var(--color-accent-rgb) / 0.30);
   }
   /* Gold — lifted from the coin in the brand mark. Reserved for
      money that has been WON. Never use it as a generic accent. */
@@ -612,7 +635,9 @@ input, select, textarea {
   .pill-solid {
     border-color: transparent;
     background: var(--tone-solid, var(--color-accent));
-    color: #fff;
+    /* Every --tone-solid in this palette is a light hue on a dark ground, so a
+       solid pill always takes dark ink. */
+    color: var(--color-text-inverse);
   }
 
   /* ==========================================================
@@ -653,11 +678,14 @@ input, select, textarea {
     position: relative;
     overflow: hidden;
   }
+  /* A tone rail is a hairline, not a slab. A colored edge thicker than 1px on a
+     card reads as a template tell rather than a state; the tone already carries
+     through --tone-fill and --tone-ink. */
   .rail::before {
     content: '';
     position: absolute;
     inset: 0 auto 0 0;
-    width: 3px;
+    width: 1px;
     background: var(--tone-solid, var(--color-accent));
   }
   /* Same idea across the top edge, for grid cards. */
@@ -666,7 +694,7 @@ input, select, textarea {
     content: '';
     position: absolute;
     inset: 0 0 auto 0;
-    height: 3px;
+    height: 1px;
     background: var(--tone-solid, var(--color-accent));
   }
   .hairline { border-color: var(--color-border); }
@@ -735,7 +763,7 @@ input, select, textarea {
 
   /* Stat cell — eyebrow above a numeral. */
   .stat-value {
-    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
     font-weight: 700;
     letter-spacing: -0.03em;
@@ -763,7 +791,7 @@ input, select, textarea {
   .input:focus {
     outline: none;
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+    box-shadow: 0 0 0 3px rgb(var(--color-accent-rgb) / 0.30);
   }
   .input:disabled {
     background: var(--color-surface-sunken);
@@ -800,7 +828,7 @@ input, select, textarea {
     gap: 0.5rem;
     font-weight: 600;
     font-size: var(--text-sm);
-    color: #fff;
+    color: var(--color-text-inverse);
     border-radius: var(--radius-pill);
     padding: 0.5rem 1rem;
     border: 1px solid transparent;
@@ -880,7 +908,7 @@ input, select, textarea {
     color: var(--color-accent-hover);
   }
   .empty-state-title {
-    font-family: var(--font-display), var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
     font-size: var(--text-lg);
     font-weight: 650;
     letter-spacing: -0.015em;
@@ -979,7 +1007,7 @@ input, select, textarea {
 .hero-field {
   position: relative;
   background:
-    radial-gradient(120% 100% at 12% 0%, rgba(37, 99, 235, 0.07), transparent 58%),
+    radial-gradient(120% 100% at 12% 0%, rgb(var(--color-accent-rgb) / 0.06), transparent 58%),
     radial-gradient(90% 80% at 92% 8%, rgba(245, 158, 11, 0.06), transparent 62%),
     linear-gradient(180deg, var(--color-surface-sunken), var(--color-surface));
 }

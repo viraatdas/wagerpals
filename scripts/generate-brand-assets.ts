@@ -24,8 +24,11 @@ const ROOT = process.cwd();
 const BRAND_DIR = join(ROOT, 'scripts/brand');
 
 // Brand diagonal gradient used for every "gradient" background tile.
-const BRAND_GRADIENT_FROM = '#3b82f6';
-const BRAND_GRADIENT_TO = '#1d4ed8';
+// Phosphor green — the app's single accent (app/globals.css --brand-2/--brand-3).
+// White coins on saturated green is what makes the installed icon legible at
+// 40px on a crowded home screen; the dark UI palette does not tile well there.
+const BRAND_GRADIENT_FROM = '#24E17A';
+const BRAND_GRADIENT_TO = '#0F9E56';
 
 // Density used when rasterizing the composed SVG string with sharp/librsvg.
 // A high density keeps edges crisp before the explicit resize() to the exact
@@ -409,8 +412,8 @@ async function buildOgSvg(): Promise<string> {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <defs>
     <linearGradient id="ogPanelGrad" x1="0" y1="0" x2="${width}" y2="${height}" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#ffffff"/>
-      <stop offset="100%" stop-color="#f7f8fa"/>
+      <stop offset="0%" stop-color="#121417"/>
+      <stop offset="100%" stop-color="#0A0B0D"/>
     </linearGradient>
     <linearGradient id="ogRuleGrad" x1="0" y1="0" x2="${ruleWidth}" y2="0" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="${BRAND_GRADIENT_FROM}"/>
@@ -420,8 +423,8 @@ async function buildOgSvg(): Promise<string> {
   <rect x="0" y="0" width="${width}" height="${height}" fill="url(#ogPanelGrad)"/>
   <g opacity="0.08" transform="translate(${fmt(watermarkX)},${fmt(watermarkY)}) scale(${fmt(watermarkScale)})">${watermark.inner}</g>
   <g transform="translate(${marginX},${tileY})">${tileFragment}</g>
-  <text x="${marginX}" y="${headlineBaseline}" font-family="Space Grotesk, Helvetica Neue, Helvetica, Arial, sans-serif" font-weight="700" font-size="84" fill="#1E2530">WagerPals</text>
-  <text x="${marginX}" y="${taglineBaseline}" font-family="Space Grotesk, Helvetica Neue, Helvetica, Arial, sans-serif" font-weight="400" font-size="34" fill="#6B7280">Bet with your friends. Settle the ledger.</text>
+  <text x="${marginX}" y="${headlineBaseline}" font-family="Space Grotesk, Helvetica Neue, Helvetica, Arial, sans-serif" font-weight="700" font-size="84" fill="#E9ECEF">WagerPals</text>
+  <text x="${marginX}" y="${taglineBaseline}" font-family="Space Grotesk, Helvetica Neue, Helvetica, Arial, sans-serif" font-weight="400" font-size="34" fill="#A2A9B2">Bet with your friends. Settle the ledger.</text>
   <rect x="${marginX}" y="${ruleY}" width="${ruleWidth}" height="${ruleHeight}" rx="${ruleHeight / 2}" fill="url(#ogRuleGrad)"/>
 </svg>`;
 }

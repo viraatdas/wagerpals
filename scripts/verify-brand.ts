@@ -76,23 +76,32 @@ function normalizePath(d: string): string {
 }
 
 interface Glyph {
+  /** Every <circle> in source order, as "cx,cy,r@strokeWidth". */
+  circles: string[];
+  /** Any <path d="...">. The mark must have none — see checkGlyphContract. */
   paths: string[];
-  strokeWidths: string[];
-  coin: { cx: string; cy: string; r: string } | null;
 }
 
+/**
+ * The mark is one <circle> (the open half's ring) plus one <path> (the solid
+ * half). Comparing the whole ordered list of each — geometry AND stroke width
+ * together — is what actually catches drift; a per-attribute comparison would
+ * pass a file that changed the radius but kept the stroke.
+ */
 function extractGlyph(source: string, label: string): Glyph {
-  const paths = allMatches(source, /\bd="([^"]+)"/g).map(normalizePath);
-  // Matches both JSX (strokeWidth="8.4") and plain SVG (stroke-width="8.4").
-  const strokeWidths = unique(allMatches(source, /stroke-?[wW]idth="([^"]+)"/g));
-
-  const circle = source.match(/<circle[^>]*\bcx="([^"]+)"[^>]*\bcy="([^"]+)"[^>]*\br="([^"]+)"/);
-  if (!circle) fail(`${label}: could not find the coin <circle> (cx/cy/r)`);
-
+  const circles = allMatches(source, /<circle\b([^>]*)>/g).map((attrs) => {
+    const get = (name: string): string => {
+      // Matches both JSX (strokeWidth="7") and plain SVG (stroke-width="7").
+      const m = attrs.match(new RegExp(`\\b${name}="([^"]+)"`));
+      return m ? m[1].trim() : '-';
+    };
+    const sw = get('stroke-width') !== '-' ? get('stroke-width') : get('strokeWidth');
+    return `${get('cx')},${get('cy')},${get('r')}@${sw}`;
+  });
+  if (circles.length === 0) fail(`${label}: could not find any coin <circle>`);
   return {
-    paths,
-    strokeWidths,
-    coin: circle ? { cx: circle[1], cy: circle[2], r: circle[3] } : null,
+    circles,
+    paths: allMatches(source, /\bd="([^"]+)"/g).map(normalizePath),
   };
 }
 
@@ -103,42 +112,41 @@ const MARK_FILES = [
 ];
 
 async function checkGlyphContract(): Promise<void> {
-  const logo = extractGlyph(await read('components/Logo.tsx'), 'components/Logo.tsx');
+  const logoSource = await read('components/Logo.tsx');
+  const logo = extractGlyph(logoSource, 'components/Logo.tsx');
 
-  if (logo.paths.length !== 2) {
-    fail(`components/Logo.tsx: expected 2 chevron paths, found ${logo.paths.length}`);
+  if (logo.circles.length !== 1) {
+    fail(`components/Logo.tsx: expected exactly 1 <circle> (the open half's ring), found ${logo.circles.length}`);
   }
-  if (logo.strokeWidths.length !== 1) {
+  // Exactly one path — the solid half. The rejected mark drew the two sides of a
+  // W as a PAIR of <path> chevrons, so a second path reappearing here is the
+  // signal that someone has started rebuilding it.
+  if (logo.paths.length !== 1) {
     fail(
-      `components/Logo.tsx: expected one stroke width across both chevrons, found ${logo.strokeWidths.length} (${logo.strokeWidths.join(', ')})`,
+      `components/Logo.tsx: expected exactly 1 <path> (the solid half), found ${logo.paths.length}: ${logo.paths.join('  ')}\n` +
+        `        The two-chevron letter-W mark was explicitly rejected and must not return.`,
     );
+  } else {
+    pass('components/Logo.tsx draws one coin split by a seam (not a two-chevron W)');
   }
 
   for (const file of MARK_FILES) {
     const mark = extractGlyph(await read(file), file);
 
+    if (mark.circles.join('|') !== logo.circles.join('|')) {
+      fail(
+        `${file}: coin geometry has drifted from components/Logo.tsx\n` +
+          `        Logo.tsx: ${logo.circles.join('   ')}\n` +
+          `        ${file}: ${mark.circles.join('   ')}`,
+      );
+      continue;
+    }
     if (mark.paths.join('|') !== logo.paths.join('|')) {
       fail(
-        `${file}: chevron path data has drifted from components/Logo.tsx\n` +
+        `${file}: the solid half's path has drifted from components/Logo.tsx\n` +
           `        Logo.tsx: ${logo.paths.join('   ')}\n` +
           `        ${file}: ${mark.paths.join('   ')}`,
       );
-      continue;
-    }
-    if (mark.strokeWidths.join('|') !== logo.strokeWidths.join('|')) {
-      fail(
-        `${file}: stroke width ${mark.strokeWidths.join(', ')} != components/Logo.tsx ${logo.strokeWidths.join(', ')}`,
-      );
-      continue;
-    }
-    if (
-      !mark.coin ||
-      !logo.coin ||
-      mark.coin.cx !== logo.coin.cx ||
-      mark.coin.cy !== logo.coin.cy ||
-      mark.coin.r !== logo.coin.r
-    ) {
-      fail(`${file}: coin geometry differs from components/Logo.tsx`);
       continue;
     }
     pass(`${file} draws the same glyph as components/Logo.tsx`);
@@ -146,7 +154,10 @@ async function checkGlyphContract(): Promise<void> {
 
   // The silhouette feeds Android's alpha-only notification icon, so it must not
   // carry colour information that the OS would throw away.
-  const silhouette = await read('scripts/brand/mark-silhouette.svg');
+  // The <mask> block legitimately uses black — that is the knockout that cuts the
+  // link gap, and it is exactly what makes this glyph survive alpha-only masking.
+  // Strip masks before looking for colour in the drawn artwork.
+  const silhouette = (await read('scripts/brand/mark-silhouette.svg')).replace(/<mask\b[\s\S]*?<\/mask>/g, '');
   const nonWhite = allMatches(silhouette, /(?:stroke|fill|stop-color)="(#[0-9a-fA-F]{3,8})"/g)
     .map((color) => color.toLowerCase())
     .filter((color) => color !== '#ffffff' && color !== '#fff');

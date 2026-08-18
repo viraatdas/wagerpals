@@ -396,11 +396,11 @@ export default function Home() {
                         </h3>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-muted mt-0.5">
                           <span>{group.member_count} members</span>
-                          <span className="w-1 h-1 rounded-full bg-gray-300" />
+                          <span className="w-1 h-1 rounded-full bg-hairline-strong" />
                           <span className="font-mono truncate">{group.id}</span>
                           {group.is_admin && (
                             <>
-                              <span className="w-1 h-1 rounded-full bg-gray-300" />
+                              <span className="w-1 h-1 rounded-full bg-hairline-strong" />
                               <span className="tone-text tone-accent">Admin</span>
                             </>
                           )}

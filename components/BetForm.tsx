@@ -171,7 +171,7 @@ export default function BetForm({
                   className={`press relative px-4 py-4 rounded-xl font-semibold text-left break-words border-2 transition-colors ${
                     selected
                       ? `${tone} tone-surface`
-                      : 'border-gray-200 bg-white text-foreground hover:bg-gray-50 hover:border-gray-300'
+                      : 'border-hairline bg-surface text-foreground hover:bg-surface-elevated hover:border-hairline-strong'
                   }`}
                 >
                   <span className="flex items-center justify-between gap-2">

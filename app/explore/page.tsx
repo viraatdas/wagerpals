@@ -48,7 +48,6 @@ export default function Explore() {
   if (loading) {
     return (
       <div className="page-shell mobile-page">
-        <div className="eyebrow mb-2">Public Markets</div>
         <div className="skeleton h-9 w-56 rounded-xl mb-6" />
         <div className="flex flex-wrap gap-2 mb-6">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -76,7 +75,6 @@ export default function Explore() {
   return (
     <div className="page-shell mobile-page animate-rise">
       <div className="mb-6">
-        <div className="eyebrow mb-2">Public Markets</div>
         <div className="flex items-baseline gap-3 flex-wrap">
           <h1 className="display-2">Explore Events</h1>
           <span className="numeral stat-value tone-text tone-accent">{filteredEvents.length}</span>

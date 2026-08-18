@@ -309,13 +309,13 @@ function CreateEventForm() {
                           setDropdownOpen(false);
                         }}
                         className={`press w-full px-5 py-4 flex items-center gap-3 transition-colors text-left ${
-                          selectedGroupId === group.id ? 'tone-accent tone-surface' : 'hover:bg-gray-50'
+                          selectedGroupId === group.id ? 'tone-accent tone-surface' : 'hover:bg-surface-sunken'
                         }`}
                       >
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-semibold flex-shrink-0 ${
                           selectedGroupId === group.id
                             ? 'bg-brand-gradient text-white'
-                            : 'bg-gray-100 text-muted'
+                            : 'bg-surface-sunken text-muted'
                         }`}>
                           {group.name.charAt(0).toUpperCase()}
                         </div>
@@ -378,11 +378,11 @@ function CreateEventForm() {
                       aria-label="Let them know about this bet"
                       onClick={() => setNotifySubject(!notifySubject)}
                       className={`press relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${
-                        notifySubject ? 'bg-brand-2' : 'bg-gray-200'
+                        notifySubject ? 'bg-brand-2' : 'bg-surface-elevated'
                       }`}
                     >
                       <span
-                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
+                        className={`inline-block h-5 w-5 transform rounded-full bg-ink shadow-elev-1 transition-transform ${
                           notifySubject ? 'translate-x-6' : 'translate-x-1'
                         }`}
                       />
@@ -587,7 +587,7 @@ function CreateEventForm() {
                 className={`press text-left rounded-2xl p-4 transition-all ${
                   paymentType === 'none'
                     ? 'tone-accent tone-surface border-2'
-                    : 'border border-gray-200 bg-white text-foreground hover:bg-gray-50'
+                    : 'border border-hairline bg-surface text-foreground hover:bg-surface-elevated'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -603,7 +603,7 @@ function CreateEventForm() {
                 className={`press text-left rounded-2xl p-4 transition-all ${
                   paymentType === 'cash'
                     ? 'tone-accent tone-surface border-2'
-                    : 'border border-gray-200 bg-white text-foreground hover:bg-gray-50'
+                    : 'border border-hairline bg-surface text-foreground hover:bg-surface-elevated'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -626,7 +626,7 @@ function CreateEventForm() {
                       className={`press inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-full transition-all ${
                         stakeMode === mode
                           ? 'tone-accent tone-surface border-2'
-                          : 'border border-gray-200 bg-white text-foreground hover:bg-gray-50'
+                          : 'border border-hairline bg-surface text-foreground hover:bg-surface-elevated'
                       }`}
                     >
                       {stakeMode === mode && <SelectedCheck className="h-3.5 w-3.5" />}
@@ -680,7 +680,7 @@ function CreateEventForm() {
           >
             {loading ? (
               <span className="inline-flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-white/80 animate-pulse" aria-hidden="true" />
+                <span className="h-2 w-2 rounded-full bg-ink-inverse/80 animate-pulse" aria-hidden="true" />
                 Creating…
               </span>
             ) : (

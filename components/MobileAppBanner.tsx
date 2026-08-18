@@ -48,7 +48,7 @@ export default function MobileAppBanner() {
   }
 
   return (
-    <div className="tone-info border-b border-gray-200 bg-surface-sunken text-foreground px-4 py-2.5 relative">
+    <div className="tone-info border-b border-hairline bg-surface-sunken text-foreground px-4 py-2.5 relative">
       <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="tone-text flex-shrink-0">

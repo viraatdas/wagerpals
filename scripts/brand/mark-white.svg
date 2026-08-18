@@ -1,21 +1,36 @@
 <!--
-  WagerPals mark — white chevrons, gold coin. Same glyph as mark.svg; this is
-  the `tone="inverse"` treatment from components/Logo.tsx.
+  WagerPals mark — solid white. The `tone="inverse"` treatment from components/Logo.tsx.
 
-  This is the variant that sits on the blue brand tile (favicons, PWA icons and
-  the mobile app icon), so the chevrons go solid white and only the coin keeps
-  its colour. See mark.svg for why the wrapper offset is -0.5.
+  THIS FILE AND components/Logo.tsx MUST DRAW THE SAME GLYPH.
+  Logo.tsx is the on-screen mark; this file is what scripts/generate-brand-assets.ts
+  rasterizes into every favicon, PWA icon, OG card and mobile app icon. The circle,
+  the half-disc path and the seam below are copied verbatim from LogoMark in
+  components/Logo.tsx — change one and you must change the other, or the header
+  and the installed app icon stop being the same logo.
+
+  The glyph: two sides of the same coin. One disc cut by a diagonal seam, the
+  near half solid and the far half an open ring. There is deliberately NO letter
+  W; scripts/verify-brand.ts fails if a second <path> ever reappears.
+
+  Ink spans 11..53 on both axes (a disc of r=21 about the centre), so the glyph
+  is already centred in the 64-unit viewBox and needs no wrapper offset. The
+  generator centres artwork by viewBox, not ink bounds.
+
+  This is the variant that sits on the green brand tile (favicons, PWA icons and
+  the mobile app icon), so the whole glyph goes solid white and the seam does the
+  work of separating the two halves.
 -->
 <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="wpMarkCoin" x1="26" y1="10" x2="38" y2="22" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f59e0b"/>
-      <stop offset="1" stop-color="#d97706"/>
-    </linearGradient>
+    <mask id="wpMarkSeam" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+      <rect x="0" y="0" width="64" height="64" fill="#fff"/>
+      <rect x="29.7" y="2" width="4.6" height="60" fill="#000"/>
+    </mask>
   </defs>
-  <g transform="translate(0,-0.5)">
-    <path d="M6,13 L18,52 L32,21" fill="none" stroke="#ffffff" stroke-width="8.4" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M32,21 L46,52 L58,13" fill="none" stroke="#ffffff" stroke-width="8.4" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="32" cy="15" r="5.9" fill="url(#wpMarkCoin)"/>
+  <g transform="rotate(-20 32 32)">
+    <g mask="url(#wpMarkSeam)">
+      <circle cx="32" cy="32" r="17.5" fill="none" stroke="#ffffff" stroke-width="7"/>
+      <path d="M32,11 A21,21 0 0,0 32,53 Z" fill="#ffffff"/>
+    </g>
   </g>
 </svg>

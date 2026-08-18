@@ -6,7 +6,7 @@ export type LogoTone = 'color' | 'mono' | 'inverse';
 export type LogoAnimate = 'none' | 'mount' | 'flip';
 
 export interface LogoProps {
-  /** 'mark' renders just the W+coin glyph; 'lockup' adds the "WagerPals" wordmark. */
+  /** 'mark' renders just the two-coin glyph; 'lockup' adds the "WagerPals" wordmark. */
   variant?: 'mark' | 'lockup';
   /** Color treatment of the mark. */
   tone?: LogoTone;
@@ -31,10 +31,22 @@ export interface LogoProps {
 const DEFAULT_TITLE = 'WagerPals';
 
 /**
- * The WagerPals mark: two mirrored chevrons meeting at a raised centre apex
- * (the two sides of a bet meeting in the middle), crowned by a gold coin
- * (the stake). Geometry is locked — do not adjust coordinates, stroke
- * widths, or radii; it has been validated down to 16px.
+ * The WagerPals mark: two sides of the same coin. One disc, cut by a diagonal
+ * seam — the near half solid, the far half an open ring. It is the literal
+ * phrase for a wager, and it echoes the tug-of-war bar that the bet detail page
+ * is built around, so the logo and the product's core visual are the same idea.
+ *
+ * The seam is a real gap in the alpha channel rather than a colour change,
+ * which is what lets this glyph survive being masked down to a single-colour
+ * Android notification icon.
+ *
+ * There is deliberately no letter W here. The previous mark drew one out of two
+ * chevrons; it was rejected, and no variant of this file may reintroduce it —
+ * scripts/verify-brand.ts fails the build if a second <path> reappears.
+ *
+ * Geometry is locked and validated down to 16px — do not adjust coordinates,
+ * radii, or the seam width. Ink spans 11..53 on both axes (a disc of r=21 about
+ * the centre), so the glyph is already centred in the 64-unit viewBox.
  */
 export function LogoMark({
   tone = 'color',
@@ -49,17 +61,19 @@ export function LogoMark({
   const uid = rawId.replace(/[^a-zA-Z0-9]/g, '');
 
   const titleId = `logo-title-${uid}`;
-  const wGradientId = `logo-w-${uid}`;
-  const coinGradientId = `logo-c-${uid}`;
+  const ringGradientId = `logo-ring-${uid}`;
+  const seamMaskId = `logo-seam-${uid}`;
 
   const accessibleTitle = title ?? DEFAULT_TITLE;
 
-  // Stroke/fill for the two chevrons and the coin, per tone.
-  const leftChevronStroke = tone === 'mono' ? 'currentColor' : tone === 'inverse' ? '#ffffff' : `url(#${wGradientId})`;
-  const rightChevronStroke = leftChevronStroke;
-  // #f59e0b has no design-system token (only --neon-amber / #d97706 is tokenized) —
-  // kept as a literal here for the gradient's lighter stop.
-  const coinFill = tone === 'mono' ? 'currentColor' : `url(#${coinGradientId})`;
+  // One stroke for both coins, per tone. The mark is monochrome by design: the
+  // brand's single accent is the whole point, so there is no second colour to
+  // keep in sync with the palette.
+  // One colour for the whole glyph, per tone. The mark is monochrome by design:
+  // the brand's single accent is the point, so there is no second colour to keep
+  // in sync with the palette.
+  const ink =
+    tone === 'mono' ? 'currentColor' : tone === 'inverse' ? '#ffffff' : `url(#${ringGradientId})`;
 
   const animateSuffix = String(replayKey ?? '');
   const animKey = `${animate}-${animateSuffix}`;
@@ -77,29 +91,26 @@ export function LogoMark({
       focusable={decorative ? 'false' : undefined}
     >
       {!decorative && <title id={titleId}>{accessibleTitle}</title>}
-      {tone !== 'mono' && (
-        <defs>
-          {/* W gradient is only referenced in tone="color" (inverse uses solid #fff) */}
-          {tone === 'color' && (
-            <linearGradient id={wGradientId} x1="6" y1="12" x2="58" y2="12" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stopColor="var(--brand-1, #3b82f6)" />
-              <stop offset="1" stopColor="var(--brand-3, #1d4ed8)" />
-            </linearGradient>
-          )}
-          {/* Coin stays gold in both color and inverse tones */}
-          <linearGradient id={coinGradientId} x1="26" y1="10" x2="38" y2="22" gradientUnits="userSpaceOnUse">
-            {/* #f59e0b has no design-system token (only --neon-amber / #d97706 is tokenized) — kept as a literal */}
-            <stop offset="0" stopColor="#f59e0b" />
-            <stop offset="1" stopColor="var(--neon-amber, #d97706)" />
+      <defs>
+        {/* Ring gradient is only referenced in tone="color" (inverse/mono are solid) */}
+        {tone === 'color' && (
+          <linearGradient id={ringGradientId} x1="11" y1="11" x2="53" y2="53" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="var(--brand-1, #6EF9A5)" />
+            <stop offset="1" stopColor="var(--brand-3, #0F9E56)" />
           </linearGradient>
-        </defs>
-      )}
+        )}
+        {/* The seam. Cuts a 4.6-unit channel straight down the middle of the
+            rotated group, separating the solid half from the open ring. */}
+        <mask id={seamMaskId} maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+          <rect x="0" y="0" width="64" height="64" fill="#fff" />
+          <rect x="29.7" y="2" width="4.6" height="60" fill="#000" />
+        </mask>
+      </defs>
       {animate !== 'none' && (
         <style>{`
           @media (prefers-reduced-motion: no-preference) {
-            .logo-chevron-l-${uid},
-            .logo-chevron-r-${uid},
-            .logo-coin-${uid} {
+            .logo-coin-l-${uid},
+            .logo-coin-r-${uid} {
               transform-box: fill-box;
               transform-origin: center;
             }
@@ -107,83 +118,64 @@ export function LogoMark({
             ${
               animate === 'mount'
                 ? `
+            /* the two halves close on the seam */
             @keyframes logo-mount-l-${uid} {
-              from { opacity: 0; transform: translateX(-6px); }
+              from { opacity: 0; transform: translateX(-7px); }
               to   { opacity: 1; transform: translateX(0); }
             }
             @keyframes logo-mount-r-${uid} {
-              from { opacity: 0; transform: translateX(6px); }
+              from { opacity: 0; transform: translateX(7px); }
               to   { opacity: 1; transform: translateX(0); }
             }
-            @keyframes logo-mount-coin-${uid} {
-              0%   { opacity: 0; transform: translateY(-10px) scale(0.6); }
-              60%  { opacity: 1; transform: translateY(1px) scale(1.08); }
-              80%  { transform: translateY(-0.5px) scale(0.97); }
-              100% { opacity: 1; transform: translateY(0) scale(1); }
+            .logo-coin-l-${uid} {
+              animation: logo-mount-l-${uid} 460ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
             }
-            .logo-chevron-l-${uid} {
-              animation: logo-mount-l-${uid} 420ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
-            }
-            .logo-chevron-r-${uid} {
-              animation: logo-mount-r-${uid} 420ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
-            }
-            .logo-coin-${uid} {
-              animation: logo-mount-coin-${uid} 480ms 160ms var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) backwards;
+            .logo-coin-r-${uid} {
+              animation: logo-mount-r-${uid} 460ms 60ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
             }
             `
                 : `
+            /* the coin flips on its axis, the far half trailing */
             @keyframes logo-flip-coin-${uid} {
               0%   { transform: scaleX(1); }
-              25%  { transform: scaleX(0); }
+              25%  { transform: scaleX(0.06); }
               50%  { transform: scaleX(1); }
-              75%  { transform: scaleX(0); }
+              75%  { transform: scaleX(0.06); }
               100% { transform: scaleX(1); }
             }
-            @keyframes logo-flip-settle-${uid} {
-              0%   { transform: translateY(0); }
-              50%  { transform: translateY(-0.5px); }
-              100% { transform: translateY(0); }
-            }
-            .logo-coin-${uid} {
+            .logo-coin-r-${uid} {
               animation: logo-flip-coin-${uid} 700ms var(--ease-in-out, cubic-bezier(0.65, 0, 0.35, 1)) backwards;
             }
-            .logo-chevron-l-${uid},
-            .logo-chevron-r-${uid} {
-              animation: logo-flip-settle-${uid} 700ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+            .logo-coin-l-${uid} {
+              animation: logo-flip-coin-${uid} 700ms 90ms var(--ease-in-out, cubic-bezier(0.65, 0, 0.35, 1)) backwards;
             }
             `
             }
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .logo-chevron-l-${uid},
-            .logo-chevron-r-${uid},
-            .logo-coin-${uid} {
+            .logo-coin-l-${uid},
+            .logo-coin-r-${uid} {
               animation: none;
             }
           }
         `}</style>
       )}
-      <g key={animKey} transform="translate(0,-1.5)">
-        <path
-          className={`logo-chevron-l-${uid}`}
-          d="M6,13 L18,52 L32,21"
-          fill="none"
-          stroke={leftChevronStroke}
-          strokeWidth="8.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          className={`logo-chevron-r-${uid}`}
-          d="M32,21 L46,52 L58,13"
-          fill="none"
-          stroke={rightChevronStroke}
-          strokeWidth="8.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle className={`logo-coin-${uid}`} cx="32" cy="15" r="5.9" fill={coinFill} />
+      <g key={animKey} transform="rotate(-20 32 32)">
+        <g mask={`url(#${seamMaskId})`}>
+          {/* the open half — drawn first so the solid half sits over its edge */}
+          <circle
+            className={`logo-coin-r-${uid}`}
+            cx="32"
+            cy="32"
+            r="17.5"
+            fill="none"
+            stroke={ink}
+            strokeWidth="7"
+          />
+          {/* the solid half */}
+          <path className={`logo-coin-l-${uid}`} d="M32,11 A21,21 0 0,0 32,53 Z" fill={ink} />
+        </g>
       </g>
     </svg>
   );

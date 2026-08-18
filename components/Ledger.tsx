@@ -312,7 +312,7 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = f
               return (
               <div
                 key={bet.id}
-                className="flex flex-col gap-1.5 px-4 py-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors"
+                className="flex flex-col gap-1.5 px-4 py-3 border-b border-hairline last:border-b-0 hover:bg-surface-sunken/60 transition-colors"
               >
                 <div className="flex items-center gap-2.5">
                   <span className={`tone-dot ${toneForSide(bet.side)}`} />
