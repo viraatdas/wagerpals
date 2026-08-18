@@ -91,7 +91,23 @@
       "keychainService": "wagerpals",
       "appGroup": "group.com.wagerpals.app",
       "eas": {
-        "projectId": "749a2dc6-bdc5-44e4-907b-3c77e36bb760"
+        "projectId": "749a2dc6-bdc5-44e4-907b-3c77e36bb760",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "WagerPalsMessages",
+                  "bundleIdentifier": "com.wagerpals.app.messages",
+                  "entitlements": {
+                    "com.apple.security.application-groups": ["group.com.wagerpals.app"],
+                    "keychain-access-groups": ["$(AppIdentifierPrefix)com.wagerpals.shared"]
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     },
     "owner": "birud"
