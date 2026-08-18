@@ -23,7 +23,7 @@ import { ApiError, toApiError } from '../utils/errors';
 // @ts-ignore
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__
   ? 'http://localhost:3000'
-  : 'https://wagerpals.io');
+  : 'https://www.wagerpals.io');
 
 // Every request gets aborted after this many ms unless a call site overrides
 // it — see `request()`'s `timeoutMs` option. 15s comfortably covers a cold

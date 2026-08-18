@@ -18,7 +18,7 @@
         "buildConfiguration": "Release"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://wagerpals.io",
+        "EXPO_PUBLIC_API_URL": "https://www.wagerpals.io",
         "EXPO_PUBLIC_AUTH0_DOMAIN": "dev-ti4x5dupc1lejewk.us.auth0.com",
         "EXPO_PUBLIC_AUTH0_CLIENT_ID": "M7v0CKV88mVEscfNVWVj2wZS54CzV3oP"
       }
@@ -30,7 +30,7 @@
         "buildConfiguration": "Release"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://wagerpals.io",
+        "EXPO_PUBLIC_API_URL": "https://www.wagerpals.io",
         "EXPO_PUBLIC_AUTH0_DOMAIN": "dev-ti4x5dupc1lejewk.us.auth0.com",
         "EXPO_PUBLIC_AUTH0_CLIENT_ID": "M7v0CKV88mVEscfNVWVj2wZS54CzV3oP"
       }

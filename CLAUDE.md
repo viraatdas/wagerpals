@@ -176,8 +176,15 @@ attaches `Authorization: Bearer <access token>` from `mobile/src/services/auth.t
 `shared-session.ts`) → same Next.js API routes as web, over `EXPO_PUBLIC_API_URL` → same
 `lib/auth.ts` → `lib/db.ts`/`lib/payments.ts`/`lib/push.ts`. The iMessage extension's Swift
 code (`mobile/plugins/imessage-extension/swift/WagerAPI.swift`) also talks to the same API,
-authenticated via signed share tokens from `lib/imessage-share.ts` rather than a Stack Auth
-session (see `app/api/imessage/*/route.ts`).
+and it authenticates the **same way everything else does**: it reads the access token the app
+wrote to the shared Keychain (`mobile/src/services/shared-session.ts`) and sends
+`Authorization: Bearer <token>`, so every `app/api/imessage/*/route.ts` handler resolves
+identity through `requireAuthUser` like any other route. The signed share token from
+`lib/imessage-share.ts` is **not** an authentication mechanism — it is a second, narrower
+*authorization* grant, checked only in `app/api/imessage/bets/side/route.ts`, that lets an
+already-authenticated caller who is not yet a member of the wager's group take a side on it.
+Never treat a share token as proof of identity, and never drop the `requireAuthUser` call
+because a share token is present.
 
 **Auth resolution**: `lib/auth.ts` (`getAuthenticatedStackUser` / `getAuthenticatedUserId` /
 `requireAuth` / `requireAuthUser`) is the only place identity is resolved, from a live Stack

@@ -39,30 +39,64 @@ const DEFAULT_WEB_BASE_URL = "https://wagerpals.io";
 const DEFAULT_APP_STORE_ID = "6754625373";
 const APP_ICON_SET_NAME = "iMessage App Icon";
 
-// Standard iMessage app icon sizes, taken verbatim from Apple's own
-// "Sticker Pack Extension Component.xctemplate" (ships inside Xcode.app) and
-// verified locally with:
+// The complete iMessage app icon set, taken verbatim from Apple's own
+// "Sticker Pack Extension Component.xctemplate" (ships inside Xcode.app, at
+// Stickers.xcstickers/iMessage App Icon.stickersiconset/Contents.json) — that
+// template is the authority on which idiom/size/scale combinations App Store
+// Connect requires, so every entry here carries a `filename` pointing at a
+// committed PNG in ./icons. An iMessage extension uploaded with an incomplete
+// icon set fails ASC asset validation, so `writeAssetCatalog` throws rather
+// than emitting an entry whose PNG is missing.
+// Verified locally with:
 //   xcrun actool --app-icon "iMessage App Icon" --compile <out> \
 //     --platform iphonesimulator --minimum-deployment-target 15.1 \
 //     --target-device iphone --target-device ipad Assets.xcassets
-// which exits 0 (only "unassigned children" warnings, since we ship no PNGs
-// yet). If this ever stops compiling, drop ASSETCATALOG_COMPILER_APPICON_NAME
-// below rather than shipping a project that fails `actool` — see the
-// try/catch around its assignment.
+// which exits 0 with no warnings. If this ever stops compiling, drop
+// ASSETCATALOG_COMPILER_APPICON_NAME below rather than shipping a project that
+// fails `actool` — see the try/catch around its assignment.
 const STICKER_ICON_SIZES = [
-  { size: "32x24", idiom: "universal", scale: "1x", platform: "ios" },
-  { size: "32x24", idiom: "universal", scale: "2x", platform: "ios" },
-  { size: "32x24", idiom: "universal", scale: "3x", platform: "ios" },
-  { size: "1024x768", idiom: "ios-marketing", scale: "1x", platform: "ios" },
-  { idiom: "iphone", size: "29x29", scale: "2x" },
-  { idiom: "iphone", size: "29x29", scale: "3x" },
-  { idiom: "iphone", size: "60x45", scale: "2x" },
-  { idiom: "iphone", size: "60x45", scale: "3x" },
-  { idiom: "ipad", size: "29x29", scale: "1x" },
-  { idiom: "ipad", size: "29x29", scale: "2x" },
-  { idiom: "ipad", size: "67x50", scale: "1x" },
-  { idiom: "ipad", size: "67x50", scale: "2x" },
-  { idiom: "ipad", size: "74x55", scale: "2x" },
+  { idiom: "iphone", size: "29x29", scale: "2x", filename: "icon-iphone-29x29@2x.png" },
+  { idiom: "iphone", size: "29x29", scale: "3x", filename: "icon-iphone-29x29@3x.png" },
+  { idiom: "iphone", size: "60x45", scale: "2x", filename: "icon-iphone-60x45@2x.png" },
+  { idiom: "iphone", size: "60x45", scale: "3x", filename: "icon-iphone-60x45@3x.png" },
+  { idiom: "ipad", size: "29x29", scale: "2x", filename: "icon-ipad-29x29@2x.png" },
+  { idiom: "ipad", size: "67x50", scale: "2x", filename: "icon-ipad-67x50@2x.png" },
+  { idiom: "ipad", size: "74x55", scale: "2x", filename: "icon-ipad-74x55@2x.png" },
+  {
+    size: "27x20",
+    idiom: "universal",
+    scale: "2x",
+    platform: "ios",
+    filename: "icon-universal-27x20@2x.png",
+  },
+  {
+    size: "27x20",
+    idiom: "universal",
+    scale: "3x",
+    platform: "ios",
+    filename: "icon-universal-27x20@3x.png",
+  },
+  {
+    size: "32x24",
+    idiom: "universal",
+    scale: "2x",
+    platform: "ios",
+    filename: "icon-universal-32x24@2x.png",
+  },
+  {
+    size: "32x24",
+    idiom: "universal",
+    scale: "3x",
+    platform: "ios",
+    filename: "icon-universal-32x24@3x.png",
+  },
+  {
+    size: "1024x768",
+    idiom: "ios-marketing",
+    scale: "1x",
+    platform: "ios",
+    filename: "icon-ios-marketing-1024x768@1x.png",
+  },
 ];
 
 function resolveProps(config, props) {
@@ -108,6 +142,17 @@ function getSwiftSourceFiles() {
     );
   }
   return files;
+}
+
+function getIconSourceDir() {
+  const iconsDir = path.join(__dirname, "icons");
+  if (!fs.existsSync(iconsDir)) {
+    throw new Error(
+      `[withIMessageExtension] iMessage app icon directory not found: ${iconsDir}. ` +
+        `Add the icon PNGs to plugins/imessage-extension/icons/ before running prebuild.`
+    );
+  }
+  return iconsDir;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +229,11 @@ function buildExtensionInfoPlistObject(resolved) {
       NSExtensionPointIdentifier: "com.apple.message-payload-provider",
       NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).MessagesViewController",
     },
+    // App Store Connect reads this to find the iMessage App Store icon (the
+    // 1024x768 `ios-marketing` entry). `actool` emits the same key into its
+    // partial Info.plist, which Xcode merges in at build time — stating it
+    // here too means the upload doesn't depend on that merge step running.
+    MSMessagesExtensionStoreIconName: APP_ICON_SET_NAME,
     // Custom keys read by the extension's Swift code at runtime.
     WPApiBaseURL: resolved.apiBaseUrl,
     WPWebBaseURL: resolved.webBaseUrl,
@@ -211,6 +261,24 @@ function writeAssetCatalog(extensionDir) {
 
   const iconSetDir = path.join(assetsDir, `${APP_ICON_SET_NAME}.stickersiconset`);
   fs.mkdirSync(iconSetDir, { recursive: true });
+
+  // Copy the committed PNGs in alongside the Contents.json that names them —
+  // same pattern as the Swift sources above. A declared `filename` with no file
+  // next to it is exactly the empty icon set App Store Connect rejects, so fail
+  // the prebuild here instead of at upload time.
+  const iconsDir = getIconSourceDir();
+  for (const image of STICKER_ICON_SIZES) {
+    const iconSource = path.join(iconsDir, image.filename);
+    if (!fs.existsSync(iconSource)) {
+      throw new Error(
+        `[withIMessageExtension] Missing iMessage app icon ${image.filename} ` +
+          `(${image.idiom} ${image.size}@${image.scale}) in ${iconsDir}. ` +
+          `App Store Connect rejects an iMessage extension whose icon set is incomplete.`
+      );
+    }
+    fs.copyFileSync(iconSource, path.join(iconSetDir, image.filename));
+  }
+
   fs.writeFileSync(
     path.join(iconSetDir, "Contents.json"),
     JSON.stringify({ images: STICKER_ICON_SIZES, info: { version: 1, author: "xcode" } }, null, 2) +
@@ -647,3 +715,10 @@ function withIMessageExtension(config, props) {
 }
 
 module.exports = createRunOncePlugin(withIMessageExtension, "wagerpals-imessage-extension", "1.0.0");
+
+// Exposed so the icon set can be checked without a full prebuild (write the
+// catalog into a temp dir, assert every declared filename landed on disk at the
+// right pixel size). Expo only ever calls the plugin function above.
+module.exports.APP_ICON_SET_NAME = APP_ICON_SET_NAME;
+module.exports.STICKER_ICON_SIZES = STICKER_ICON_SIZES;
+module.exports.writeAssetCatalog = writeAssetCatalog;
