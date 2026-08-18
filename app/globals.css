@@ -150,6 +150,115 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+/* ============================================================
+   LIGHT MODE — the same room with the lights on.
+   Dark stays the default (see DESIGN.md); this block only applies
+   when the user explicitly asks for light via the header toggle,
+   which sets data-theme="light" on <html>.
+
+   Only VALUES change here. Every token name, every component class
+   and every Tailwind key is identical to the dark block above, so
+   nothing in the app needs to know which theme is active.
+
+   Two things genuinely invert rather than just lighten:
+
+   1. --color-text-inverse. It is the label colour on any accent
+      fill. On dark, the accent is bright green and takes near-black
+      ink; on light, the accent is the DEEP green and takes white.
+      Flipping this one token re-labels every primary button, solid
+      pill, skip link and success/danger button at once.
+
+   2. --surface and --border are raw RGB CHANNELS consumed as
+      rgb(var(--x) / a). On dark they are white-ish so overlays
+      lighten; on light they must be near-black so the same
+      rgb(var(--border) / 0.1) still reads as a hairline instead of
+      vanishing into the page.
+   ============================================================ */
+:root[data-theme="light"] {
+  /* Base canvas */
+  --bg: #F7F9FA;
+  --bg-2: #FFFFFF;
+  --surface: 16 19 26;   /* dark ink channels — rgb(var(--surface)/a) tints on white */
+  --foreground: #10131A;
+  --muted: #5A6472;
+  --muted-2: #8A94A3;
+
+  /* Brand ramp — the deep end of the same phosphor green. #24E17A is 1.7:1 on
+     white and cannot carry text or a label, so light mode runs the ramp darker. */
+  --brand-1: #12B45E;
+  --brand-2: #0A7C43;
+  --brand-3: #075C32;
+  --brand-1-rgb: 18 180 94;
+  --brand-2-rgb: 10 124 67;
+  --brand-3-rgb: 7 92 50;
+
+  /* Semantic accents, darkened for a light ground */
+  --neon-violet: #5B4BD6;
+  --neon-cyan: #0B7FBF;
+  --neon-mint: #0A7C43;
+  --neon-rose: #C62828;
+  --neon-amber: #B26A00;
+  --neon-violet-rgb: 91 75 214;
+  --neon-cyan-rgb: 11 127 191;
+  --neon-mint-rgb: 10 124 67;
+  --neon-rose-rgb: 198 40 40;
+  --neon-amber-rgb: 178 106 0;
+
+  --border: 16 19 26;    /* dark channels — rgb(var(--border)/0.1) ≈ #E3E7EC hairline on white */
+
+  color-scheme: light;
+
+  /* Surfaces */
+  --color-bg: #F7F9FA;
+  --color-surface: #FFFFFF;
+  --color-surface-sunken: #EEF1F4;
+  --color-surface-elevated: #FFFFFF;
+  /* Borders */
+  --color-border: #E3E7EC;
+  --color-border-strong: #CBD2DA;
+  /* Text */
+  --color-text: #10131A;
+  --color-text-secondary: #5A6472;
+  --color-text-muted: #8A94A3;
+  --color-text-inverse: #FFFFFF;   /* white label on the deep-green accent — see note above */
+  /* Signature accent */
+  --color-accent: #0A7C43;
+  --color-accent-hover: #075C32;
+  --color-accent-soft: #12B45E;
+  --color-accent-deep: #075C32;
+  --color-accent-fill: rgba(10, 124, 67, 0.10);
+  /* Semantic */
+  --color-yes: #0A7C43;      --color-yes-fill: rgba(10, 124, 67, 0.10);
+  --color-no: #C62828;       --color-no-fill: rgba(198, 40, 40, 0.10);
+  --color-win: #0A7C43;      --color-loss: #C62828;
+  --color-pending: #B26A00;  --color-pending-fill: rgba(178, 106, 0, 0.10);
+  --color-info: #0B7FBF;     --color-info-fill: rgba(11, 127, 191, 0.10);
+  /* RGB channel twins */
+  --color-accent-rgb: 10 124 67;
+  --color-accent-hover-rgb: 7 92 50;
+  --color-accent-soft-rgb: 18 180 94;
+  --color-yes-rgb: 10 124 67;
+  --color-no-rgb: 198 40 40;
+  --color-win-rgb: 10 124 67;
+  --color-loss-rgb: 198 40 40;
+  --color-pending-rgb: 178 106 0;
+  --color-info-rgb: 11 127 191;
+  --color-surface-rgb: 255 255 255;
+  --color-border-rgb: 227 231 236;
+  --color-text-rgb: 16 19 26;
+
+  /* Elevation — on white the room is lit far more evenly, so the same offsets
+     carry a fraction of the opacity they need on near-black. */
+  --shadow-elev-1: 0 1px 2px rgba(16, 19, 26, 0.05);
+  --shadow-elev-2: 0 4px 12px -2px rgba(16, 19, 26, 0.08), 0 1px 2px rgba(16, 19, 26, 0.04);
+  --shadow-elev-3: 0 12px 32px -6px rgba(16, 19, 26, 0.10), 0 2px 6px rgba(16, 19, 26, 0.05);
+  --shadow-elev-4: 0 24px 56px -12px rgba(16, 19, 26, 0.14), 0 4px 12px rgba(16, 19, 26, 0.06);
+  --shadow-accent: 0 4px 16px -4px rgba(10, 124, 67, 0.30);
+  --shadow-live:
+    0 0 0 1px rgba(10, 124, 67, 0.35),
+    0 0 20px -6px rgba(10, 124, 67, 0.22);
+}
+
 * {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;

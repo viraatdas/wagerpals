@@ -12,6 +12,25 @@ import Toast, { ToastType } from '@/components/Toast';
 import { validateUsername } from '@/lib/utils';
 import { subscribeToWebPush } from '@/components/PushNotificationPrompt';
 
+/**
+ * Tracks the active theme so Stripe Elements can follow it. Elements renders in
+ * its own iframe and its appearance API only accepts literal colour strings, so
+ * it cannot read our CSS custom properties — it has to be told, and re-told
+ * whenever the header toggle flips the attribute.
+ */
+function useThemeAttr(): 'dark' | 'light' {
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  useEffect(() => {
+    const read = () =>
+      setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+  return theme;
+}
+
 type NotificationCategoryKey =
   | 'bets'
   | 'comments'
@@ -63,6 +82,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState<any>(null);
+  const stripeTheme = useThemeAttr();
   const [newUsername, setNewUsername] = useState('');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -597,21 +617,36 @@ export default function ProfilePage() {
                     // Stripe Elements renders in its own iframe and its appearance API
                     // only accepts literal colour strings — CSS custom properties do not
                     // cross that boundary. This is the documented exception to the
-                    // tokens-only rule (CLAUDE.md §8); the values below are copied from
-                    // app/globals.css :root and must be updated in lockstep with it.
-                    appearance: {
-                      theme: 'night',
-                      variables: {
-                        colorPrimary: '#24E17A',      // --color-accent
-                        colorBackground: '#121417',   // --color-surface
-                        colorText: '#E9ECEF',         // --color-text
-                        colorTextSecondary: '#A2A9B2',// --color-text-secondary
-                        colorTextPlaceholder: '#6B737D', // --color-text-muted
-                        colorDanger: '#FF5C63',       // --color-no
-                        borderRadius: '12px',
-                        fontFamily: 'IBM Plex Sans, system-ui, sans-serif',
-                      },
-                    },
+                    // tokens-only rule (CLAUDE.md §8); both sets below are copied from
+                    // app/globals.css and must be updated in lockstep with it.
+                    appearance:
+                      stripeTheme === 'light'
+                        ? {
+                            theme: 'stripe',
+                            variables: {
+                              colorPrimary: '#0A7C43',         // light --color-accent
+                              colorBackground: '#FFFFFF',      // light --color-surface
+                              colorText: '#10131A',            // light --color-text
+                              colorTextSecondary: '#5A6472',   // light --color-text-secondary
+                              colorTextPlaceholder: '#8A94A3', // light --color-text-muted
+                              colorDanger: '#C62828',          // light --color-no
+                              borderRadius: '12px',
+                              fontFamily: 'IBM Plex Sans, system-ui, sans-serif',
+                            },
+                          }
+                        : {
+                            theme: 'night',
+                            variables: {
+                              colorPrimary: '#24E17A',         // --color-accent
+                              colorBackground: '#121417',      // --color-surface
+                              colorText: '#E9ECEF',            // --color-text
+                              colorTextSecondary: '#A2A9B2',   // --color-text-secondary
+                              colorTextPlaceholder: '#6B737D', // --color-text-muted
+                              colorDanger: '#FF5C63',          // --color-no
+                              borderRadius: '12px',
+                              fontFamily: 'IBM Plex Sans, system-ui, sans-serif',
+                            },
+                          },
                   }}
                 >
                   <DepositPaymentForm

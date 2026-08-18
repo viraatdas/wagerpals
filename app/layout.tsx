@@ -5,6 +5,7 @@ import Header from "@/components/Header";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import MobileAppBanner from "@/components/MobileAppBanner";
 import { ClientProviders } from "@/components/ClientProviders";
+import ThemeScript from "@/components/ThemeScript";
 
 // UI face. Humanist rather than neutral-grotesque: this product's content is
 // people arguing with each other, and Plex has a spoken warmth Inter doesn't.
@@ -91,6 +92,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${plex.variable} ${oswald.variable}`}>
       <body className="font-sans antialiased text-foreground">
+        <ThemeScript />
         <ClientProviders>
           <ServiceWorkerRegistration />
           <a href="#main" className="skip-link">

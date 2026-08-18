@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
 import Logo from './Logo';
+import ThemeToggle from './ThemeToggle';
 
 const navItems = [
   {
@@ -154,6 +155,8 @@ export default function Header() {
                 Create Event
               </Link>
 
+              <ThemeToggle className="hidden md:inline-flex flex-shrink-0" />
+
               {user && (
                 <div className="hidden md:flex items-center gap-3 ml-1 pl-5 border-l border-hairline">
                   <span className="text-sm font-medium text-muted truncate max-w-[120px]">
@@ -167,6 +170,8 @@ export default function Header() {
                   </button>
                 </div>
               )}
+
+              <ThemeToggle className="md:hidden flex-shrink-0" />
 
               {user && (
                 <div className="md:hidden flex items-center min-w-0">
