@@ -9,6 +9,18 @@ import SwiftUI
 extension Color {
     static let wagerBrand = Color(red: 0x25 / 255.0, green: 0x63 / 255.0, blue: 0xeb / 255.0)
     static let wagerGold = Color(red: 0xf5 / 255.0, green: 0x9e / 255.0, blue: 0x0b / 255.0)
+
+    // ---- Current WagerPals design-system tokens (see DESIGN-SPEC.md /
+    // mobile/src/theme.ts) — Swift can't read the CSS custom properties in
+    // app/globals.css, so these are the same hexes reproduced as literals,
+    // one per canonical token, each named for its CSS var. Scoped to the
+    // signed-out empty state (`WagerSignedOutView` below) for now — the rest
+    // of this extension still renders with `wagerBrand`/`wagerGold` above.
+    static let wagerPaper = Color(red: 0xfa / 255.0, green: 0xf7 / 255.0, blue: 0xf0 / 255.0) // --color-paper
+    static let wagerInk = Color(red: 0x1c / 255.0, green: 0x1b / 255.0, blue: 0x17 / 255.0) // --color-ink
+    static let wagerInkSecondary = Color(red: 0x57 / 255.0, green: 0x54 / 255.0, blue: 0x48 / 255.0) // --color-ink-secondary
+    static let wagerEmerald = Color(red: 0x0f / 255.0, green: 0x7a / 255.0, blue: 0x4c / 255.0) // --color-emerald
+    static let wagerLine = Color(red: 0xe7 / 255.0, green: 0xe2 / 255.0, blue: 0xd6 / 255.0) // --color-line
 }
 
 enum WagerConstants {
@@ -206,6 +218,11 @@ struct WagerGroupPicker: View {
 }
 
 /// Short explainer shown whenever the user isn't signed in to WagerPals.
+/// Restyled to the current brand (paper canvas, ink/emerald wordmark, one
+/// warm line of product voice, crisp 8pt-radius emerald button) — this only
+/// changes presentation. Sign-in detection, the API layer and what happens
+/// when the button is tapped (`onOpenApp`) are unchanged; see
+/// MessagesViewController.swift for the actual signed-out/signed-in check.
 struct WagerSignedOutView: View {
     var onOpenApp: () -> Void
     var compact: Bool = false
@@ -213,43 +230,96 @@ struct WagerSignedOutView: View {
     var body: some View {
         if compact {
             HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Sign in to WagerPals")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                    Text("to create or join wagers")
+                VStack(alignment: .leading, spacing: 2) {
+                    wordmark(size: 13)
+                    Text("Sign in to start a wager.")
                         .font(.caption2)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.wagerInkSecondary)
+                        .lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 Button("Open App", action: onOpenApp)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.wagerBrand)
-                    .controlSize(.small)
+                    .buttonStyle(WagerPrimaryButtonStyle(compact: true))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            .background(Color.wagerPaper)
         } else {
-            VStack(spacing: 16) {
-                Image(systemName: "person.crop.circle.badge.questionmark")
-                    .font(.system(size: 44))
-                    .foregroundColor(.wagerBrand)
-                Text("Sign in to WagerPals")
-                    .font(.title3)
-                    .fontWeight(.bold)
-                Text("Open the WagerPals app to sign in, then come back to create or join wagers right from Messages.")
+            VStack(spacing: 18) {
+                wordmark(size: 30)
+
+                bettingSlipMotif
+
+                Text("Sign in to WagerPals to start a wager.")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.wagerInkSecondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 28)
+
                 Button("Open WagerPals to sign in", action: onOpenApp)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.wagerBrand)
-                    .controlSize(.large)
+                    .buttonStyle(WagerPrimaryButtonStyle(compact: false))
             }
-            .padding(.top, 32)
+            .padding(.top, 36)
             .padding(.horizontal, 20)
+            .padding(.bottom, 24)
+            .frame(maxWidth: .infinity)
+            .background(Color.wagerPaper)
         }
+    }
+
+    /// Bold ink "Wager" + emerald "Pals" — the same lockup treatment as the
+    /// web/mobile wordmark (Logo.tsx / theme.ts), reproduced with a heavy
+    /// system font since the extension target doesn't bundle the Archivo
+    /// Black asset the main app loads via @expo-google-fonts.
+    private func wordmark(size: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            Text("Wager")
+                .font(.system(size: size, weight: .heavy, design: .rounded))
+                .foregroundColor(.wagerInk)
+            Text("Pals")
+                .font(.system(size: size, weight: .heavy, design: .rounded))
+                .foregroundColor(.wagerEmerald)
+        }
+    }
+
+    /// A nod to the web/mobile "blank betting slip" empty-state idiom
+    /// (dashed border, ghosted "— : —" placeholder) — the wager that's
+    /// waiting on a signed-in user to fill it in.
+    private var bettingSlipMotif: some View {
+        HStack(spacing: 10) {
+            Text("—")
+            Spacer(minLength: 12)
+            Text(":").opacity(0.6)
+            Spacer(minLength: 12)
+            Text("—")
+        }
+        .font(.system(.body, design: .monospaced))
+        .foregroundColor(.wagerInk.opacity(0.4))
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .frame(maxWidth: 220)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10) // --radius-card
+                .strokeBorder(Color.wagerLine, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+        )
+    }
+}
+
+/// Crisp 8pt-radius emerald fill button — the signed-out view's only call to
+/// action. Deliberately not `.buttonStyle(.borderedProminent)`, which renders
+/// as a rounded/capsule control on iOS; DESIGN-SPEC.md calls for structured
+/// 8px-radius controls, pill shapes reserved for avatars/chips/status pills.
+private struct WagerPrimaryButtonStyle: ButtonStyle {
+    var compact: Bool = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font((compact ? Font.caption : Font.subheadline).weight(.semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, compact ? 14 : 20)
+            .padding(.vertical, compact ? 7 : 12)
+            .background(Color.wagerEmerald.opacity(configuration.isPressed ? 0.85 : 1))
+            .cornerRadius(8) // --radius-control
     }
 }
 

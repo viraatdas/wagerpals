@@ -169,31 +169,6 @@ export default function AuthScreen() {
       <FormScreen
         contentContainerStyle={styles.formContent}
         keyboardOffset={0}
-        footer={
-          step === 'email' ? (
-            <Button
-              title="Continue with Email"
-              onPress={() => handleSendCode(false)}
-              loading={busy === 'sendCode'}
-              disabled={busy !== null && busy !== 'sendCode'}
-              icon="arrow-forward"
-              iconPosition="right"
-              fullWidth
-              haptic="none"
-            />
-          ) : (
-            <Button
-              title="Verify & Sign In"
-              onPress={handleVerifyCode}
-              loading={busy === 'verify'}
-              disabled={(busy !== null && busy !== 'verify') || code.length < CODE_LENGTH}
-              icon="checkmark"
-              iconPosition="right"
-              fullWidth
-              haptic="none"
-            />
-          )
-        }
       >
         {/* Logo & Header */}
         <View style={styles.header}>
@@ -247,6 +222,18 @@ export default function AuthScreen() {
                 </View>
               ) : null}
 
+              <Button
+                title="Continue with Email"
+                onPress={() => handleSendCode(false)}
+                loading={busy === 'sendCode'}
+                disabled={busy !== null && busy !== 'sendCode'}
+                icon="arrow-forward"
+                iconPosition="right"
+                fullWidth
+                haptic="none"
+                style={styles.primaryAction}
+              />
+
               <View style={styles.divider}>
                 <View style={styles.dividerLine} />
                 <Text style={styles.dividerText}>or</Text>
@@ -288,6 +275,18 @@ export default function AuthScreen() {
                   <Text style={styles.errorText}>{codeError}</Text>
                 </View>
               ) : null}
+
+              <Button
+                title="Verify & Sign In"
+                onPress={handleVerifyCode}
+                loading={busy === 'verify'}
+                disabled={(busy !== null && busy !== 'verify') || code.length < CODE_LENGTH}
+                icon="checkmark"
+                iconPosition="right"
+                fullWidth
+                haptic="none"
+                style={styles.primaryAction}
+              />
 
               <View style={styles.codeActions}>
                 <Button
@@ -420,6 +419,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
     marginTop: spacing.sm,
+  },
+  // Keeps each field's action directly under it — a tight 12-unit gap — so
+  // "Continue with Email" / "Verify & Sign In" read as part of the same
+  // control as the field above, not detached at the bottom of the screen.
+  primaryAction: {
+    marginTop: spacing.md,
   },
   errorText: {
     flexShrink: 1,
