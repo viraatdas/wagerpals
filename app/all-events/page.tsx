@@ -54,7 +54,10 @@ export default function AllEventsPage() {
   // here. Everything else about the data plumbing (grouping, per-group
   // fetch) is unchanged from before.
   const openEventsFor = (events: EventWithStats[]) => {
-    return events.filter((e) => e.status === 'active');
+    // Loudest first: bets + comments, ties keep server recency (stable sort).
+    return events
+      .filter((e) => e.status === 'active')
+      .sort((a, b) => ((b.total_bets ?? 0) + (b.comment_count ?? 0)) - ((a.total_bets ?? 0) + (a.comment_count ?? 0)));
   };
 
   if (!user) {

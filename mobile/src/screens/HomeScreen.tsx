@@ -60,6 +60,9 @@ type WagerCardItem = Event & {
   side_stats?: Record<string, { count: number; total: number }>;
   total_bets?: number;
   total_participants?: number;
+  // Populated by the list payload (db.events.getAllWithStats); used for the
+  // activity ranking alongside total_bets.
+  comment_count?: number;
   bettor_preview?: EventBettorPreview[];
   latest_comment?: EventLatestComment;
 };
@@ -301,11 +304,15 @@ export default function HomeScreen() {
     }
   }, [groups, navigation]);
 
-  // Active wagers lead the board (no-expiry rules mean there's no "soonest
-  // to end" to sort by anymore — see the mobile product-rules brief), then
-  // resolved ones, most recently decided first.
+  // Active wagers lead the board, ranked loudest-first: bets + comments
+  // (owner: "rank the cards by the ones with the most activity"). Resolved
+  // ones follow, most recently decided first. Mirrors app/page.tsx's
+  // boardOrder on web.
+  const activityScore = (w: WagerCardItem) => (w.total_bets ?? 0) + (w.comment_count ?? 0);
   const sortedWagers = useMemo(() => {
-    const active = wagers.filter((w) => w.status === 'active');
+    const active = wagers
+      .filter((w) => w.status === 'active')
+      .sort((a, b) => activityScore(b) - activityScore(a));
     const resolved = wagers
       .filter((w) => w.status !== 'active')
       .sort((a, b) => (b.resolution?.resolved_at ?? 0) - (a.resolution?.resolved_at ?? 0));

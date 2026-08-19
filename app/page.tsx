@@ -19,16 +19,19 @@ interface GroupSummary extends Group {
   is_admin: boolean;
 }
 
-// Board ordering: currently-open wagers first, then everything settled.
-// Events never expire (R2) — there's no end_time to break ties on, so this
-// is a STABLE sort: each per-group fetch already arrives ordered
-// recency-first from db.events.getAllWithStats, and Array.prototype.sort's
-// stability preserves that relative order within each status bucket once
-// the Board flattens multiple groups' lists together.
+// Board ordering: live wagers before settled, and within each bucket the
+// loudest table first. "Activity" is everything that happened on the wager:
+// bets placed plus comments (owner: "rank the cards by the ones with the
+// most activity including comment + bets and all that"). Ties keep the
+// server's recency order (stable sort).
+function activityScore(e: EventWithStats): number {
+  return (e.total_bets ?? 0) + (e.comment_count ?? 0);
+}
 function boardOrder(a: EventWithStats, b: EventWithStats): number {
   const aOpen = a.status === 'active' ? 0 : 1;
   const bOpen = b.status === 'active' ? 0 : 1;
-  return aOpen - bOpen;
+  if (aOpen !== bOpen) return aOpen - bOpen;
+  return activityScore(b) - activityScore(a);
 }
 
 export default function Home() {
