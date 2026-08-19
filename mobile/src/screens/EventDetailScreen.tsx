@@ -694,8 +694,8 @@ export default function EventDetailScreen() {
                 />
                 <Text style={styles.bannerText} numberOfLines={2}>
                   {isCancelled
-                    ? 'Cancelled — every stake was refunded.'
-                    : `Resolved — "${truncate(winningSide ?? '', 40)}" won.`}
+                    ? 'Cancelled. Every stake was refunded.'
+                    : `Resolved. "${truncate(winningSide ?? '', 40)}" won.`}
                 </Text>
               </View>
             </Card>
@@ -857,7 +857,7 @@ export default function EventDetailScreen() {
 
                   {hasFixedStake ? (
                     <Text style={styles.fixedStakeHint}>
-                      This event has a fixed stake of {formatMoney(event.stake_amount ?? 0)} — every bet is the same amount.
+                      This event has a fixed stake of {formatMoney(event.stake_amount ?? 0)}. Every bet is the same amount.
                     </Text>
                   ) : null}
 
@@ -868,7 +868,7 @@ export default function EventDetailScreen() {
                           ? betError
                           : isCash
                             ? `You need ${formatMoney(Math.max(0, numericBetAmount - (wallet?.available ?? 0)))} more to place this bet.`
-                            : `Not enough W — you have ${formatW(wpBalance)}. You get W10 back every day.`}
+                            : `Not enough W. You have ${formatW(wpBalance)}. You get W10 back every day.`}
                       </Text>
                       <Button
                         title={isCash ? 'Add funds' : 'View wallet'}
@@ -1004,7 +1004,7 @@ export default function EventDetailScreen() {
               onChange={setResolveSide}
             />
             <Button
-              title={`Resolve — ${truncate(effectiveResolveSide, 20)} wins`}
+              title={`Resolve: ${truncate(effectiveResolveSide, 20)} wins`}
               onPress={confirmResolve}
               variant="primary"
               loading={isResolving}

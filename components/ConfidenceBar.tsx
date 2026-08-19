@@ -135,7 +135,7 @@ export default function ConfidenceBar({ sideA, sideB, size = 'compact', classNam
 
   const transitionClass = transitioning ? 'transition-[width] duration-bar ease-out-expo' : '';
   const accessibleLabel = isEmpty
-    ? `${sideA.label} vs ${sideB.label} — no stakes yet`
+    ? `${sideA.label} vs ${sideB.label}, no stakes yet`
     : `${sideA.label} ${formatPercent(restingSplit.pctA)}, ${sideB.label} ${formatPercent(restingSplit.pctB)}`;
 
   const hasAvatars = (sideA.avatars && sideA.avatars.length > 0) || (sideB.avatars && sideB.avatars.length > 0);

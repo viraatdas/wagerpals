@@ -19,6 +19,15 @@ function SignInContent() {
   
   // Check for mobile callback parameter
   const mobileCallback = searchParams.get('mobile_callback');
+  // The iOS app's Google flow: /api/auth/mobile-oauth sends the in-app auth
+  // session here with auto=google so the SDK's own signInWithOAuth fires
+  // immediately — the user never sees a second "Continue with Google" page.
+  // The SDK path matters: it sets its OAuth state cookies on OUR domain
+  // during a real page load, which survives Safari's redirect-bounce cookie
+  // stripping; the previous hand-rolled redirect chain bounced through
+  // api.stack-auth.com and lost Stack's inner-state cookie ("inner OAuth
+  // cookie" error mid-flow).
+  const autoProvider = searchParams.get('auto');
 
   useEffect(() => {
     if (user) {
@@ -30,6 +39,22 @@ function SignInContent() {
       }
     }
   }, [user, router, mobileCallback]);
+
+  useEffect(() => {
+    if (user || autoProvider !== 'google') return;
+    // Fire once per browser session: if the flow errors back to this page we
+    // show the normal form instead of looping into Google forever.
+    const guard = 'wagerpals-auto-oauth-attempted';
+    try {
+      const last = Number(sessionStorage.getItem(guard) || 0);
+      if (Date.now() - last < 60_000) return;
+      sessionStorage.setItem(guard, String(Date.now()));
+    } catch {
+      // sessionStorage unavailable: still attempt, just without the guard.
+    }
+    app.signInWithOAuth('google');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, autoProvider]);
 
   const handleGoogleSignIn = async () => {
     await app.signInWithOAuth("google");
@@ -49,7 +74,7 @@ function SignInContent() {
       await app.sendMagicLinkEmail(email);
       setMagicLinkSent(true);
     } catch (err) {
-      setError("Couldn't send the link — try again.");
+      setError("Couldn't send the link. Try again.");
       console.error('Magic link error:', err);
     } finally {
       setIsLoading(false);
@@ -63,7 +88,7 @@ function SignInContent() {
     try {
       await app.signInWithPasskey();
     } catch (err) {
-      setError("Passkey didn't work — try email instead.");
+      setError("Passkey didn't work. Try email instead.");
       console.error('Passkey error:', err);
     } finally {
       setIsLoading(false);

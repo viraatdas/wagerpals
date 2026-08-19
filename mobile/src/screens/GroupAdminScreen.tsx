@@ -428,7 +428,7 @@ export default function GroupAdminScreen() {
                   description={
                     group?.cash_enabled
                       ? 'Members can stake real money from their wallets.'
-                      : 'Bets stake W — WagerPals’ play currency.'
+                      : 'Bets stake W: WagerPals’ play currency.'
                   }
                   value={!!group?.cash_enabled}
                   onValueChange={handleCashToggle}

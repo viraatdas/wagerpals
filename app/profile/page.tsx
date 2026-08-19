@@ -140,11 +140,11 @@ export default function ProfilePage() {
         setNotifPrefs(data);
       } else {
         setNotifPrefs(previous);
-        setNotifError("Couldn't save that — try again.");
+        setNotifError("Couldn't save that. Try again.");
       }
     } catch (error) {
       setNotifPrefs(previous);
-      setNotifError("Couldn't save that — try again.");
+      setNotifError("Couldn't save that. Try again.");
     } finally {
       setNotifSavingKeys((prev) => {
         const next = new Set(prev);
@@ -178,11 +178,11 @@ export default function ProfilePage() {
         setNotifPrefs(data);
       } else {
         setNotifPrefs(previous);
-        setNotifError("Couldn't save that — try again.");
+        setNotifError("Couldn't save that. Try again.");
       }
     } catch (error) {
       setNotifPrefs(previous);
-      setNotifError("Couldn't save that — try again.");
+      setNotifError("Couldn't save that. Try again.");
     } finally {
       setNotifSavingKeys((prev) => {
         const next = new Set(prev);
@@ -253,10 +253,10 @@ export default function ProfilePage() {
         setToast({ message: 'Username saved.', type: 'success' });
       } else {
         const data = await response.json();
-        setError(data.error || "Couldn't save that username — try again.");
+        setError(data.error || "Couldn't save that username. Try again.");
       }
     } catch (error: any) {
-      setError("Couldn't save that username — try again.");
+      setError("Couldn't save that username. Try again.");
     } finally {
       setSaving(false);
     }
@@ -475,7 +475,7 @@ export default function ProfilePage() {
                 <div className="skeleton h-10 rounded-2xl" />
               </div>
             ) : !notifPrefs ? (
-              <p className="text-sm text-ink-muted">Couldn&apos;t load your notification settings — try again.</p>
+              <p className="text-sm text-ink-muted">Couldn&apos;t load your notification settings. Try again.</p>
             ) : (
               <>
                 <div className="flex items-center justify-between gap-4 pb-4 border-b border-line">
@@ -484,7 +484,7 @@ export default function ProfilePage() {
                       Push notifications
                     </p>
                     <p className="field-hint mt-0.5">
-                      Master switch — turning this off disables every push notification below.
+                      Master switch: turning this off disables every push notification below.
                     </p>
                   </div>
                   <ToggleSwitch

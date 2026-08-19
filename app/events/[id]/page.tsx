@@ -150,7 +150,7 @@ export default function EventPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setToast({ message: data.error || "Couldn't resolve the event — try again.", type: 'error' });
+        setToast({ message: data.error || "Couldn't resolve the event. Try again.", type: 'error' });
         return;
       }
 
@@ -158,7 +158,7 @@ export default function EventPage() {
       fetchEvent();
     } catch (error) {
       console.error('Failed to resolve event:', error);
-      setToast({ message: "Couldn't resolve the event — try again.", type: 'error' });
+      setToast({ message: "Couldn't resolve the event. Try again.", type: 'error' });
     } finally {
       setResolving(false);
     }
@@ -193,7 +193,7 @@ export default function EventPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setToast({ message: data.error || "Couldn't unresolve the event — try again.", type: 'error' });
+        setToast({ message: data.error || "Couldn't unresolve the event. Try again.", type: 'error' });
         return;
       }
 
@@ -201,7 +201,7 @@ export default function EventPage() {
       fetchEvent();
     } catch (error) {
       console.error('Failed to unresolve event:', error);
-      setToast({ message: "Couldn't unresolve the event — try again.", type: 'error' });
+      setToast({ message: "Couldn't unresolve the event. Try again.", type: 'error' });
     } finally {
       setResolving(false);
     }
@@ -213,7 +213,7 @@ export default function EventPage() {
     setConfirmationModal({
       isOpen: true,
       title: 'Cancel event',
-      message: 'This refunds every escrowed stake to the players who placed them. The event cannot be un-cancelled.',
+      message: 'This refunds every escrowed stake to the bettors who placed them. The event cannot be un-cancelled.',
       confirmText: 'Cancel & Refund',
       loadingText: 'Cancelling…',
       type: 'warning',
@@ -239,7 +239,7 @@ export default function EventPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setToast({ message: data.error || "Couldn't cancel the event — try again.", type: 'error' });
+        setToast({ message: data.error || "Couldn't cancel the event. Try again.", type: 'error' });
         return;
       }
 
@@ -247,7 +247,7 @@ export default function EventPage() {
       fetchEvent();
     } catch (error) {
       console.error('Failed to cancel event:', error);
-      setToast({ message: "Couldn't cancel the event — try again.", type: 'error' });
+      setToast({ message: "Couldn't cancel the event. Try again.", type: 'error' });
     } finally {
       setResolving(false);
     }
@@ -259,7 +259,7 @@ export default function EventPage() {
     setConfirmationModal({
       isOpen: true,
       title: 'Delete event',
-      message: `Delete "${event.title}"? This removes every bet on it — permanently.`,
+      message: `Delete "${event.title}"? This removes every bet on it, permanently.`,
       confirmText: 'Delete',
       loadingText: 'Deleting…',
       type: 'danger',
@@ -282,14 +282,14 @@ export default function EventPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setToast({ message: data.error || "Couldn't delete the event — try again.", type: 'error' });
+        setToast({ message: data.error || "Couldn't delete the event. Try again.", type: 'error' });
         return;
       }
 
       router.push('/');
     } catch (error) {
       console.error('Failed to delete event:', error);
-      setToast({ message: "Couldn't delete the event — try again.", type: 'error' });
+      setToast({ message: "Couldn't delete the event. Try again.", type: 'error' });
     } finally {
       setDeleting(false);
     }
@@ -453,7 +453,7 @@ export default function EventPage() {
               the resolve area (see the "Resolve market" section below). */}
           {event.creator_username && (
             <p className="field-hint mb-6">
-              Started by <span className="font-medium text-ink">@{event.creator_username}</span> — only they can settle it.
+              Started by <span className="font-medium text-ink">@{event.creator_username}</span>. Only they can settle it.
             </p>
           )}
 
@@ -462,7 +462,7 @@ export default function EventPage() {
               <span className="tone-pending tone-text font-medium font-mono">
                 ${(event.escrow_total ?? 0).toFixed(2)}
               </span>{' '}
-              held in escrow across all players.
+              held in escrow across all bettors.
             </p>
           )}
 
@@ -483,7 +483,7 @@ export default function EventPage() {
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3 sm:gap-6 pt-5 border-t border-[var(--color-border)]">
+          <div className="grid grid-cols-2 gap-3 sm:gap-6 pt-5 border-t border-[var(--color-border)]">
             <div className="min-w-0">
               <div className="eyebrow mb-1">Pool</div>
               <div className="stat-value truncate">
@@ -495,12 +495,6 @@ export default function EventPage() {
                     <CountUp value={poolTotal} formatter="plain" />
                   </span>
                 )}
-              </div>
-            </div>
-            <div className="min-w-0">
-              <div className="eyebrow mb-1">Players</div>
-              <div className="stat-value truncate">
-                <CountUp value={event.total_participants} formatter="plain" />
               </div>
             </div>
             <div className="min-w-0">
@@ -516,7 +510,7 @@ export default function EventPage() {
           <div className="tone-pending tone-surface border rounded-xl p-4 mb-6 flex items-center gap-3">
             <span className="tone-dot shrink-0" />
             <p className="tone-text text-sm font-medium">
-              This event&apos;s cancelled — every stake is back in its owner&apos;s wallet.
+              This event&apos;s cancelled. Every stake is back in its owner&apos;s wallet.
             </p>
           </div>
         )}

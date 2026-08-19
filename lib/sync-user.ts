@@ -244,6 +244,21 @@ async function syncExistingUser(
   if (!updated) {
     return { ok: false, status: 500, error: 'Failed to sync user' };
   }
+
+  // A username change cascades into the tables that denormalize it at write
+  // time (bets, comments, activities), so ledgers and feeds always show the
+  // person's CURRENT username — without this, every rename leaves the old
+  // name frozen on their history. Same statement shape as the one-off
+  // backfill run on 2026-08-19. Best-effort: a cascade failure must not fail
+  // the sync itself (the users row is already correct; the next rename or
+  // backfill re-converges).
+  if (patch.username && patch.username !== target.username) {
+    try {
+      await db.users.cascadeUsername(target.id, patch.username);
+    } catch (err) {
+      console.error('[syncUser] username cascade failed (non-fatal):', err);
+    }
+  }
   return { ok: true, user: updated };
 }
 

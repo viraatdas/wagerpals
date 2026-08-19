@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
   // regardless of what the client sent or hid in its UI.
   if (payment_type === 'cash' && !group.cash_enabled) {
     return NextResponse.json(
-      { error: "Cash wagers aren't enabled for this group — the group creator can turn them on." },
+      { error: "Cash wagers aren't enabled for this group. The group creator can turn them on." },
       { status: 403 }
     );
   }

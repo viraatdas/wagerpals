@@ -37,7 +37,7 @@ export default function ClearCachePage() {
       // Clear session storage
       sessionStorage.clear();
 
-      setStatus('Cache cleared — redirecting…');
+      setStatus('Cache cleared. Redirecting…');
 
       // Wait a bit then redirect to home
       setTimeout(() => {
@@ -45,7 +45,7 @@ export default function ClearCachePage() {
       }, 2000);
     } catch (error) {
       console.error('Error clearing cache:', error);
-      setStatus("Couldn't clear the cache — refresh the page manually.");
+      setStatus("Couldn't clear the cache. Refresh the page manually.");
       setFailed(true);
     }
   };

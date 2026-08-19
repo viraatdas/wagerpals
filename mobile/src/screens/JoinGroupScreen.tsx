@@ -255,7 +255,7 @@ export default function JoinGroupScreen() {
             />
           </View>
 
-          <Text style={styles.note}>You're in as soon as you join — no approval needed.</Text>
+          <Text style={styles.note}>You're in as soon as you join. No approval needed.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

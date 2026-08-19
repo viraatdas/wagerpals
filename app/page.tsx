@@ -157,11 +157,11 @@ export default function Home() {
         router.push(`/groups/${newGroup.id}`);
       } else {
         const data = await response.json().catch(() => ({}));
-        setToast({ message: data.error || "Couldn't create the group — try again.", type: 'error' });
+        setToast({ message: data.error || "Couldn't create the group. Try again.", type: 'error' });
       }
     } catch (error) {
       console.error('Failed to create group:', error);
-      setToast({ message: "Couldn't create the group — try again.", type: 'error' });
+      setToast({ message: "Couldn't create the group. Try again.", type: 'error' });
     } finally {
       setCreating(false);
     }
@@ -191,11 +191,11 @@ export default function Home() {
         setGroupCode('');
         fetchBoard(user.id);
       } else {
-        setToast({ message: data.error || "Couldn't join the group — try again.", type: 'error' });
+        setToast({ message: data.error || "Couldn't join the group. Try again.", type: 'error' });
       }
     } catch (error) {
       console.error('Failed to join group:', error);
-      setToast({ message: "Couldn't join the group — try again.", type: 'error' });
+      setToast({ message: "Couldn't join the group. Try again.", type: 'error' });
     } finally {
       setJoining(false);
     }

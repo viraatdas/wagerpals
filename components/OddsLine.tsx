@@ -38,19 +38,21 @@ export default function OddsLine({
 }: OddsLineProps) {
   const ratio = reducedOddsRatio(sideA.total, sideB.total);
   const classes = SIZE_CLASSES[size];
-  const isEmpty = ratio.a === '—';
+  const isEmpty = ratio.a === '' || ratio.b === '';
   const isCash = paymentType === 'cash';
 
   return (
     <div className={`flex items-baseline ${classes.gap} ${className ?? ''}`}>
-      <span
-        className={`font-mono font-medium tabular-nums ${classes.ratio}`}
-        aria-label={`Odds ${sideA.label} to ${sideB.label}: ${ratio.a} to ${ratio.b}`}
-      >
-        <span className={isEmpty ? 'text-ink-muted' : 'text-emerald'}>{ratio.a}</span>
-        <span className="px-1 text-ink-muted"> : </span>
-        <span className={isEmpty ? 'text-ink-muted' : 'text-crimson'}>{ratio.b}</span>
-      </span>
+      {!isEmpty && (
+        <span
+          className={`font-mono font-medium tabular-nums ${classes.ratio}`}
+          aria-label={`Odds ${sideA.label} to ${sideB.label}: ${ratio.a} to ${ratio.b}`}
+        >
+          <span className="text-emerald">{ratio.a}</span>
+          <span className="px-1 text-ink-muted"> : </span>
+          <span className="text-crimson">{ratio.b}</span>
+        </span>
+      )}
 
       <span className={`flex items-baseline gap-1.5 font-sans text-ink-secondary ${classes.stake}`}>
         {isCash ? (

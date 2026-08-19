@@ -115,7 +115,7 @@ export default function BetForm({
         } catch {
           // ignore parse failure
         }
-        const message = errorBody?.error || "Couldn't place that bet — try again.";
+        const message = errorBody?.error || "Couldn't place that bet. Try again.";
         setError({ message, code: errorBody?.code, shortfall: errorBody?.shortfall });
         if (errorBody?.code === 'INSUFFICIENT_FUNDS') {
           if (typeof errorBody?.balance === 'number') setFetchedBalance(errorBody.balance);
@@ -133,7 +133,7 @@ export default function BetForm({
       fetchBalance();
     } catch (err) {
       console.error('Failed to place bet:', err);
-      setError({ message: "Couldn't place that bet — try again." });
+      setError({ message: "Couldn't place that bet. Try again." });
     } finally {
       setLoading(false);
     }
@@ -210,9 +210,9 @@ export default function BetForm({
           <div className="panel flex items-center justify-between text-sm px-4 py-3">
             <span className="eyebrow">Wallet balance</span>
             <div className="flex items-center gap-3">
-              <span className="numeral text-lg text-foreground">
-                {typeof balance === 'number' ? `$${balance.toFixed(2)}` : '—'}
-              </span>
+              {typeof balance === 'number' && (
+                <span className="numeral text-lg text-foreground">${balance.toFixed(2)}</span>
+              )}
               <Link href="/profile" className="press text-accent hover:underline text-sm font-medium">
                 Add funds
               </Link>
@@ -221,10 +221,8 @@ export default function BetForm({
         ) : (
           <div className="panel flex items-center justify-between text-sm px-4 py-3">
             <span className="eyebrow">W balance</span>
-            {typeof wpBalance === 'number' ? (
+            {typeof wpBalance === 'number' && (
               <WAmount value={wpBalance} className="text-lg text-foreground" />
-            ) : (
-              <span className="numeral text-lg text-foreground">—</span>
             )}
           </div>
         )}
@@ -310,7 +308,7 @@ export default function BetForm({
           ) : (
             <div className="tone-pending tone-surface border rounded-xl p-3 text-sm tone-text space-y-1">
               <p>
-                Not enough W — you have <WAmount value={wpBalance ?? 0} className="text-sm" />.
+                Not enough W. You have <WAmount value={wpBalance ?? 0} className="text-sm" />.
               </p>
               <p className="text-ink-muted">Out of W? You get W10 back every day.</p>
             </div>

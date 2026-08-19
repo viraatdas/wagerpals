@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
         category: 'resolutions',
         payload: {
           title: '↩️ Event Cancelled',
-          body: `"${event.title}" was cancelled — every stake has been refunded.`,
+          body: `"${event.title}" was cancelled. Every stake has been refunded.`,
           url: `/events/${event_id}`,
           eventId: event_id,
           tag: `resolution-${event_id}`,

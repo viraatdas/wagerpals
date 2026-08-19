@@ -192,7 +192,7 @@ export default function AuthScreen() {
           <Text style={styles.cardTitle}>{step === 'email' ? 'Welcome' : 'Verify your email'}</Text>
           <Text style={styles.cardSubtitle}>
             {step === 'email'
-              ? 'Sign in with email or Google — same address, same WagerPals account, automatically.'
+              ? 'Sign in with email or Google. Same address, same WagerPals account, automatically.'
               : `Enter the code sent to ${email.trim()}`}
           </Text>
 

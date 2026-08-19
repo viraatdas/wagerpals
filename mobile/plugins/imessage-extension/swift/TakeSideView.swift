@@ -40,7 +40,7 @@ struct TakeSideView: View {
 
                 if let refreshError = refreshError {
                     VStack(alignment: .leading, spacing: 4) {
-                        WagerErrorBanner(message: "Showing the last known state — \(refreshError)")
+                        WagerErrorBanner(message: "Showing the last known state: \(refreshError)")
                     }
                 }
 
@@ -199,7 +199,7 @@ struct TakeSideView: View {
 
     private var statusText: String {
         if let winningSide = preview.winningSide {
-            return "This wager is settled — \(winningSide) won."
+            return "This wager is settled. \(winningSide) won."
         }
         return "This wager is \(preview.status) and no longer accepting bets."
     }

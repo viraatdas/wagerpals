@@ -3,8 +3,8 @@
 //
 // EmptyState renders the "blank betting slip" idiom from DESIGN-SPEC.md
 // instead of an icon-in-a-circle: the same card shape as a real wager, a
-// dashed Line-colored border, ghosted "— : —" odds in mono at 40% opacity,
-// and product-voice copy — never system voice like "No X yet. Create one."
+// dashed Line-colored border, and product-voice copy — never system voice
+// like "No X yet. Create one."
 //
 // NOTE on FlatList usage: none of these assume `flex: 1` — they size to
 // their content (with `compact` trimming vertical padding for tight spots).
@@ -93,17 +93,13 @@ export interface EmptyStateProps {
   style?: StyleProp<ViewStyle>;
 }
 
-/** The "blank betting slip" idiom: the same card shape as a real wager, a
- * dashed Line-colored border, and ghosted "— : —" odds at 40% opacity,
- * instead of an icon-in-a-circle. `title`/`message` should read in the
- * product's own voice ("No action yet. Start the first bet.") rather than
- * system voice. */
+/** The "blank betting slip" idiom: the same card shape as a real wager and a
+ * dashed Line-colored border, instead of an icon-in-a-circle. `title`/
+ * `message` should read in the product's own voice ("No action yet. Start
+ * the first bet.") rather than system voice. */
 export function EmptyState({ title, message, actionLabel, onAction, compact, style }: EmptyStateProps) {
   return (
     <View style={[styles.slip, compact ? styles.shellCompact : styles.shellRoomy, style]}>
-      <Text style={styles.slipOdds} numberOfLines={1}>
-        — : —
-      </Text>
       <Text style={styles.title} numberOfLines={2} ellipsizeMode="tail">
         {title}
       </Text>
@@ -164,13 +160,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: colors.border,
-  },
-  slipOdds: {
-    fontFamily: font.mono,
-    fontSize: tokens.fontSize['2xl'],
-    color: colors.text,
-    opacity: 0.4,
-    marginBottom: spacing.md,
   },
   iconChip: {
     width: 64,

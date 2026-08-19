@@ -74,11 +74,11 @@ export default function GroupManagePage() {
         fetchGroup();
       } else {
         const data = await response.json();
-        setToast({ message: data.error || `Couldn't update @${targetUsername} — try again.`, type: 'error' });
+        setToast({ message: data.error || `Couldn't update @${targetUsername}. Try again.`, type: 'error' });
       }
     } catch (error) {
       console.error('Failed to perform action:', error);
-      setToast({ message: `Couldn't update @${targetUsername} — try again.`, type: 'error' });
+      setToast({ message: `Couldn't update @${targetUsername}. Try again.`, type: 'error' });
     } finally {
       setProcessing(false);
     }
@@ -108,11 +108,11 @@ export default function GroupManagePage() {
         fetchGroup();
       } else {
         const data = await response.json();
-        setToast({ message: data.error || "Couldn't update the group — try again.", type: 'error' });
+        setToast({ message: data.error || "Couldn't update the group. Try again.", type: 'error' });
       }
     } catch (error) {
       console.error('Failed to update group settings:', error);
-      setToast({ message: "Couldn't update the group — try again.", type: 'error' });
+      setToast({ message: "Couldn't update the group. Try again.", type: 'error' });
     } finally {
       setProcessing(false);
     }
@@ -137,11 +137,11 @@ export default function GroupManagePage() {
         router.push('/');
       } else {
         const data = await response.json();
-        setToast({ message: data.error || "Couldn't delete the group — try again.", type: 'error' });
+        setToast({ message: data.error || "Couldn't delete the group. Try again.", type: 'error' });
       }
     } catch (error) {
       console.error('Failed to delete group:', error);
-      setToast({ message: "Couldn't delete the group — try again.", type: 'error' });
+      setToast({ message: "Couldn't delete the group. Try again.", type: 'error' });
     } finally {
       setDeleting(false);
     }

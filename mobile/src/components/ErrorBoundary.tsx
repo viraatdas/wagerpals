@@ -53,7 +53,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             </View>
           ) : (
             <Text style={styles.message}>
-              We hit a snag loading this screen. Try again — if it keeps happening, restart the app.
+              We hit a snag loading this screen. Try again. If it keeps happening, restart the app.
             </Text>
           )}
           <Pressable

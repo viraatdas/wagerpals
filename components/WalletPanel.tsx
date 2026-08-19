@@ -125,17 +125,17 @@ export default function WalletPanel({ className }: WalletPanelProps) {
           fetchWallet();
         }
       } else {
-        setToast({ message: data.error || "Couldn't complete that — try again.", type: 'error' });
+        setToast({ message: data.error || "Couldn't complete that. Try again.", type: 'error' });
       }
     } catch {
-      setToast({ message: "Couldn't complete that — try again.", type: 'error' });
+      setToast({ message: "Couldn't complete that. Try again.", type: 'error' });
     } finally {
       setWalletLoading(false);
     }
   };
 
   const handleDepositComplete = async () => {
-    setToast({ message: 'Deposited — your balance updates shortly.', type: 'success' });
+    setToast({ message: 'Deposited. Your balance updates shortly.', type: 'success' });
     resetWalletForm();
     await fetchWallet();
     setTimeout(fetchWallet, 1500);
@@ -348,7 +348,7 @@ export default function WalletPanel({ className }: WalletPanelProps) {
         ) : cashTransactions.length === 0 ? (
           <EmptySlip
             headline="Nothing in the ledger yet."
-            body="Deposit to fund your wallet — every bet, win, and payout lands here."
+            body="Deposit to fund your wallet. Every bet, win, and payout lands here."
             action={{ label: 'Make a deposit', onClick: () => setWalletAction('deposit') }}
           />
         ) : (
@@ -406,7 +406,7 @@ function DepositPaymentForm({
     });
 
     if (error) {
-      onError(error.message || "Couldn't complete that deposit — try again.");
+      onError(error.message || "Couldn't complete that deposit. Try again.");
       setLoading(false);
       return;
     }
@@ -414,7 +414,7 @@ function DepositPaymentForm({
     if (paymentIntent?.status === 'succeeded' || paymentIntent?.status === 'processing') {
       await onSuccess();
     } else {
-      onError("Couldn't complete that deposit — try again.");
+      onError("Couldn't complete that deposit. Try again.");
     }
 
     setLoading(false);

@@ -120,11 +120,11 @@ function extractErrorMessage(res: Response, data: any): string {
     const retryMs = typeof data?.retry_after_ms === 'number' ? data.retry_after_ms : undefined;
     const seconds = retryMs != null ? Math.max(1, Math.ceil(retryMs / 1000)) : undefined;
     return seconds != null
-      ? `You're commenting too fast — try again in ${seconds}s`
-      : "You're commenting too fast — try again in a moment";
+      ? `You're commenting too fast. Try again in ${seconds}s`
+      : "You're commenting too fast. Try again in a moment";
   }
   if (data && typeof data.error === 'string' && data.error.trim()) return data.error;
-  return `Couldn't do that (${res.status}) — try again.`;
+  return `Couldn't do that (${res.status}). Try again.`;
 }
 
 function countDescendants(node: CommentNode<CommentWithMeta>): number {
@@ -585,7 +585,7 @@ export default function CommentThread({
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         if (myRequestId !== requestIdRef.current) return;
-        setError(err instanceof Error ? err.message : "Couldn't load comments — try again.");
+        setError(err instanceof Error ? err.message : "Couldn't load comments. Try again.");
       } finally {
         if (myRequestId === requestIdRef.current) {
           setLoading(false);
@@ -761,7 +761,7 @@ export default function CommentThread({
           return next;
         });
         setTotalCount((prev) => Math.max(0, prev - 1));
-        throw err instanceof Error ? err : new Error("Couldn't post that comment — try again.");
+        throw err instanceof Error ? err : new Error("Couldn't post that comment. Try again.");
       }
     },
     [currentUserId, currentUsername, eventId, markJustLanded]
@@ -815,7 +815,7 @@ export default function CommentThread({
           return next;
         });
         setTotalCount((prev) => Math.max(0, prev - 1));
-        throw err instanceof Error ? err : new Error("Couldn't post that reply — try again.");
+        throw err instanceof Error ? err : new Error("Couldn't post that reply. Try again.");
       }
     },
     [currentUserId, currentUsername, eventId, markJustLanded]
@@ -845,7 +845,7 @@ export default function CommentThread({
       setComments((prev) =>
         prev.map((c) => (c.id === comment.id ? { ...c, content: previousContent, edited_at: previousEditedAt } : c))
       );
-      throw err instanceof Error ? err : new Error("Couldn't save that comment — try again.");
+      throw err instanceof Error ? err : new Error("Couldn't save that comment. Try again.");
     }
   }, []);
 
@@ -886,7 +886,7 @@ export default function CommentThread({
           : [...prev, target]
       );
       setTotalCount((prev) => prev + 1);
-      setToast({ message: err instanceof Error ? err.message : "Couldn't delete that comment — try again.", type: 'error' });
+      setToast({ message: err instanceof Error ? err.message : "Couldn't delete that comment. Try again.", type: 'error' });
     } finally {
       setDeletingIds((prev) => {
         const next = new Set(prev);
@@ -939,7 +939,7 @@ export default function CommentThread({
         })
         .catch((err) => {
           setComments((prev) => prev.map((c) => (c.id === comment.id ? { ...c, reactions: previousReactions } : c)));
-          setToast({ message: err instanceof Error ? err.message : "Couldn't add that reaction — try again.", type: 'error' });
+          setToast({ message: err instanceof Error ? err.message : "Couldn't add that reaction. Try again.", type: 'error' });
         })
         .finally(() => {
           setReactionInFlight((prev) => {
@@ -1059,7 +1059,7 @@ export default function CommentThread({
       ) : tree.length === 0 ? (
         <EmptySlip
           headline="No one has said anything yet."
-          body="Be the first to weigh in on this market — your take could shape how the group calls it."
+          body="Be the first to weigh in on this market. Your take could shape how the group calls it."
           action={
             canWrite
               ? { label: 'Write the first comment', onClick: () => document.getElementById(composerId)?.focus() }

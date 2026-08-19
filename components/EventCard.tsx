@@ -110,7 +110,7 @@ export default function EventCard({ event, groupName, className }: EventCardProp
   const quote = event.latest_comment
     ? { username: event.latest_comment.username, note: event.latest_comment.content }
     : latestNote(event.bets);
-  const playerWord = event.total_participants === 1 ? 'player' : 'players';
+  const betWord = event.total_bets === 1 ? 'bet' : 'bets';
 
   return (
     <Link href={`/events/${event.id}`} className="block">
@@ -122,12 +122,12 @@ export default function EventCard({ event, groupName, className }: EventCardProp
           <div className="flex min-w-0 items-center gap-2.5">
             {participants.length > 0 ? (
               <AvatarStack people={participants} size="sm" max={4} className="shrink-0" />
-            ) : event.total_participants > 0 ? (
+            ) : event.total_bets > 0 ? (
               <span
-                aria-label={`${event.total_participants} ${playerWord}`}
+                aria-label={`${event.total_bets} ${betWord}`}
                 className="inline-flex h-6 shrink-0 items-center justify-center rounded-pill border-2 border-amber bg-amber/15 px-2 font-mono text-xs font-medium text-amber-ink"
               >
-                {event.total_participants}
+                {event.total_bets}
               </span>
             ) : null}
             <div className="min-w-0">
@@ -172,19 +172,19 @@ export default function EventCard({ event, groupName, className }: EventCardProp
         <div className="mt-4 border-t border-line pt-3">
           {quote ? (
             <p className="truncate font-sans text-sm text-ink-muted">
-              <span className="text-ink-secondary">&ldquo;{quote.note}&rdquo;</span> — {quote.username}
+              <span className="text-ink-secondary">&ldquo;{quote.note}&rdquo;</span> &middot; {quote.username}
             </p>
-          ) : event.total_participants > 0 ? (
+          ) : event.total_bets > 0 ? (
             <div className="flex items-center gap-2">
               {participants.length > 0 && (
                 <AvatarStack people={participants} size="sm" max={4} />
               )}
               <span className="font-sans text-sm text-ink-muted">
-                <CountUp value={event.total_participants} formatter="plain" /> {playerWord}
+                <CountUp value={event.total_bets} formatter="plain" /> {betWord}
               </span>
             </div>
           ) : (
-            <p className="font-sans text-sm text-ink-muted">No players yet</p>
+            <p className="font-sans text-sm text-ink-muted">No bets yet</p>
           )}
         </div>
       </div>

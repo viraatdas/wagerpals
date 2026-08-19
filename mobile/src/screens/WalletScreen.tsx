@@ -362,7 +362,7 @@ export default function WalletScreen() {
       setActiveSheet(null);
       setWithdrawAmount('');
       if (result.duplicate) {
-        Alert.alert('Already processed', 'This withdrawal was already submitted — no need to resubmit it.');
+        Alert.alert('Already processed', 'This withdrawal was already submitted. No need to resubmit it.');
       }
       loadWallet({ silent: true });
     } catch (err) {
@@ -460,7 +460,7 @@ export default function WalletScreen() {
           <Pill label={`${formatMoney(escrowed)} escrowed`} tone="info" icon="lock-closed-outline" />
         </View>
         <Text style={styles.escrowExplainer}>
-          Escrowed funds are held for bets on events that haven&apos;t settled yet. They&apos;re yours — you just
+          Escrowed funds are held for bets on events that haven&apos;t settled yet. They&apos;re yours. You just
           can&apos;t spend or withdraw them until the event resolves.
         </Text>
       </Card>
@@ -495,7 +495,7 @@ export default function WalletScreen() {
         <Card style={styles.handoffCard}>
           <Ionicons name="information-circle-outline" size={18} color={colors.brand} style={styles.handoffIcon} />
           <Text style={styles.handoffText}>
-            Complete your deposit in the browser — we&apos;ll refresh your balance automatically when you&apos;re back.
+            Complete your deposit in the browser. We&apos;ll refresh your balance automatically when you&apos;re back.
           </Text>
         </Card>
       ) : null}
@@ -547,7 +547,7 @@ export default function WalletScreen() {
         <View style={styles.depositNotice}>
           <Ionicons name="shield-checkmark-outline" size={16} color={colors.brand} style={styles.depositNoticeIcon} />
           <Text style={styles.depositNoticeText}>
-            You&apos;ll finish this securely on wagerpals.io in your browser — your card details never pass through
+            You&apos;ll finish this securely on wagerpals.io in your browser. Your card details never pass through
             this app. Come back here afterward and your balance updates automatically.
           </Text>
         </View>

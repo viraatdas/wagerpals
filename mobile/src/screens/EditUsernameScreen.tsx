@@ -103,7 +103,7 @@ export default function EditUsernameScreen() {
         // surface as a raw 500 under concurrent requests for the same name.
         // Don't show the raw error — a generic "try again" is honest and
         // actionable without implying the app is broken.
-        setError("That username didn't save — try again.");
+        setError("That username didn't save. Try again.");
       } else {
         setError(apiErr.userMessage);
       }

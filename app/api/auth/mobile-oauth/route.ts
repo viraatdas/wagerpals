@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 
 // This endpoint initiates OAuth by redirecting straight to Stack Auth's
 // authorize endpoint, which itself redirects on to the provider (Google).
@@ -55,28 +54,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(signInFallbackUrl.toString());
     }
 
-    // mobile-oauth-callback exchanges the authorization code with a
-    // hardcoded `code_verifier: 'none'` (this flow holds no real per-request
-    // PKCE secret server-side) — the code_challenge sent here must be the
-    // S256 hash of that same literal string so the two ends of the PKCE
-    // handshake agree. This mirrors the existing token-exchange code
-    // exactly; it does not change it.
-    const codeChallenge = crypto.createHash('sha256').update('none').digest('base64url');
-
-    const authorizeUrl = new URL(`https://api.stack-auth.com/api/v1/auth/oauth/authorize/${provider}`);
-    authorizeUrl.searchParams.set('client_id', projectId);
-    authorizeUrl.searchParams.set('client_secret', publishableKey);
-    authorizeUrl.searchParams.set('redirect_uri', redirectUri);
-    authorizeUrl.searchParams.set('scope', 'legacy');
-    authorizeUrl.searchParams.set('state', state);
-    authorizeUrl.searchParams.set('grant_type', 'authorization_code');
-    authorizeUrl.searchParams.set('code_challenge', codeChallenge);
-    authorizeUrl.searchParams.set('code_challenge_method', 'S256');
-    authorizeUrl.searchParams.set('response_type', 'code');
-    authorizeUrl.searchParams.set('type', 'authenticate');
-    authorizeUrl.searchParams.set('error_redirect_url', signInFallbackUrl.toString());
-
-    return NextResponse.redirect(authorizeUrl.toString());
+    // Ride the Stack SDK's own web flow instead of hand-rolling the
+    // authorize redirect. The previous version 302'd straight through
+    // api.stack-auth.com to Google; Safari (and ASWebAuthenticationSession)
+    // treats a cookie set on a pure redirect bounce as tracker behavior and
+    // strips it, so Stack's inner-state cookie was gone by the time Google
+    // returned: the "inner OAuth cookie" error mid-sign-in on iOS. The
+    // signin page with auto=google fires signInWithOAuth('google')
+    // immediately on load (no second "Continue with Google" ask) and the
+    // SDK sets its OAuth state on OUR domain during a real page load, which
+    // survives. After the session lands, the page's existing mobile_callback
+    // handoff mints tokens via /api/auth/mobile-session and returns to the
+    // app scheme.
+    const autoSignInUrl = new URL(`${appUrl}/auth/signin`);
+    autoSignInUrl.searchParams.set('mobile_callback', mobileCallback);
+    autoSignInUrl.searchParams.set('auto', provider);
+    return NextResponse.redirect(autoSignInUrl.toString());
   } catch (error) {
     console.error('OAuth init error:', error);
     return NextResponse.redirect(signInFallbackUrl.toString());

@@ -403,7 +403,7 @@ export default function ProfileScreen() {
         </Card>
 
         {loadError && userData ? (
-          <Text style={styles.staleNotice}>Some data may be out of date — pull to refresh.</Text>
+          <Text style={styles.staleNotice}>Some data may be out of date. Pull to refresh.</Text>
         ) : null}
 
         <Text style={styles.versionText}>WagerPals v1.0.1</Text>

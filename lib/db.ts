@@ -279,6 +279,15 @@ export const db = {
       return user;
     },
 
+    /** Re-stamps the CURRENT username onto every table that denormalized it
+        at write time (bets, comments, activities). Called by syncUser after
+        a rename so ledgers and feeds never show a stale name. */
+    cascadeUsername: async (userId: string, username: string): Promise<void> => {
+      await sql`UPDATE bets SET username = ${username} WHERE user_id = ${userId} AND username IS DISTINCT FROM ${username}`;
+      await sql`UPDATE comments SET username = ${username} WHERE user_id = ${userId} AND username IS DISTINCT FROM ${username}`;
+      await sql`UPDATE activities SET username = ${username} WHERE user_id = ${userId} AND username IS DISTINCT FROM ${username}`;
+    },
+
     update: async (id: string, data: Partial<User>): Promise<User | null> => {
       if (data.username !== undefined) {
         await sql`UPDATE users SET username = ${data.username} WHERE id = ${id}`;

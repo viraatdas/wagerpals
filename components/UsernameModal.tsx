@@ -58,7 +58,7 @@ export default function UsernameModal({ onSubmit, onSaved }: UsernameModalProps)
         window.setTimeout(() => onSaved?.(), 700);
       } catch (error: any) {
         setStatus('idle');
-        setError(error.message || "Couldn't save that username — try again.");
+        setError(error.message || "Couldn't save that username. Try again.");
       }
     }
   };
@@ -127,7 +127,7 @@ export default function UsernameModal({ onSubmit, onSaved }: UsernameModalProps)
         </form>
 
         <p className="field-hint text-center mt-6 relative">
-          You&apos;re signed in — email and Google with the same address share one account.
+          You&apos;re signed in. Email and Google with the same address share one account.
         </p>
       </div>
     </div>

@@ -311,7 +311,7 @@ async function debitWalletGuarded(
       currency
     ) : 0;
     const message = currency === 'wp'
-      ? `Not enough W — you have ${formatCurrencyAmount(balance, 'wp')}.`
+      ? `Not enough W. You have ${formatCurrencyAmount(balance, 'wp')}.`
       : `Insufficient balance. You have ${formatCurrencyAmount(balance, 'usd')} but ${DEBIT_CONTEXT_LABEL[context]} needs ${formatCurrencyAmount(amount, 'usd')}.`;
     throw new PaymentError(
       'INSUFFICIENT_FUNDS',
@@ -400,7 +400,7 @@ export async function placeCashBet(input: PlaceCashBetInput): Promise<PlaceCashB
       // Nothing has been written yet — throwing here rolls the whole
       // transaction back, which is the point (no partial holds/debits).
       const message = currency === 'wp'
-        ? `Not enough W — you have ${formatCurrencyAmount(currentBalance, 'wp')}.`
+        ? `Not enough W. You have ${formatCurrencyAmount(currentBalance, 'wp')}.`
         : `Insufficient balance. You have ${formatCurrencyAmount(currentBalance, 'usd')} but this bet needs ${formatCurrencyAmount(stake, 'usd')}.`;
       throw new PaymentError(
         'INSUFFICIENT_FUNDS',
@@ -431,7 +431,7 @@ export async function placeCashBet(input: PlaceCashBetInput): Promise<PlaceCashB
         'escrow_hold',
         ${-stake},
         'completed',
-        ${`Stake on "${input.side}" — ${event.title}`},
+        ${`Stake on "${input.side}": ${event.title}`},
         ${`bet:${holdId}`},
         ${input.eventId},
         ${currency}
@@ -656,7 +656,7 @@ export async function settleCashEvent(eventId: string, winningSide: string | nul
           'escrow_release',
           ${stake},
           'completed',
-          ${`Stake returned — "${event.title}"`},
+          ${`Stake returned: "${event.title}"`},
           ${`release:${eventId}:${u.user_id}:${seq}`},
           ${eventId},
           ${currency}
@@ -678,7 +678,7 @@ export async function settleCashEvent(eventId: string, winningSide: string | nul
             'payout',
             ${netWinnings},
             'completed',
-            ${`Winnings — "${event.title}"`},
+            ${`Winnings: "${event.title}"`},
             ${`payout:${eventId}:${u.user_id}:${seq}`},
             ${eventId},
             ${currency}
@@ -982,7 +982,7 @@ export async function withdrawFromWallet(params: {
     await tx.sql`SELECT balance FROM wallets WHERE user_id = ${params.userId} FOR UPDATE`;
 
     const key = params.idempotencyKey ? `withdraw:${params.userId}:${params.idempotencyKey}` : null;
-    const description = params.description || `Withdrawal $${amount.toFixed(2)} — payout pending`;
+    const description = params.description || `Withdrawal $${amount.toFixed(2)}: payout pending`;
 
     // Insert-first, not check-then-insert: a SELECT-then-INSERT race lets
     // two concurrent identical requests both pass the duplicate check, and

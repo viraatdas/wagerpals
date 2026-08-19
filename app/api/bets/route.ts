@@ -160,7 +160,7 @@ export async function DELETE(request: NextRequest) {
     // deletable exactly as before.
     if (bet.escrow_hold_id) {
       return NextResponse.json({
-        error: "Bets with escrowed stakes can't be deleted — the creator can cancel the event to refund everyone.",
+        error: "Bets with escrowed stakes can't be deleted. The creator can cancel the event to refund everyone.",
         code: 'CASH_BET_IMMUTABLE',
       }, { status: 400 });
     }

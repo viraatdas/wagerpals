@@ -105,7 +105,7 @@ enum WagerMessageComposer {
     }
 
     private static func summary(for preview: WagerPreview) -> String {
-        "\(preview.title) — \(preview.splitText) · \(preview.deadlineText)"
+        "\(preview.title): \(preview.splitText) · \(preview.deadlineText)"
     }
 
     // MARK: - Decode

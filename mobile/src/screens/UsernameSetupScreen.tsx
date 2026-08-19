@@ -78,7 +78,7 @@ export default function UsernameSetupScreen({ onUsernameSet }: UsernameSetupScre
       } else if (apiErr.status !== null && apiErr.status >= 500) {
         // Audit finding A6: username uniqueness is a TOCTOU race that can
         // surface as a raw 500 under concurrent requests for the same name.
-        setError("That username didn't save — try again.");
+        setError("That username didn't save. Try again.");
       } else {
         setError(apiErr.userMessage);
       }
@@ -115,7 +115,7 @@ export default function UsernameSetupScreen({ onUsernameSet }: UsernameSetupScre
           </LinearGradient>
           <Text style={styles.title}>Welcome to WagerPals</Text>
           <Text style={styles.subtitle}>
-            Pick a username — it's how friends find you and how your bets show up on the ledger.
+            Pick a username. It's how friends find you and how your bets show up on the ledger.
           </Text>
         </View>
 

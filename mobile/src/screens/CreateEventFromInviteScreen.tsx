@@ -345,8 +345,8 @@ export default function CreateEventFromInviteScreen() {
     if (!creatorUsername) {
       setSubmitError(
         creatorUsernameError
-          ? 'Could not load your profile — fix that above before creating an event.'
-          : 'Still loading your profile — try again in a moment.'
+          ? 'Could not load your profile. Fix that above before creating an event.'
+          : 'Still loading your profile. Try again in a moment.'
       );
       return;
     }
@@ -630,7 +630,7 @@ export default function CreateEventFromInviteScreen() {
                   users={subjectCandidates}
                   value={subjectUserId}
                   onChange={setSubjectUserId}
-                  placeholder="No one — general bet"
+                  placeholder="No one, general bet"
                   hint="Pick who this wager is about."
                 />
                 {subjectUserId ? (
@@ -641,7 +641,7 @@ export default function CreateEventFromInviteScreen() {
                     description={
                       notifySubject
                         ? `${subjectUsername ?? 'They'} will be notified about this bet.`
-                        : `Quiet bet — ${subjectUsername ?? 'they'} won't be notified.`
+                        : `Quiet bet: ${subjectUsername ?? 'they'} won't be notified.`
                     }
                   />
                 ) : null}

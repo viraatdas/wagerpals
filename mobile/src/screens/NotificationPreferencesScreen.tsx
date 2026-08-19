@@ -162,7 +162,7 @@ export default function NotificationPreferencesScreen() {
       // relaying whatever the server's ApiError.userMessage says for this
       // one flow — the user just flipped a switch, so "couldn't save that,
       // try again" is exactly what they need to know.
-      setSaveError("Couldn't save that — try again.");
+      setSaveError("Couldn't save that. Try again.");
       haptics.error();
       // Roll back to the last server-confirmed state, but re-apply anything
       // the user changed *after* this failed patch was sent — those edits

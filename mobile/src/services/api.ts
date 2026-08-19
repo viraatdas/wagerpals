@@ -607,7 +607,7 @@ class ApiService {
   async getActivity(userId: string, opts?: { limit?: number; offset?: number }): Promise<ActivityItem[]> {
     if (!userId) {
       throw new ApiError({
-        message: 'getActivity requires a userId — /api/activity always 400s without one.',
+        message: 'getActivity requires a userId. /api/activity always 400s without one.',
         status: null,
         kind: 'http',
         endpoint: '/api/activity',

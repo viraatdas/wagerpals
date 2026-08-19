@@ -1,9 +1,9 @@
 'use client';
 
 // The blank-betting-slip empty state that replaces every icon-in-a-circle.
-// Same card shape as a real wager, but with a dashed border and ghosted
-// odds — it should read as "the same object as a real wager card, just
-// unfilled," not as a distinct system-generated placeholder.
+// Same card shape as a real wager, but with a dashed border — it should
+// read as "the same object as a real wager card, just unfilled," not as a
+// distinct system-generated placeholder.
 //
 // Marked 'use client' only because the optional `action` prop may carry an
 // onClick handler, which needs a client component boundary to attach. If a
@@ -34,14 +34,7 @@ export default function EmptySlip({ headline, body, action, className }: EmptySl
     <div
       className={`rounded-card border-2 border-dashed border-line bg-card p-5 ${className ?? ''}`}
     >
-      <div
-        aria-hidden="true"
-        className="font-mono text-3xl font-medium tabular-nums text-ink opacity-40"
-      >
-        — : —
-      </div>
-
-      <div className="mt-3 space-y-1">
+      <div className="space-y-1">
         <p className="font-sans font-semibold text-ink">{headline ?? DEFAULT_HEADLINE}</p>
         <p className="font-sans text-sm text-ink-muted">{body ?? DEFAULT_BODY}</p>
       </div>

@@ -71,9 +71,9 @@ export default function JoinGroupPage() {
       const response = await fetch(`/api/groups?id=${params.id}`);
       if (!response.ok) {
         if (response.status === 404) {
-          setError('Group not found — check the invite link.');
+          setError('Group not found. Check the invite link.');
         } else {
-          setError("Couldn't load this group — try again.");
+          setError("Couldn't load this group. Try again.");
         }
         setLoading(false);
         return;
@@ -102,7 +102,7 @@ export default function JoinGroupPage() {
       }
     } catch (err) {
       console.error('Failed to fetch group:', err);
-      setError("Couldn't load this group — try again.");
+      setError("Couldn't load this group. Try again.");
     } finally {
       setLoading(false);
     }
@@ -128,9 +128,9 @@ export default function JoinGroupPage() {
         const contentType = response.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
           const data = await response.json();
-          setError(data.error || "Couldn't join the group — try again.");
+          setError(data.error || "Couldn't join the group. Try again.");
         } else {
-          setError("Couldn't join the group — try again.");
+          setError("Couldn't join the group. Try again.");
         }
         setJoining(false);
         return;
@@ -142,7 +142,7 @@ export default function JoinGroupPage() {
       setTimeout(() => router.push(`/groups/${params.id}`), 600);
     } catch (err) {
       console.error('Failed to join group:', err);
-      setError("Couldn't join the group — try again.");
+      setError("Couldn't join the group. Try again.");
       setJoining(false);
     }
   };
@@ -221,7 +221,7 @@ export default function JoinGroupPage() {
           {isNewUser && (
             <div className="tone-info tone-surface border rounded-2xl px-4 py-3 mb-6 w-full">
               <p className="text-sm font-medium tone-text">
-                Welcome to WagerPals — you&apos;ve been invited to join a group.
+                Welcome to WagerPals. You&apos;ve been invited to join a group.
               </p>
             </div>
           )}
@@ -247,7 +247,7 @@ export default function JoinGroupPage() {
             <div className="tone-pending tone-surface border rounded-2xl px-5 py-4 w-full mb-6 text-left">
               <p className="text-sm font-semibold tone-text mb-1">Request pending</p>
               <p className="text-sm text-muted">
-                This is a leftover request from before joining became instant — it&apos;s waiting on the group creator.
+                This is a leftover request from before joining became instant. It&apos;s waiting on the group creator.
               </p>
             </div>
           ) : error ? (
@@ -274,7 +274,7 @@ export default function JoinGroupPage() {
 
           {!hasPending && (
             <p className="field-hint mt-6">
-              Joining is instant — you&apos;ll land right in the group.
+              Joining is instant. You&apos;ll land right in the group.
             </p>
           )}
         </div>

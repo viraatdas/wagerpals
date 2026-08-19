@@ -50,13 +50,13 @@ export function splitPercent(aTotal: number, bTotal: number): ConfidenceSplit {
 // ---------------------------------------------------------------------------
 
 export interface OddsRatioParts {
-  /** Reduced integer for side A as a string, or "—" when no ratio can be formed. */
+  /** Reduced integer for side A as a string, or "" when no ratio can be formed. */
   a: string;
-  /** Reduced integer for side B as a string, or "—" when no ratio can be formed. */
+  /** Reduced integer for side B as a string, or "" when no ratio can be formed. */
   b: string;
 }
 
-const EMPTY_RATIO: OddsRatioParts = { a: '—', b: '—' };
+const EMPTY_RATIO: OddsRatioParts = { a: '', b: '' };
 
 function gcd(x: number, y: number): number {
   let a = Math.abs(Math.round(x));
@@ -108,8 +108,8 @@ function approximateRatio(ca: number, cb: number, maxTerm: number): [number, num
  *
  * A side with nothing staked on it has no finite odds against the other
  * side (division by zero), so both an empty pool and a one-sided-empty pool
- * fall back to the "—":"—" placeholder rather than showing "Infinity" or a
- * misleading "0".
+ * fall back to an empty pair rather than showing "Infinity" or a misleading
+ * "0" — callers should skip rendering the ratio entirely in that case.
  */
 export function reducedOddsRatio(aTotal: number, bTotal: number): OddsRatioParts {
   const a = Math.max(0, aTotal || 0);
@@ -131,9 +131,10 @@ export function reducedOddsRatio(aTotal: number, bTotal: number): OddsRatioParts
   return { a: String(ca), b: String(cb) };
 }
 
-/** Convenience string form of {@link reducedOddsRatio}, e.g. `"3 : 1"`. */
+/** Convenience string form of {@link reducedOddsRatio}, e.g. `"3 : 1"`, or `""` when no ratio can be formed. */
 export function oddsRatio(aTotal: number, bTotal: number): string {
   const parts = reducedOddsRatio(aTotal, bTotal);
+  if (!parts.a || !parts.b) return '';
   return `${parts.a} : ${parts.b}`;
 }
 

@@ -112,7 +112,7 @@ export default function CommentForm({
         setContent('');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't post that — try again.");
+      setError(err instanceof Error ? err.message : "Couldn't post that. Try again.");
     } finally {
       setSubmitting(false);
     }

@@ -248,8 +248,6 @@ struct WagerSignedOutView: View {
             VStack(spacing: 18) {
                 wordmark(size: 30)
 
-                bettingSlipMotif
-
                 Text("Sign in to WagerPals to start a wager.")
                     .font(.subheadline)
                     .foregroundColor(.wagerInkSecondary)
@@ -280,28 +278,6 @@ struct WagerSignedOutView: View {
                 .font(.system(size: size, weight: .heavy, design: .rounded))
                 .foregroundColor(.wagerEmerald)
         }
-    }
-
-    /// A nod to the web/mobile "blank betting slip" empty-state idiom
-    /// (dashed border, ghosted "— : —" placeholder) — the wager that's
-    /// waiting on a signed-in user to fill it in.
-    private var bettingSlipMotif: some View {
-        HStack(spacing: 10) {
-            Text("—")
-            Spacer(minLength: 12)
-            Text(":").opacity(0.6)
-            Spacer(minLength: 12)
-            Text("—")
-        }
-        .font(.system(.body, design: .monospaced))
-        .foregroundColor(.wagerInk.opacity(0.4))
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .frame(maxWidth: 220)
-        .overlay(
-            RoundedRectangle(cornerRadius: 10) // --radius-card
-                .strokeBorder(Color.wagerLine, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-        )
     }
 }
 

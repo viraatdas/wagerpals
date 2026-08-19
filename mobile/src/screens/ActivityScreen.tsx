@@ -58,7 +58,7 @@ function getSentence(item: ActivityItem): string {
     case 'bet':
       return `${who} bet ${item.payment_type === 'cash' ? formatMoney(item.amount ?? 0) : formatW(item.amount ?? 0)} on ${item.side ?? 'a side'}`;
     case 'resolution':
-      return item.winning_side ? `${item.winning_side} won — event resolved` : 'Event resolved';
+      return item.winning_side ? `${item.winning_side} won. Event resolved` : 'Event resolved';
     case 'event_created':
       return `${who} created a new event`;
     case 'comment':
@@ -104,7 +104,7 @@ function SentenceRuns({ item }: { item: ActivityItem }) {
         {item.winning_side ? (
           <>
             <Text style={styles.sentenceWin}>{item.winning_side}</Text>
-            <Text> won — event resolved</Text>
+            <Text> won. Event resolved</Text>
           </>
         ) : (
           <Text>Event resolved</Text>

@@ -175,7 +175,7 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, paymentType 
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Couldn't delete that bet — try again.");
+        throw new Error(error.error || "Couldn't delete that bet. Try again.");
       }
 
       if (onBetDeleted) {
@@ -184,7 +184,7 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, paymentType 
       setToast({ message: 'Bet deleted', type: 'success' });
     } catch (error: any) {
       console.error('Failed to delete bet:', error);
-      setToast({ message: "Couldn't delete that bet — try again.", type: 'error' });
+      setToast({ message: "Couldn't delete that bet. Try again.", type: 'error' });
     } finally {
       setDeletingBets(prev => {
         const newSet = new Set(prev);

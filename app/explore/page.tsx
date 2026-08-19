@@ -88,7 +88,7 @@ export default function Explore() {
           )}
         </div>
         <p className="mt-2 font-sans text-sm text-ink-secondary">
-          Public groups anyone can join — no invite code needed.
+          Public groups anyone can join. No invite code needed.
         </p>
       </div>
 

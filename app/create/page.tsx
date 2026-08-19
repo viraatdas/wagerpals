@@ -191,7 +191,7 @@ function CreateEventForm() {
     if (paymentType === 'cash' && stakeMode === 'fixed') {
       const parsedStake = parseFloat(stake);
       if (isNaN(parsedStake) || parsedStake <= 0 || parsedStake > 500) {
-        setToast({ message: 'Stake per player must be between $0.01 and $500.', type: 'warning' });
+        setToast({ message: 'Stake per bettor must be between $0.01 and $500.', type: 'warning' });
         return;
       }
       stakeAmount = Math.round(parsedStake * 100) / 100;
@@ -226,7 +226,7 @@ function CreateEventForm() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error('Failed to create event:', errorData);
-        setToast({ message: errorData.error || "Couldn't create the event — try again.", type: 'error' });
+        setToast({ message: errorData.error || "Couldn't create the event. Try again.", type: 'error' });
         return;
       }
 
@@ -236,11 +236,11 @@ function CreateEventForm() {
         router.push(`/events/${event.id}`);
       } else {
         console.error('No event ID returned:', event);
-        setToast({ message: 'Event created — open it from your groups.', type: 'error' });
+        setToast({ message: 'Event created. Open it from your groups.', type: 'error' });
       }
     } catch (error) {
       console.error('Failed to create event:', error);
-      setToast({ message: "Couldn't create the event — try again.", type: 'error' });
+      setToast({ message: "Couldn't create the event. Try again.", type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -610,7 +610,7 @@ function CreateEventForm() {
                   {paymentType === 'none' && <SelectedCheck />}
                 </div>
                 <div className="flex items-center gap-1 text-sm text-muted mt-0.5">
-                  Stakes <WMark className="h-3 w-3" /> — no real money
+                  Stakes <WMark className="h-3 w-3" />, no real money
                 </div>
               </button>
               <button
@@ -654,7 +654,7 @@ function CreateEventForm() {
 
                 {stakeMode === 'fixed' ? (
                   <div>
-                    <label htmlFor="stake" className="field-label">Stake per player</label>
+                    <label htmlFor="stake" className="field-label">Stake per bettor</label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-muted pointer-events-none">$</span>
                       <input
@@ -679,7 +679,7 @@ function CreateEventForm() {
                   </div>
                 ) : (
                   <p className="field-hint">
-                    Each player chooses their own stake. Winners split the pot in proportion to what they staked.
+                    Each bettor chooses their own stake. Winners split the pot in proportion to what they staked.
                   </p>
                 )}
 

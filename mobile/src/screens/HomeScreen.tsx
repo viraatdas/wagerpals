@@ -89,7 +89,7 @@ const WagerCard = React.memo(function WagerCard({ item, onPress }: WagerCardProp
   const potTotal = sideAStats.total + sideBStats.total;
   const isCash = item.payment_type === 'cash';
   const previewBettors = item.bettor_preview?.slice(0, 3) ?? [];
-  const playerCount = item.total_participants ?? 0;
+  const betCount = item.total_bets ?? 0;
 
   return (
     <Card onPress={() => onPress(item)} style={styles.wagerCard}>
@@ -145,11 +145,11 @@ const WagerCard = React.memo(function WagerCard({ item, onPress }: WagerCardProp
         {item.latest_comment ? (
           <Text style={styles.humanRowText} numberOfLines={1} ellipsizeMode="tail">
             <Text style={styles.humanRowQuote}>&ldquo;{truncate(item.latest_comment.content, 72)}&rdquo;</Text>
-            <Text style={styles.humanRowAuthor}> — {truncate(item.latest_comment.username, 20)}</Text>
+            <Text style={styles.humanRowAuthor}> &middot; {truncate(item.latest_comment.username, 20)}</Text>
           </Text>
         ) : (
           <Text style={styles.humanRowText} numberOfLines={1}>
-            {playerCount} player{playerCount === 1 ? '' : 's'}
+            {betCount} bet{betCount === 1 ? '' : 's'}
           </Text>
         )}
       </View>
