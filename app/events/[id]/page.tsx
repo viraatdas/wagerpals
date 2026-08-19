@@ -18,7 +18,7 @@ import WAmount, { WMark } from '@/components/WMark';
 import { AvatarPerson } from '@/components/AvatarStack';
 import { splitPercent } from '@/lib/odds';
 import { EscrowHoldStatus, EventWithStats, NetResult } from '@/lib/types';
-import { calculateNetResults } from '@/lib/utils';
+import { calculateNetResults, handle } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -453,7 +453,7 @@ export default function EventPage() {
               the resolve area (see the "Resolve market" section below). */}
           {event.creator_username && (
             <p className="field-hint mb-6">
-              Started by <span className="font-medium text-ink">@{event.creator_username}</span>. Only they can settle it.
+              Started by <span className="font-medium text-ink">{handle(event.creator_username)}</span>. Only they can settle it.
             </p>
           )}
 

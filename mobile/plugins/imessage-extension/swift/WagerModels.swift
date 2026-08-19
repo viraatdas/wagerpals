@@ -312,3 +312,110 @@ struct WagerTakeSideResponse: Codable, Hashable, Sendable {
         case preview
     }
 }
+
+// MARK: - Live wagers (compact-mode quick strip)
+
+/// One side's aggregate stake, as returned inside `side_stats` by
+/// GET /api/events?groupId=. Plain numbers on the wire (not the
+/// stringified-timestamp case `decodeTolerantDouble` guards against), so a
+/// synthesized `Codable` is enough.
+struct WagerSideStat: Codable, Hashable, Sendable {
+    let count: Int
+    let total: Double
+}
+
+struct WagerResolutionSummary: Codable, Hashable, Sendable {
+    let winningSide: String
+
+    enum CodingKeys: String, CodingKey {
+        case winningSide = "winning_side"
+    }
+}
+
+/// One event as returned by `GET /api/events?groupId=<id>` (the same route
+/// the main app's board uses) — richer than `WagerPreview` (keyed
+/// `side_stats` rather than flat `side_a_count`/`side_b_count`, a nested
+/// `resolution`), so this decodes the wire shape directly and exposes a
+/// `.preview` computed property to bridge into the shared `WagerPreview`
+/// type the rest of the extension (bubble composer, TakeSideView) already
+/// understands.
+struct WagerEventSummary: Codable, Hashable, Sendable, Identifiable {
+    let id: String
+    let title: String
+    let sideA: String
+    let sideB: String
+    let groupId: String
+    /// "active" | "resolved" (see `WagerPreview.status`).
+    let status: String
+    let paymentType: WagerPaymentType
+    let stakeAmount: Double?
+    /// Milliseconds since epoch.
+    let endTime: Double
+    let totalBets: Int
+    let totalParticipants: Int
+    let sideStats: [String: WagerSideStat]
+    let resolution: WagerResolutionSummary?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case sideA = "side_a"
+        case sideB = "side_b"
+        case groupId = "group_id"
+        case status
+        case paymentType = "payment_type"
+        case stakeAmount = "stake_amount"
+        case endTime = "end_time"
+        case totalBets = "total_bets"
+        case totalParticipants = "total_participants"
+        case sideStats = "side_stats"
+        case resolution
+    }
+
+    // Hand-written (rather than synthesized) so a field this extension
+    // doesn't strictly need never turns a whole card into a decode failure —
+    // same defensive posture as `WagerGroup.init(from:)` above, and the same
+    // reason `WagerLocalCache` can safely persist these between launches.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        sideA = try container.decode(String.self, forKey: .sideA)
+        sideB = try container.decode(String.self, forKey: .sideB)
+        groupId = try container.decode(String.self, forKey: .groupId)
+        status = try container.decode(String.self, forKey: .status)
+        paymentType = (try? container.decode(WagerPaymentType.self, forKey: .paymentType)) ?? .none
+        stakeAmount = try container.decodeIfPresent(Double.self, forKey: .stakeAmount)
+        endTime = try container.decodeTolerantDouble(forKey: .endTime)
+        totalBets = (try? container.decode(Int.self, forKey: .totalBets)) ?? 0
+        totalParticipants = (try? container.decode(Int.self, forKey: .totalParticipants)) ?? 0
+        sideStats = (try? container.decode([String: WagerSideStat].self, forKey: .sideStats)) ?? [:]
+        resolution = try? container.decodeIfPresent(WagerResolutionSummary.self, forKey: .resolution)
+    }
+}
+
+extension WagerEventSummary {
+    var isOpen: Bool { status == "active" }
+
+    var preview: WagerPreview {
+        let statA = sideStats[sideA]
+        let statB = sideStats[sideB]
+        return WagerPreview(
+            id: id,
+            title: title,
+            sideA: sideA,
+            sideB: sideB,
+            endTime: endTime,
+            status: status,
+            winningSide: resolution?.winningSide,
+            paymentType: paymentType,
+            stakeAmount: stakeAmount,
+            totalBets: totalBets,
+            totalParticipants: totalParticipants,
+            sideACount: statA?.count ?? 0,
+            sideBCount: statB?.count ?? 0,
+            sideATotal: statA?.total,
+            sideBTotal: statB?.total
+        )
+    }
+}

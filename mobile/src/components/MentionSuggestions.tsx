@@ -12,6 +12,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Avatar } from './Avatar';
 import { colors, font, radius, spacing, tokens } from '../theme';
 import { selectionTick } from '../utils/haptics';
+import { handle } from '../utils/format';
 import type { MentionMember } from '../utils/mentions';
 
 export interface MentionSuggestionsProps {
@@ -44,12 +45,12 @@ export function MentionSuggestions({ candidates, onPick }: MentionSuggestionsPro
             key={member.user_id}
             onPress={() => handlePick(member)}
             accessibilityRole="button"
-            accessibilityLabel={`Mention @${member.username}`}
+            accessibilityLabel={`Mention ${handle(member.username)}`}
             style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           >
             <Avatar username={member.username} size="sm" />
             <Text style={styles.username} numberOfLines={1}>
-              @{member.username}
+              {handle(member.username)}
             </Text>
           </Pressable>
         ))}

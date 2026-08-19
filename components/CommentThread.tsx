@@ -16,6 +16,7 @@ import CommentForm, { type MentionMember } from '@/components/CommentForm';
 import ConfirmationModal from '@/components/ConfirmationModal';
 import Toast, { type ToastType } from '@/components/Toast';
 import EmptySlip from '@/components/EmptySlip';
+import { handle } from '@/lib/utils';
 
 export interface CommentThreadProps {
   eventId: string;
@@ -136,7 +137,10 @@ function countDescendants(node: CommentNode<CommentWithMeta>): number {
 }
 
 function reactorNames(userIds: string[], memberById: Map<string, MentionMember>): { shown: string[]; extra: number } {
-  const shown = userIds.slice(0, 8).map((id) => memberById.get(id)?.username ?? 'Someone');
+  const shown = userIds.slice(0, 8).map((id) => {
+    const username = memberById.get(id)?.username;
+    return username ? handle(username) : 'Someone';
+  });
   const extra = Math.max(0, userIds.length - 8);
   return { shown, extra };
 }
@@ -323,7 +327,7 @@ function CommentNodeItem({ node, actions }: { node: CommentNode<CommentWithMeta>
             <>
               <div className="mb-0.5 flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <span className="break-words text-sm font-medium text-foreground [overflow-wrap:anywhere]">
-                  @{comment.username}
+                  {handle(comment.username)}
                 </span>
                 <time
                   dateTime={new Date(comment.timestamp).toISOString()}
@@ -409,7 +413,7 @@ function CommentNodeItem({ node, actions }: { node: CommentNode<CommentWithMeta>
                 members={actions.members}
                 submitLabel="Reply"
                 pendingLabel="Replying…"
-                placeholder={`Reply to @${comment.username}…`}
+                placeholder={`Reply to ${handle(comment.username)}…`}
                 replyingToUsername={comment.username}
                 compact
                 autoFocus
@@ -1002,7 +1006,7 @@ export default function CommentThread({
         onConfirm={handleConfirmDelete}
         title="Delete comment"
         message={`Delete ${
-          deleteTarget ? `@${deleteTarget.username}'s comment` : 'this comment'
+          deleteTarget ? `${handle(deleteTarget.username)}'s comment` : 'this comment'
         }? This can't be undone.`}
         confirmText="Delete"
         loadingText="Deleting…"

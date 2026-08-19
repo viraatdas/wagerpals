@@ -8,6 +8,7 @@ import EventCard from '@/components/EventCard';
 import { EventWithStats } from '@/lib/types';
 import AvatarStack from '@/components/AvatarStack';
 import EmptySlip from '@/components/EmptySlip';
+import { handle } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -305,7 +306,7 @@ export default function GroupPage() {
                 <li key={member.user_id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
                   <AvatarStack people={[{ username: member.username }]} size="sm" className="flex-none" />
                   <span className="min-w-0 flex-1 truncate font-sans text-sm font-medium text-foreground">
-                    {member.username}
+                    {handle(member.username)}
                   </span>
                   {member.user_id === group.created_by && (
                     <span className="pill tone-info shrink-0">Creator</span>

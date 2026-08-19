@@ -40,7 +40,7 @@ import { Toggle } from '../components/Toggle';
 import { Button } from '../components/Button';
 import { tapMedium, tapLight, success, error as hapticError } from '../utils/haptics';
 import { ApiError, toApiError } from '../utils/errors';
-import { truncate } from '../utils/format';
+import { truncate, handle } from '../utils/format';
 import { colors, font, radius, spacing, tokens } from '../theme';
 
 // Matches the tab bar's own height (see navigation/MainTabNavigator.tsx) —
@@ -145,7 +145,7 @@ const WagerCard = React.memo(function WagerCard({ item, onPress }: WagerCardProp
         {item.latest_comment ? (
           <Text style={styles.humanRowText} numberOfLines={1} ellipsizeMode="tail">
             <Text style={styles.humanRowQuote}>&ldquo;{truncate(item.latest_comment.content, 72)}&rdquo;</Text>
-            <Text style={styles.humanRowAuthor}> &middot; {truncate(item.latest_comment.username, 20)}</Text>
+            <Text style={styles.humanRowAuthor}> &middot; {handle(truncate(item.latest_comment.username, 20))}</Text>
           </Text>
         ) : (
           <Text style={styles.humanRowText} numberOfLines={1}>

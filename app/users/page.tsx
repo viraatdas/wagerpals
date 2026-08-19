@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { User } from '@/lib/types';
 import AvatarStack from '@/components/AvatarStack';
 import EmptySlip from '@/components/EmptySlip';
+import { handle } from '@/lib/utils';
 
 interface Group {
   id: string;
@@ -296,7 +297,7 @@ export default function UsersPage() {
                       <div className="min-w-0">
                         <p className="eyebrow tone-text mb-1">Rank 1</p>
                         <p className="market-title truncate text-xl text-foreground sm:text-2xl">
-                          @{first.username}
+                          {handle(first.username)}
                         </p>
                         {first.streak > 0 && (
                           <span className="pill mt-2 inline-flex">🔥 {first.streak} streak</span>
@@ -331,7 +332,7 @@ export default function UsersPage() {
                           <AvatarStack people={[{ username: u.username }]} size="md" className="flex-none" />
                           <div className="min-w-0">
                             <p className="eyebrow mb-0.5">Rank {i + 2}</p>
-                            <p className="truncate font-medium text-foreground">@{u.username}</p>
+                            <p className="truncate font-medium text-foreground">{handle(u.username)}</p>
                           </div>
                         </div>
                         <div className="flex-none text-right">
@@ -358,7 +359,7 @@ export default function UsersPage() {
                         <AvatarStack people={[{ username: u.username }]} size="sm" className="flex-none" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-foreground">
-                            @{u.username}
+                            {handle(u.username)}
                             {u.streak > 0 && (
                               <span className="ml-1.5 font-mono text-xs font-normal text-muted">🔥 {u.streak} streak</span>
                             )}

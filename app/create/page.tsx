@@ -10,6 +10,7 @@ import Toast, { ToastType } from '@/components/Toast';
 import ConfidenceBar from '@/components/ConfidenceBar';
 import { WMark } from '@/components/WMark';
 import { useMentionAutocomplete, MentionAutocompleteMenu } from '@/components/useMentionAutocomplete';
+import { handle } from '@/lib/utils';
 
 // Small checkmark used to mark a "selected" choice — selection is never
 // conveyed by colour alone (a heavier border always accompanies it).
@@ -397,7 +398,7 @@ function CreateEventForm() {
                   <option value="">No one / Nobody in particular</option>
                   {eligibleSubjects.map((member) => (
                     <option key={member.user_id} value={member.user_id}>
-                      {member.username}
+                      {handle(member.username)}
                     </option>
                   ))}
                 </select>

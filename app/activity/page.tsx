@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { useUser } from '@stackframe/stack';
 import { useRouter } from 'next/navigation';
 import { ActivityItem } from '@/lib/types';
-import { formatTimestamp } from '@/lib/utils';
+import { formatTimestamp, handle } from '@/lib/utils';
 import { formatW } from '@/lib/odds';
 import AvatarStack from '@/components/AvatarStack';
 import EmptySlip from '@/components/EmptySlip';
@@ -50,7 +50,7 @@ function dayKey(timestamp: number): string {
 }
 
 function activityLine(activity: ActivityItem): { primary: ReactNode; secondary?: string } {
-  const name = <span className="font-medium text-foreground">@{activity.username || 'Unknown'}</span>;
+  const name = <span className="font-medium text-foreground">{handle(activity.username || 'Unknown')}</span>;
   const title = <span className="text-muted">&ldquo;{activity.event_title}&rdquo;</span>;
   const groupSuffix = activity.group_name ? (
     <span className="text-muted"> &middot; {activity.group_name}</span>

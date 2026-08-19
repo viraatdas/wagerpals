@@ -182,4 +182,20 @@ enum WagerAPI {
         let data = try await send(request)
         return try decodeResponse(WagerTakeSideResponse.self, from: data)
     }
+
+    /// GET `<api>/api/events?groupId=<id>` — the same endpoint the main
+    /// app's board uses to list a group's wagers, reused here (rather than a
+    /// new server route) to power the compact-mode quick strip. Public, but
+    /// sends auth opportunistically so the server can apply the R4
+    /// "quiet bet" visibility rule for the signed-in caller.
+    static func eventsForGroup(groupId: String) async throws -> [WagerEventSummary] {
+        let request = try makeRequest(
+            path: "/api/events",
+            method: "GET",
+            queryItems: [URLQueryItem(name: "groupId", value: groupId)],
+            authRequired: false
+        )
+        let data = try await send(request)
+        return try decodeResponse([WagerEventSummary].self, from: data)
+    }
 }

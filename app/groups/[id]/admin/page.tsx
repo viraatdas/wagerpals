@@ -7,6 +7,7 @@ import { useUser } from '@stackframe/stack';
 import Toast, { ToastType } from '@/components/Toast';
 import AvatarStack from '@/components/AvatarStack';
 import EmptySlip from '@/components/EmptySlip';
+import { handle } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,9 +48,9 @@ export default function GroupManagePage() {
   };
 
   const MEMBER_ACTION_SUCCESS: Record<string, (username: string) => string> = {
-    approve: (username) => `@${username} is in`,
+    approve: (username) => `${handle(username)} is in`,
     decline: () => 'Request declined',
-    remove: (username) => `@${username} removed`,
+    remove: (username) => `${handle(username)} removed`,
   };
 
   const handleMemberAction = async (action: string, targetUserId: string, targetUsername: string) => {
@@ -69,16 +70,16 @@ export default function GroupManagePage() {
       });
 
       if (response.ok) {
-        const successText = MEMBER_ACTION_SUCCESS[action]?.(targetUsername) ?? `@${targetUsername} updated`;
+        const successText = MEMBER_ACTION_SUCCESS[action]?.(targetUsername) ?? `${handle(targetUsername)} updated`;
         setToast({ message: successText, type: 'success' });
         fetchGroup();
       } else {
         const data = await response.json();
-        setToast({ message: data.error || `Couldn't update @${targetUsername}. Try again.`, type: 'error' });
+        setToast({ message: data.error || `Couldn't update ${handle(targetUsername)}. Try again.`, type: 'error' });
       }
     } catch (error) {
       console.error('Failed to perform action:', error);
-      setToast({ message: `Couldn't update @${targetUsername}. Try again.`, type: 'error' });
+      setToast({ message: `Couldn't update ${handle(targetUsername)}. Try again.`, type: 'error' });
     } finally {
       setProcessing(false);
     }
@@ -240,7 +241,7 @@ export default function GroupManagePage() {
                   <div className="flex min-w-0 items-center gap-3">
                     <AvatarStack people={[{ username: member.username }]} size="sm" className="flex-none" />
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">{member.username}</p>
+                      <p className="text-sm font-semibold text-foreground truncate">{handle(member.username)}</p>
                       <p className="font-mono text-xs text-muted">
                         Requested {new Date(member.joined_at).toLocaleDateString()}
                       </p>
@@ -250,7 +251,7 @@ export default function GroupManagePage() {
                     <button
                       onClick={() => handleMemberAction('approve', member.user_id, member.username)}
                       disabled={processing}
-                      aria-label={`Approve ${member.username}`}
+                      aria-label={`Approve ${handle(member.username)}`}
                       className="btn-quiet-success press disabled:opacity-50"
                     >
                       Approve
@@ -258,7 +259,7 @@ export default function GroupManagePage() {
                     <button
                       onClick={() => handleMemberAction('decline', member.user_id, member.username)}
                       disabled={processing}
-                      aria-label={`Decline ${member.username}`}
+                      aria-label={`Decline ${handle(member.username)}`}
                       className="btn-quiet-danger press disabled:opacity-50"
                     >
                       Decline
@@ -329,7 +330,7 @@ export default function GroupManagePage() {
                     <div className="flex items-center gap-3 min-w-0">
                       <AvatarStack people={[{ username: member.username }]} size="sm" className="flex-none" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{member.username}</p>
+                        <p className="text-sm font-medium text-foreground truncate">{handle(member.username)}</p>
                         <div className="mt-0.5 flex items-center gap-1.5">
                           {member.user_id === group.created_by ? (
                             <span className="pill tone-info">Creator</span>
@@ -343,12 +344,12 @@ export default function GroupManagePage() {
                       <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row shrink-0">
                         <button
                           onClick={() => {
-                            if (confirm(`Remove ${member.username} from the group?`)) {
+                            if (confirm(`Remove ${handle(member.username)} from the group?`)) {
                               handleMemberAction('remove', member.user_id, member.username);
                             }
                           }}
                           disabled={processing}
-                          aria-label={`Remove ${member.username} from group`}
+                          aria-label={`Remove ${handle(member.username)} from group`}
                           className="btn-quiet-danger press disabled:opacity-50"
                         >
                           Remove from group

@@ -7,6 +7,7 @@ import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import { Ionicons } from '@expo/vector-icons';
 import { colors, font, radius, spacing, tokens } from '../theme';
 import { selectionTick, tapLight } from '../utils/haptics';
+import { handle } from '../utils/format';
 import { BottomSheet } from './BottomSheet';
 
 export interface UserPickerUser {
@@ -82,7 +83,7 @@ export function UserPicker({
               <Text style={styles.avatarText}>{initialsFor(selectedUser.username)}</Text>
             </View>
             <Text style={styles.selectedText} numberOfLines={1}>
-              {selectedUser.username}
+              {handle(selectedUser.username)}
             </Text>
           </View>
         ) : (
@@ -155,7 +156,7 @@ export function UserPicker({
                 <Pressable
                   onPress={() => handlePick(item.id)}
                   accessibilityRole="button"
-                  accessibilityLabel={item.username}
+                  accessibilityLabel={handle(item.username)}
                   accessibilityState={{ selected }}
                   style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
                 >
@@ -163,7 +164,7 @@ export function UserPicker({
                     <Text style={styles.avatarText}>{initialsFor(item.username)}</Text>
                   </View>
                   <Text style={styles.itemText} numberOfLines={1}>
-                    {item.username}
+                    {handle(item.username)}
                   </Text>
                   {selected ? <Ionicons name="checkmark-circle" size={20} color={colors.brand2} /> : null}
                 </Pressable>

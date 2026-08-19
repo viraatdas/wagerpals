@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Bet, EscrowHold, EscrowHoldStatus, Transaction } from '@/lib/types';
-import { formatTimestamp, formatAmount } from '@/lib/utils';
+import { formatTimestamp, formatAmount, handle } from '@/lib/utils';
 import { formatW } from '@/lib/odds';
 import ConfirmationModal from './ConfirmationModal';
 import Toast, { ToastType } from './Toast';
@@ -71,7 +71,7 @@ const HOLD_CHIPS: Record<EscrowHoldStatus, { label: string; classes: string }> =
 
 /** Chips render on everyone's bets, so the tooltip has to name whose stake it is. */
 function holdChipTitle(status: EscrowHoldStatus, isOwnBet: boolean, username: string): string {
-  const stake = isOwnBet ? 'your stake' : `@${username}'s stake`;
+  const stake = isOwnBet ? 'your stake' : `${handle(username)}'s stake`;
   const Stake = isOwnBet ? 'Your stake' : stake;
   switch (status) {
     case 'held':
@@ -198,7 +198,7 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, paymentType 
     const bet = bets.find(b => b.id === betId);
     if (!bet) return '';
     const amountText = paymentType === 'cash' ? `$${bet.amount.toFixed(2)}` : formatW(bet.amount);
-    return `@${bet.username}'s ${amountText} bet on ${bet.side}`;
+    return `${handle(bet.username)}'s ${amountText} bet on ${bet.side}`;
   };
 
   return (
@@ -316,7 +316,7 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, paymentType 
                 <div className="flex items-center gap-2.5">
                   <AvatarStack people={[{ username: bet.username }]} size="sm" className="shrink-0" />
                   <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                    <span className="font-sans font-semibold text-foreground truncate max-w-[45%] shrink-0">@{bet.username}</span>
+                    <span className="font-sans font-semibold text-foreground truncate max-w-[45%] shrink-0">{handle(bet.username)}</span>
                     <span className="text-muted shrink-0 text-xs">on</span>
                     <span className={`truncate min-w-0 flex-1 ${toneForSide(bet.side)} tone-text`}>{bet.side}</span>
                   </div>

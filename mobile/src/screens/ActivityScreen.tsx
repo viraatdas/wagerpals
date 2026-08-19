@@ -21,7 +21,7 @@ import { ActivityItem } from '../types';
 import { EmptyState, ErrorState } from '../components/ScreenState';
 import { SkeletonList } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
-import { formatRelativeTime, formatMoney, formatW } from '../utils/format';
+import { formatRelativeTime, formatMoney, formatW, handle } from '../utils/format';
 import { ApiError, toApiError } from '../utils/errors';
 import { tapLight } from '../utils/haptics';
 import { colors, font, radius, spacing, tokens } from '../theme';
@@ -53,7 +53,7 @@ function getActivityIcon(type: ActivityItem['type']): { name: keyof typeof Ionic
 }
 
 function getSentence(item: ActivityItem): string {
-  const who = item.username || 'Someone';
+  const who = item.username ? handle(item.username) : 'Someone';
   switch (item.type) {
     case 'bet':
       return `${who} bet ${item.payment_type === 'cash' ? formatMoney(item.amount ?? 0) : formatW(item.amount ?? 0)} on ${item.side ?? 'a side'}`;
@@ -85,7 +85,7 @@ interface ActivityRowProps {
  * stays ink-colored mono rather than emerald/crimson; a resolved event's
  * winning side reads emerald since it names the outcome that won. */
 function SentenceRuns({ item }: { item: ActivityItem }) {
-  const who = item.username || 'Someone';
+  const who = item.username ? handle(item.username) : 'Someone';
   if (item.type === 'bet') {
     return (
       <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">

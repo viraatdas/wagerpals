@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Bet, EventWithStats } from '@/lib/types';
+import { handle } from '@/lib/utils';
 import AvatarStack, { AvatarPerson } from './AvatarStack';
 import ConfidenceBar from './ConfidenceBar';
 import OddsLine from './OddsLine';
@@ -172,7 +173,7 @@ export default function EventCard({ event, groupName, className }: EventCardProp
         <div className="mt-4 border-t border-line pt-3">
           {quote ? (
             <p className="truncate font-sans text-sm text-ink-muted">
-              <span className="text-ink-secondary">&ldquo;{quote.note}&rdquo;</span> &middot; {quote.username}
+              <span className="text-ink-secondary">&ldquo;{quote.note}&rdquo;</span> &middot; {handle(quote.username)}
             </p>
           ) : event.total_bets > 0 ? (
             <div className="flex items-center gap-2">

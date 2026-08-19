@@ -119,6 +119,17 @@ export function formatDateTime(ts: number): string {
   return `${datePart}, ${timePart}`;
 }
 
+// Renders a USERNAME as an inline "@handle" — mirrors lib/utils.ts's `handle`
+// on the web side so both platforms format usernames identically. Guarded
+// against double-prefixing a value that already starts with '@'. Display-only:
+// never use this to build mention syntax that gets parsed/stored (see
+// mobile/src/utils/mentions.ts) or to prefill an editable username
+// input/payload — those need the raw value.
+export function handle(username: string): string {
+  if (!username) return username;
+  return username.startsWith('@') ? username : `@${username}`;
+}
+
 export function truncate(s: string, n: number): string {
   if (typeof s !== 'string' || s.length === 0) {
     return '';

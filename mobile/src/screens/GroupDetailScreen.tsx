@@ -24,6 +24,7 @@ import apiService from '../services/api';
 import { Event, EventWithStats, Group, GroupMember, WalletSummary } from '../types';
 import { ApiError, toApiError } from '../utils/errors';
 import { tapLight } from '../utils/haptics';
+import { handle } from '../utils/format';
 import { colors, font, gradients, radius, spacing, tokens, glow } from '../theme';
 import {
   Button,
@@ -376,7 +377,7 @@ export default function GroupDetailScreen() {
                   <>
                     <Text style={styles.dot}>•</Text>
                     <Text style={styles.memberCount} numberOfLines={1} ellipsizeMode="tail">
-                      Started by @{creatorUsername}
+                      Started by {handle(creatorUsername)}
                     </Text>
                   </>
                 ) : null}

@@ -1,27 +1,11 @@
 import SwiftUI
 
-// MARK: - Shared brand styling
+// MARK: - Shared, module-wide pieces
 //
-// Small, module-wide pieces used by CompactWagerView, ComposeWagerView and
-// TakeSideView. Kept here since CompactWagerView is the simplest/first
-// screen a user sees.
-
-extension Color {
-    static let wagerBrand = Color(red: 0x25 / 255.0, green: 0x63 / 255.0, blue: 0xeb / 255.0)
-    static let wagerGold = Color(red: 0xf5 / 255.0, green: 0x9e / 255.0, blue: 0x0b / 255.0)
-
-    // ---- Current WagerPals design-system tokens (see DESIGN-SPEC.md /
-    // mobile/src/theme.ts) — Swift can't read the CSS custom properties in
-    // app/globals.css, so these are the same hexes reproduced as literals,
-    // one per canonical token, each named for its CSS var. Scoped to the
-    // signed-out empty state (`WagerSignedOutView` below) for now — the rest
-    // of this extension still renders with `wagerBrand`/`wagerGold` above.
-    static let wagerPaper = Color(red: 0xfa / 255.0, green: 0xf7 / 255.0, blue: 0xf0 / 255.0) // --color-paper
-    static let wagerInk = Color(red: 0x1c / 255.0, green: 0x1b / 255.0, blue: 0x17 / 255.0) // --color-ink
-    static let wagerInkSecondary = Color(red: 0x57 / 255.0, green: 0x54 / 255.0, blue: 0x48 / 255.0) // --color-ink-secondary
-    static let wagerEmerald = Color(red: 0x0f / 255.0, green: 0x7a / 255.0, blue: 0x4c / 255.0) // --color-emerald
-    static let wagerLine = Color(red: 0xe7 / 255.0, green: 0xe2 / 255.0, blue: 0xd6 / 255.0) // --color-line
-}
+// Used by CompactWagerView, ComposeWagerView and TakeSideView. Kept here
+// since CompactWagerView is the simplest/first screen a user sees. Brand
+// color/font tokens live in WagerTheme.swift now — every screen in this
+// extension draws from that one token set.
 
 enum WagerConstants {
     /// Mirrors `MAX_TRANSACTION_AMOUNT` enforced server-side (see lib/payments.ts).
@@ -206,36 +190,49 @@ struct WagerGroupPicker: View {
                 Image(systemName: "chevron.down")
                     .font(.caption2)
             }
+            // Group names are a "people" label, not a money value — amber,
+            // per the color rule (see WagerTheme.swift).
             .font(compact ? .caption : .subheadline)
-            .foregroundColor(.wagerBrand)
+            .foregroundColor(.wagerAmberInk)
             .padding(.horizontal, compact ? 8 : 12)
             .padding(.vertical, compact ? 5 : 8)
-            .background(Color.wagerBrand.opacity(0.12))
-            .cornerRadius(compact ? 8 : 10)
+            .background(Color.wagerAmber.opacity(0.15))
+            .cornerRadius(WagerRadius.control)
         }
         .disabled(groups.isEmpty)
     }
 }
 
 /// Short explainer shown whenever the user isn't signed in to WagerPals.
-/// Restyled to the current brand (paper canvas, ink/emerald wordmark, one
-/// warm line of product voice, crisp 8pt-radius emerald button) — this only
-/// changes presentation. Sign-in detection, the API layer and what happens
-/// when the button is tapped (`onOpenApp`) are unchanged; see
+/// Paper canvas, ink/emerald wordmark, one warm line of product voice, crisp
+/// 8pt-radius emerald button. When `preview` is set (the user opened this
+/// extension on a message that decodes to a wager, but isn't signed in yet)
+/// it also renders a read-only snapshot of that wager — title and odds only,
+/// no interaction — above the sign-in prompt, so a signed-out recipient can
+/// still see what the bubble is about. Sign-in detection, the API layer and
+/// what happens when the button is tapped (`onOpenApp`) are unchanged; see
 /// MessagesViewController.swift for the actual signed-out/signed-in check.
 struct WagerSignedOutView: View {
     var onOpenApp: () -> Void
     var compact: Bool = false
+    var preview: WagerPreview? = nil
 
     var body: some View {
         if compact {
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     wordmark(size: 13)
-                    Text("Sign in to start a wager.")
-                        .font(.caption2)
-                        .foregroundColor(.wagerInkSecondary)
-                        .lineLimit(1)
+                    if let preview = preview {
+                        Text("\(preview.title) — sign in to take a side.")
+                            .font(.caption2)
+                            .foregroundColor(.wagerInkSecondary)
+                            .lineLimit(1)
+                    } else {
+                        Text("Sign in to start a wager.")
+                            .font(.caption2)
+                            .foregroundColor(.wagerInkSecondary)
+                            .lineLimit(1)
+                    }
                 }
                 Spacer(minLength: 8)
                 Button("Open App", action: onOpenApp)
@@ -248,7 +245,14 @@ struct WagerSignedOutView: View {
             VStack(spacing: 18) {
                 wordmark(size: 30)
 
-                Text("Sign in to WagerPals to start a wager.")
+                if let preview = preview {
+                    WagerReadOnlyPreviewCard(preview: preview)
+                        .padding(.horizontal, 20)
+                }
+
+                Text(preview != nil
+                     ? "Sign in to WagerPals to take a side."
+                     : "Sign in to WagerPals to start a wager.")
                     .font(.subheadline)
                     .foregroundColor(.wagerInkSecondary)
                     .multilineTextAlignment(.center)
@@ -281,21 +285,58 @@ struct WagerSignedOutView: View {
     }
 }
 
-/// Crisp 8pt-radius emerald fill button — the signed-out view's only call to
-/// action. Deliberately not `.buttonStyle(.borderedProminent)`, which renders
-/// as a rounded/capsule control on iOS; DESIGN-SPEC.md calls for structured
-/// 8px-radius controls, pill shapes reserved for avatars/chips/status pills.
-private struct WagerPrimaryButtonStyle: ButtonStyle {
+/// A read-only snapshot of a received wager — title, sides, and the
+/// confidence bar, nothing tappable — shown in the signed-out view so
+/// someone without an account yet can still see what the bubble is about.
+private struct WagerReadOnlyPreviewCard: View {
+    let preview: WagerPreview
+
+    private var hasStakes: Bool { ((preview.sideATotal ?? 0) + (preview.sideBTotal ?? 0)) > 0 }
+    private var sideAFraction: Double {
+        let a = preview.sideATotal ?? 0
+        let b = preview.sideBTotal ?? 0
+        let pool = a + b
+        return pool > 0 ? a / pool : 0.5
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(preview.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.wagerInk)
+                .lineLimit(2)
+            Text("\(preview.sideA) vs \(preview.sideB)")
+                .font(.caption)
+                .foregroundColor(.wagerInkSecondary)
+            WagerConfidenceBar(sideAFraction: sideAFraction, hasStakes: hasStakes)
+        }
+        .padding(14)
+        .background(Color.wagerCard)
+        .overlay(
+            RoundedRectangle(cornerRadius: WagerRadius.card)
+                .stroke(Color.wagerLine, lineWidth: 1)
+        )
+        .cornerRadius(WagerRadius.card)
+    }
+}
+
+/// Crisp 8pt-radius emerald fill button — the signed-out view's primary call
+/// to action, and reused wherever else the compact strip needs a small
+/// emerald button. Deliberately not `.buttonStyle(.borderedProminent)`,
+/// which renders as a rounded/capsule control on iOS; DESIGN-SPEC.md calls
+/// for structured 8px-radius controls, pill shapes reserved for
+/// avatars/chips/status pills.
+struct WagerPrimaryButtonStyle: ButtonStyle {
     var compact: Bool = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font((compact ? Font.caption : Font.subheadline).weight(.semibold))
-            .foregroundColor(.white)
+            .foregroundColor(.wagerOnEmerald)
             .padding(.horizontal, compact ? 14 : 20)
             .padding(.vertical, compact ? 7 : 12)
             .background(Color.wagerEmerald.opacity(configuration.isPressed ? 0.85 : 1))
-            .cornerRadius(8) // --radius-control
+            .cornerRadius(WagerRadius.control)
     }
 }
 
@@ -307,12 +348,12 @@ struct WagerErrorBanner: View {
     var body: some View {
         Text(message)
             .font(.caption)
-            .foregroundColor(.white)
+            .foregroundColor(.wagerOnEmerald)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.red.opacity(0.85))
-            .cornerRadius(8)
+            .background(Color.wagerCrimson.opacity(0.92))
+            .cornerRadius(WagerRadius.control)
     }
 }
 
@@ -320,147 +361,65 @@ struct WagerErrorBanner: View {
 
 /// The compact presentation: a short strip above the keyboard. Renders one
 /// of three states depending on sign-in status and whether the currently
-/// selected message decodes to a wager.
+/// selected message decodes to a wager:
+///   - Signed out: `WagerSignedOutView` (with a read-only preview of the
+///     selected wager, if any).
+///   - A wager bubble is selected: a condensed live card for that wager,
+///     with "Take a side" expanding into `TakeSideView`.
+///   - Otherwise: the quick strip — the user's groups' live wagers as small
+///     cards, led by a "New wager" tile that expands into `ComposeWagerView`.
 struct CompactWagerView: View {
     @ObservedObject var state: WagerExtensionState
     @ObservedObject var draft: WagerComposerDraft
     let decoded: (preview: WagerPreview, shareToken: String?)?
 
-    var onSend: (WagerCreateRequest) -> Void
     var onRequestExpand: () -> Void
     var onOpenApp: () -> Void
-
-    @State private var validationError: String?
+    /// Inserts an already-existing wager (tapped from the quick strip) into
+    /// the conversation as a fresh bubble.
+    var onInsertExisting: (WagerPreview) -> Void
 
     var body: some View {
         Group {
             if state.signInStatus == .signedOut {
-                WagerSignedOutView(onOpenApp: onOpenApp, compact: true)
+                WagerSignedOutView(onOpenApp: onOpenApp, compact: true, preview: decoded?.preview)
             } else if let decoded = decoded {
                 existingWagerStrip(decoded.preview)
             } else {
-                createStrip
+                WagerQuickStripView(state: state, onInsert: onInsertExisting, onNewWager: onRequestExpand)
             }
         }
-        .background(Color(.systemBackground))
+        .background(Color.wagerPaper)
         .onAppear { draft.seedDefaultGroupIfNeeded(groups: state.groups) }
         .onChange(of: state.groups) { groups in draft.seedDefaultGroupIfNeeded(groups: groups) }
-        .onChange(of: draft.stakeText) { text in
-            draft.paymentType = text.trimmingCharacters(in: .whitespaces).isEmpty ? .none : .cash
-        }
     }
 
     // MARK: Existing wager (condensed live card)
 
     private func existingWagerStrip(_ preview: WagerPreview) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
+        let pool = (preview.sideATotal ?? 0) + (preview.sideBTotal ?? 0)
+        let hasStakes = pool > 0
+        let sideAFraction = hasStakes ? (preview.sideATotal ?? 0) / pool : 0.5
+
+        return HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(preview.title)
-                    .font(.caption)
-                    .fontWeight(.semibold)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.wagerInk)
                     .lineLimit(1)
-                Text("\(preview.sideA) (\(preview.sideACount))  vs  \(preview.sideB) (\(preview.sideBCount))")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                WagerConfidenceBar(sideAFraction: sideAFraction, hasStakes: hasStakes, height: 4, showsLabels: false)
+                    .frame(width: 130)
                 Text(preview.isOpen ? preview.deadlineText : preview.status.capitalized)
                     .font(.caption2)
-                    .foregroundColor(.wagerGold)
+                    .foregroundColor(preview.isOpen ? .wagerInkMuted : .wagerGoldInk)
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
             Button("Take a side", action: onRequestExpand)
-                .buttonStyle(.borderedProminent)
-                .tint(.wagerBrand)
-                .controlSize(.small)
+                .buttonStyle(WagerPrimaryButtonStyle(compact: true))
                 .disabled(!preview.isOpen)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-    }
-
-    // MARK: Fast create path
-
-    private var createStrip: some View {
-        VStack(spacing: 5) {
-            HStack(spacing: 6) {
-                TextField("Wager title", text: $draft.title)
-                    .font(.caption)
-                    .textFieldStyle(.roundedBorder)
-                WagerGroupPicker(groups: state.groups, selection: $draft.groupId, compact: true)
-            }
-
-            HStack(spacing: 6) {
-                TextField("Side A", text: $draft.sideA)
-                    .font(.caption)
-                    .textFieldStyle(.roundedBorder)
-                Text("vs")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-                TextField("Side B", text: $draft.sideB)
-                    .font(.caption)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            HStack(spacing: 6) {
-                Picker("", selection: $draft.quickDeadline) {
-                    ForEach(QuickDeadline.allCases) { option in
-                        Text(option.rawValue).tag(option)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-
-                HStack(spacing: 2) {
-                    Text("$").font(.caption2).foregroundColor(.secondary)
-                    TextField("Stake", text: $draft.stakeText)
-                        .font(.caption)
-                        .keyboardType(.decimalPad)
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
-                .background(Color(.systemGray6))
-                .cornerRadius(6)
-                .frame(width: 66)
-
-                Button(action: send) {
-                    Image(systemName: "paperplane.fill")
-                        .font(.caption)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.wagerBrand)
-                .controlSize(.small)
-                .disabled(state.isSending)
-
-                Button("More", action: onRequestExpand)
-                    .font(.caption2)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            }
-
-            if let validationError = validationError {
-                Text(validationError)
-                    .font(.caption2)
-                    .foregroundColor(.red)
-                    .lineLimit(1)
-            } else if let errorMessage = state.errorMessage {
-                Text(errorMessage)
-                    .font(.caption2)
-                    .foregroundColor(.red)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-    }
-
-    private func send() {
-        switch WagerDraftValidation.makeRequest(from: draft) {
-        case .success(let request):
-            validationError = nil
-            onSend(request)
-        case .failure(let message):
-            validationError = message
-        }
     }
 }

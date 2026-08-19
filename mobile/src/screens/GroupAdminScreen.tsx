@@ -11,6 +11,7 @@ import apiService from '../services/api';
 import { Group, GroupMember } from '../types';
 import { ApiError, toApiError } from '../utils/errors';
 import { tapHeavy, tapMedium, success, warning, error as hapticError } from '../utils/haptics';
+import { handle } from '../utils/format';
 import { colors, font, radius, spacing, tokens } from '../theme';
 import { Avatar, Button, Card, EmptyState, ErrorState, Pill, SectionHeader, Skeleton, SkeletonList, Toggle } from '../components';
 import TextInputModal from '../components/TextInputModal';
@@ -26,9 +27,9 @@ type SectionKey = 'pending' | 'members';
 // Per-action success copy — each names the actual member and the actual
 // outcome instead of a generic "Action completed."
 const ACTION_CONFIRMATION: Record<MemberAction, (username: string) => string> = {
-  approve: (u) => `${u} is in.`,
-  decline: (u) => `Declined ${u}'s request.`,
-  remove: (u) => `Removed ${u} from the group.`,
+  approve: (u) => `${handle(u)} is in.`,
+  decline: (u) => `Declined ${handle(u)}'s request.`,
+  remove: (u) => `Removed ${handle(u)} from the group.`,
 };
 const CONFIRMATION_VISIBLE_MS = 2200;
 
@@ -44,21 +45,21 @@ const ACTION_CONFIG: Record<
 > = {
   approve: {
     title: 'Approve request',
-    message: (u) => `Approve ${u}'s request to join?`,
+    message: (u) => `Approve ${handle(u)}'s request to join?`,
     confirmLabel: 'Approve',
     destructive: false,
     failTitle: "Couldn't approve request",
   },
   decline: {
     title: 'Decline request',
-    message: (u) => `Decline ${u}'s request to join? They can request to join again later.`,
+    message: (u) => `Decline ${handle(u)}'s request to join? They can request to join again later.`,
     confirmLabel: 'Decline',
     destructive: true,
     failTitle: "Couldn't decline request",
   },
   remove: {
     title: 'Remove member',
-    message: (u) => `Remove ${u} from the group? They'd need a fresh invite to come back.`,
+    message: (u) => `Remove ${handle(u)} from the group? They'd need a fresh invite to come back.`,
     confirmLabel: 'Remove',
     destructive: true,
     failTitle: "Couldn't remove member",
@@ -465,7 +466,7 @@ export default function GroupAdminScreen() {
                 <Avatar username={item.username} size="md" />
                 <View style={styles.memberTextCol}>
                   <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">
-                    {username}
+                    {handle(username)}
                   </Text>
                   <Text style={styles.memberSubtext}>Waiting for approval</Text>
                 </View>
@@ -503,7 +504,7 @@ export default function GroupAdminScreen() {
               <Avatar username={item.username} size="md" />
               <View style={styles.memberTextCol}>
                 <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">
-                  {username}
+                  {handle(username)}
                 </Text>
                 <Pill label={isRowCreator ? 'Creator' : 'Member'} tone={isRowCreator ? 'brand' : 'neutral'} size="sm" />
               </View>

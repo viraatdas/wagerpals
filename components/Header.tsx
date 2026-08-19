@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { WMark } from './WMark';
+import { handle } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
@@ -67,12 +68,20 @@ export default function Header() {
   const user = useUser({ or: "return-null" });
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [wBalance, setWBalance] = useState<number | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
       setWalletBalance(null);
       return;
     }
+
+    // The account row's chosen username (the header shows @handle, not the
+    // OAuth display name).
+    fetch(`/api/users?id=${user.id}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => setUsername(data?.username ?? null))
+      .catch(() => {});
 
     fetch(`/api/wallet?userId=${user.id}`)
       .then((response) => response.ok ? response.json() : null)
@@ -171,7 +180,7 @@ export default function Header() {
               {user && (
                 <div className="hidden md:flex items-center gap-3 ml-1 pl-5 border-l border-line">
                   <span className="text-sm font-medium text-ink-secondary truncate max-w-[120px]">
-                    {user.displayName || user.primaryEmail || 'User'}
+                    {username ? handle(username) : user.displayName || user.primaryEmail || 'User'}
                   </span>
                   <button
                     onClick={handleLogout}
@@ -187,10 +196,10 @@ export default function Header() {
                   <button
                     onClick={handleLogout}
                     className="press inline-flex h-10 w-10 items-center justify-center rounded-control border border-line bg-card text-xs font-semibold text-crimson-ink hover:border-hairline-strong transition-colors"
-                    title={`${user.displayName || user.primaryEmail} - Sign Out`}
+                    title={`${username ? handle(username) : user.displayName || user.primaryEmail} - Sign Out`}
                     aria-label="Account sign out"
                   >
-                    {(user.displayName || user.primaryEmail || 'U').slice(0, 1).toUpperCase()}
+                    {(username || user.displayName || user.primaryEmail || 'U').slice(0, 1).toUpperCase()}
                   </button>
                 </div>
               )}

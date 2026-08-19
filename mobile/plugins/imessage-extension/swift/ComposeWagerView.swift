@@ -93,16 +93,20 @@ struct ComposeWagerView: View {
                 if draft.paymentType == .cash {
                     fieldGroup("Stake per player") {
                         HStack {
-                            Text("$").foregroundColor(.secondary)
+                            Text(WagerMoney.symbol(for: .cash)).foregroundColor(.wagerInkSecondary)
                             TextField("Leave blank for open stakes", text: $draft.stakeText)
                                 .keyboardType(.decimalPad)
                         }
                         .padding(10)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(10)
+                        .background(Color.wagerCard)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: WagerRadius.control)
+                                .stroke(Color.wagerLine, lineWidth: 1)
+                        )
+                        .cornerRadius(WagerRadius.control)
                         Text("Leave blank and each bettor picks their own amount. Maximum $\(Int(WagerConstants.maxStake)) per bet.")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.wagerInkMuted)
                     }
                 }
 
@@ -125,20 +129,22 @@ struct ComposeWagerView: View {
                     if availableSubjects.isEmpty {
                         Text(draft.groupId == nil ? "Pick a group first." : "No one else to tag in this group yet.")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.wagerInkMuted)
                     }
                 }
 
                 fieldGroup("Notify") {
                     Toggle("Let them know", isOn: $draft.notifySubject)
+                        .tint(.wagerEmerald)
                         .disabled(draft.subjectUserId == nil)
                     Text("Only meaningful once someone is tagged. Turning it off makes the bet quiet.")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.wagerInkMuted)
                 }
 
                 fieldGroup("Your bet") {
                     Toggle("Take a side now", isOn: $draft.takeSideNow)
+                        .tint(.wagerEmerald)
                     if draft.takeSideNow {
                         Picker("Side", selection: $draft.pickedSide) {
                             Text("No pick").tag(PickedSide.none)
@@ -152,13 +158,22 @@ struct ComposeWagerView: View {
                         .pickerStyle(.segmented)
 
                         HStack {
-                            Text("$").foregroundColor(.secondary)
+                            // The "Just for fun" payment type still escrows
+                            // WagerPals' internal W currency (see
+                            // lib/payments.ts), not literal dollars — the
+                            // symbol here has to track `draft.paymentType`
+                            // rather than always reading "$".
+                            Text(WagerMoney.symbol(for: draft.paymentType)).foregroundColor(.wagerInkSecondary)
                             TextField("Amount", text: $draft.amountText)
                                 .keyboardType(.decimalPad)
                         }
                         .padding(10)
-                        .background(Color(.systemGray6))
-                        .cornerRadius(10)
+                        .background(Color.wagerCard)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: WagerRadius.control)
+                                .stroke(Color.wagerLine, lineWidth: 1)
+                        )
+                        .cornerRadius(WagerRadius.control)
                     }
                 }
 
@@ -175,18 +190,18 @@ struct ComposeWagerView: View {
             }
             .padding(20)
         }
-        .background(Color(.systemBackground))
+        .background(Color.wagerPaper)
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Create a Wager")
-                .font(.title2)
-                .fontWeight(.bold)
+            Text("Create a wager")
+                .font(.wagerDisplay(22))
+                .foregroundColor(.wagerInk)
             if let identity = state.identity {
                 Text("Signed in as \(identity.displayName ?? identity.username)")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.wagerAmberInk)
             }
         }
     }
@@ -197,16 +212,16 @@ struct ComposeWagerView: View {
                 if state.isSending {
                     ProgressView()
                         .progressViewStyle(.circular)
-                        .tint(.white)
+                        .tint(.wagerOnEmerald)
                 }
-                Text(state.isSending ? "Sending…" : "Send Wager")
+                Text(state.isSending ? "Starting…" : "Start the wager")
                     .fontWeight(.semibold)
             }
             .frame(maxWidth: .infinity)
             .padding()
-            .background(Color.wagerBrand)
-            .foregroundColor(.white)
-            .cornerRadius(12)
+            .background(Color.wagerEmerald)
+            .foregroundColor(.wagerOnEmerald)
+            .cornerRadius(WagerRadius.panel)
         }
         .disabled(state.isSending)
     }
@@ -216,7 +231,7 @@ struct ComposeWagerView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundColor(.wagerInkSecondary)
             content()
         }
     }

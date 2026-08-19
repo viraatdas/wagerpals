@@ -127,6 +127,7 @@ enum WagerSessionStore {
 enum WagerLocalCache {
     private static let lastGroupIdKey = "WagerLastGroupId"
     private static let cachedGroupsKey = "WagerCachedGroups"
+    private static let cachedEventsKey = "WagerCachedLiveEvents"
 
     static var lastGroupId: String? {
         get { WagerConfig.sharedDefaults?.string(forKey: lastGroupIdKey) }
@@ -143,5 +144,20 @@ enum WagerLocalCache {
             return []
         }
         return (try? JSONDecoder().decode([WagerGroup].self, from: data)) ?? []
+    }
+
+    /// Same seed-from-cache-then-refresh pattern as `cacheGroups` above, so
+    /// the compact-mode quick strip is never blank while the network round
+    /// trip to `eventsForGroup` is in flight.
+    static func cacheEvents(_ events: [WagerEventSummary]) {
+        guard let data = try? JSONEncoder().encode(events) else { return }
+        WagerConfig.sharedDefaults?.set(data, forKey: cachedEventsKey)
+    }
+
+    static func cachedEvents() -> [WagerEventSummary] {
+        guard let data = WagerConfig.sharedDefaults?.data(forKey: cachedEventsKey) else {
+            return []
+        }
+        return (try? JSONDecoder().decode([WagerEventSummary].self, from: data)) ?? []
     }
 }

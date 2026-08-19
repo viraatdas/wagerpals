@@ -12,6 +12,7 @@
 // a server route.
 
 import { useEffect, useId, useRef, useState, type RefObject } from 'react';
+import { handle } from '@/lib/utils';
 
 export interface MentionMember {
   user_id: string;
@@ -230,7 +231,7 @@ export function MentionAutocompleteMenu({
             >
               {initialFor(member.username)}
             </span>
-            <span className="truncate font-medium">@{member.username}</span>
+            <span className="truncate font-medium">{handle(member.username)}</span>
           </span>
           {member.role && <span className="flex-none text-xs text-muted">{member.role}</span>}
         </button>

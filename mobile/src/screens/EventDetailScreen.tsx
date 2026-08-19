@@ -25,7 +25,7 @@ import type { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
 import { EventWithStats, Bet, Comment, EscrowHoldStatus, WalletSummary } from '../types';
-import { formatMoney, formatW, formatRelativeTime, truncate } from '../utils/format';
+import { formatMoney, formatW, formatRelativeTime, truncate, handle } from '../utils/format';
 import { tapLight, tapMedium, tapHeavy, success, error as hapticError } from '../utils/haptics';
 import { ApiError, toApiError } from '../utils/errors';
 import {
@@ -93,7 +93,7 @@ function EscrowChip({ status, accessibilityLabel }: { status: EscrowHoldStatus; 
 
 /** Chips render on everyone's bets, so the label has to name whose stake it is. */
 function holdPillLabel(status: EscrowHoldStatus, isOwnBet: boolean, username: string): string {
-  const stake = isOwnBet ? 'your stake' : `@${username}'s stake`;
+  const stake = isOwnBet ? 'your stake' : `${handle(username)}'s stake`;
   switch (status) {
     case 'held':
       return `${isOwnBet ? 'Your stake' : stake} is held until this event is resolved or cancelled.`;
@@ -140,7 +140,7 @@ function BetRow({
       <Avatar username={bet.username} size="sm" />
       <View style={styles.rowContent}>
         <Text style={styles.rowText} numberOfLines={3}>
-          <Text style={styles.rowBold}>{truncate(bet.username, 20)}</Text>
+          <Text style={styles.rowBold}>{handle(truncate(bet.username, 20))}</Text>
           {' bet '}
           {isCash ? (
             <Money amount={bet.amount} size="sm" tone="neutral" style={{ color: stakeColor }} />
@@ -189,7 +189,7 @@ function CommentRow({ comment }: { comment: Comment }) {
       <View style={styles.rowContent}>
         <View style={styles.commentHeaderRow}>
           <Text style={styles.rowBold} numberOfLines={1}>
-            {truncate(comment.username, 24)}
+            {handle(truncate(comment.username, 24))}
           </Text>
           <Text style={styles.rowTime}>{formatRelativeTime(comment.timestamp)}</Text>
         </View>
@@ -651,7 +651,7 @@ export default function EventDetailScreen() {
   const canManage = !!user && !!effectiveCreatorId && user.id === effectiveCreatorId;
 
   const subjectBet = event.bets?.find((b) => b.user_id === event.subject_user_id);
-  const subjectLabel = subjectBet ? `@${truncate(subjectBet.username, 24)}` : 'a group member';
+  const subjectLabel = subjectBet ? handle(truncate(subjectBet.username, 24)) : 'a group member';
 
   const sortedBets = [...(event.bets ?? [])].sort((a, b) => b.timestamp - a.timestamp);
   const sortedComments = [...comments].sort((a, b) => b.timestamp - a.timestamp);
@@ -737,7 +737,7 @@ export default function EventDetailScreen() {
 
             {event.creator_username ? (
               <Text style={styles.resolverText} numberOfLines={1}>
-                Started by @{event.creator_username}
+                Started by {handle(event.creator_username)}
               </Text>
             ) : null}
 

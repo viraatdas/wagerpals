@@ -1,7 +1,7 @@
 'use client';
 
 import { Event, NetResult, Payment } from '@/lib/types';
-import { calculatePayments } from '@/lib/utils';
+import { calculatePayments, handle } from '@/lib/utils';
 import WAmount from './WMark';
 
 interface ResolutionBannerProps {
@@ -47,7 +47,7 @@ export default function ResolutionBanner({ event, netResults }: ResolutionBanner
                   result.net > 0 ? 'tone-gold' : result.net < 0 ? 'tone-loss' : 'tone-neutral'
                 }`}
               >
-                <span className="text-foreground truncate min-w-0">@{result.username}</span>
+                <span className="text-foreground truncate min-w-0">{handle(result.username)}</span>
                 <span className="numeral tone-text text-base shrink-0">
                   {isCash ? (
                     (result.net >= 0 ? '+' : '-') + `$${Math.abs(result.net).toFixed(2)}`
@@ -74,9 +74,9 @@ export default function ResolutionBanner({ event, netResults }: ResolutionBanner
                   key={i}
                   className="panel py-2 px-3 rounded-xl text-sm text-muted"
                 >
-                  <span className="font-medium text-foreground break-words">{payment.from}</span>
+                  <span className="font-medium text-foreground break-words">{handle(payment.from)}</span>
                   {' → '}
-                  <span className="font-medium text-foreground break-words">{payment.to}</span>
+                  <span className="font-medium text-foreground break-words">{handle(payment.to)}</span>
                   {': '}
                   <span className="numeral tone-text tone-gold text-base">
                     {isCash ? `$${payment.amount.toFixed(2)}` : <WAmount value={payment.amount} />}

@@ -145,6 +145,18 @@ export function formatAmount(amount: number, isPublic: boolean = false): string 
   return amount >= 0 ? `+$${formatted}` : `-$${Math.abs(amount).toFixed(2)}`;
 }
 
+// Renders a USERNAME as an inline "@handle" — the single formatting site so
+// every render of a username-as-person across the app looks the same.
+// Guarded against double-prefixing a value that already starts with '@'
+// (e.g. one that's already been through this helper or was pre-formatted
+// upstream). Display-only: never use this to build mention syntax that gets
+// parsed or stored (see lib/comments.ts) or to prefill an editable username
+// input/payload — those need the raw value.
+export function handle(username: string): string {
+  if (!username) return username;
+  return username.startsWith('@') ? username : `@${username}`;
+}
+
 // Username utilities
 export function normalizeUsername(username: string): string {
   return username.toLowerCase().trim();

@@ -7,6 +7,7 @@ import {
   MentionAutocompleteMenu,
   type MentionMember,
 } from '@/components/useMentionAutocomplete';
+import { handle } from '@/lib/utils';
 
 export type { MentionMember };
 
@@ -130,7 +131,7 @@ export default function CommentForm({
       {replyingToUsername && (
         <div className="tone-pending tone-surface mb-2.5 flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5">
           <span className="tone-text min-w-0 truncate text-xs font-medium">
-            Replying to <span className="font-semibold">@{replyingToUsername}</span>
+            Replying to <span className="font-semibold">{handle(replyingToUsername)}</span>
           </span>
           {onCancel && (
             <button

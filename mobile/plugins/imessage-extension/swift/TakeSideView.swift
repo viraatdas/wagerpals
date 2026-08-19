@@ -4,6 +4,7 @@ import SwiftUI
 /// live `WagerPreview` over the network, falls back to the snapshot decoded
 /// from the message bubble if that fails, and lets the user take a side.
 struct TakeSideView: View {
+    @ObservedObject var state: WagerExtensionState
     let shareToken: String?
     var onUpdated: (WagerPreview) -> Void
     var onOpenInApp: () -> Void
@@ -19,11 +20,13 @@ struct TakeSideView: View {
     @State private var needsSignIn = false
 
     init(
+        state: WagerExtensionState,
         initialPreview: WagerPreview,
         shareToken: String?,
         onUpdated: @escaping (WagerPreview) -> Void,
         onOpenInApp: @escaping () -> Void
     ) {
+        self.state = state
         self._preview = State(initialValue: initialPreview)
         self.shareToken = shareToken
         self.onUpdated = onUpdated
@@ -34,6 +37,19 @@ struct TakeSideView: View {
     }
 
     var body: some View {
+        Group {
+            if state.signInStatus == .signedOut {
+                // A recipient who hasn't signed in yet still gets to see
+                // what the bubble is about — just not to act on it.
+                WagerSignedOutView(onOpenApp: onOpenInApp, compact: false, preview: preview)
+            } else {
+                signedInBody
+            }
+        }
+        .task { await refreshPreview() }
+    }
+
+    private var signedInBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
@@ -58,9 +74,9 @@ struct TakeSideView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Sign in to WagerPals to take a side.")
                             .font(.subheadline)
+                            .foregroundColor(.wagerInk)
                         Button("Open WagerPals to sign in", action: onOpenInApp)
-                            .buttonStyle(.borderedProminent)
-                            .tint(.wagerBrand)
+                            .buttonStyle(WagerPrimaryButtonStyle())
                     }
                 }
 
@@ -68,18 +84,17 @@ struct TakeSideView: View {
             }
             .padding(20)
         }
-        .background(Color(.systemBackground))
-        .task { await refreshPreview() }
+        .background(Color.wagerPaper)
     }
 
     // MARK: Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(preview.title)
-                    .font(.title2)
-                    .fontWeight(.bold)
+                    .font(.wagerDisplay(20))
+                    .foregroundColor(.wagerInk)
                 Spacer()
                 if isRefreshing {
                     ProgressView()
@@ -87,9 +102,11 @@ struct TakeSideView: View {
             }
 
             HStack(spacing: 12) {
-                sideBox(name: preview.sideA, count: preview.sideACount, total: preview.sideATotal, isWinner: preview.winningSide == preview.sideA)
-                sideBox(name: preview.sideB, count: preview.sideBCount, total: preview.sideBTotal, isWinner: preview.winningSide == preview.sideB)
+                sideBox(name: preview.sideA, count: preview.sideACount, total: preview.sideATotal, tint: .wagerEmerald, isWinner: preview.winningSide == preview.sideA)
+                sideBox(name: preview.sideB, count: preview.sideBCount, total: preview.sideBTotal, tint: .wagerCrimsonInk, isWinner: preview.winningSide == preview.sideB)
             }
+
+            WagerConfidenceBar(sideAFraction: confidenceFraction, hasStakes: hasStakes)
 
             HStack(spacing: 12) {
                 Label(preview.isOpen ? preview.deadlineText : preview.status.capitalized, systemImage: "clock")
@@ -99,14 +116,23 @@ struct TakeSideView: View {
                 Label("\(preview.totalBets) bets · \(preview.totalParticipants) people", systemImage: "person.2")
             }
             .font(.caption)
-            .foregroundColor(.secondary)
+            .foregroundColor(.wagerInkSecondary)
         }
     }
 
-    private func sideBox(name: String, count: Int, total: Double?, isWinner: Bool) -> some View {
+    private var hasStakes: Bool { ((preview.sideATotal ?? 0) + (preview.sideBTotal ?? 0)) > 0 }
+
+    private var confidenceFraction: Double {
+        let a = preview.sideATotal ?? 0
+        let b = preview.sideBTotal ?? 0
+        let pool = a + b
+        return pool > 0 ? a / pool : 0.5
+    }
+
+    private func sideBox(name: String, count: Int, total: Double?, tint: Color, isWinner: Bool) -> some View {
         var countText = "\(count) bet\(count == 1 ? "" : "s")"
         if let total = total, total > 0 {
-            countText += " · $\(Self.formatAmount(total))"
+            countText += " · \(WagerMoney.format(total, paymentType: preview.paymentType))"
         }
 
         return VStack(alignment: .leading, spacing: 4) {
@@ -114,21 +140,26 @@ struct TakeSideView: View {
                 Text(name)
                     .font(.subheadline)
                     .fontWeight(.semibold)
+                    .foregroundColor(.wagerInk)
                     .lineLimit(1)
                 if isWinner {
                     Image(systemName: "crown.fill")
                         .font(.caption2)
-                        .foregroundColor(.wagerGold)
+                        .foregroundColor(.wagerGoldInk)
                 }
             }
             Text(countText)
-                .font(.caption2)
-                .foregroundColor(.secondary)
+                .font(.wagerMono(11))
+                .foregroundColor(tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(isWinner ? Color.wagerGold.opacity(0.15) : Color(.secondarySystemBackground))
-        .cornerRadius(10)
+        .background(isWinner ? Color.wagerGoldFill.opacity(0.15) : Color.wagerCard)
+        .overlay(
+            RoundedRectangle(cornerRadius: WagerRadius.card)
+                .stroke(isWinner ? Color.wagerGoldFill.opacity(0.4) : Color.wagerLine, lineWidth: 1)
+        )
+        .cornerRadius(WagerRadius.card)
     }
 
     // MARK: Open (can take a side)
@@ -138,7 +169,7 @@ struct TakeSideView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Pick a side")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.wagerInkSecondary)
                 Picker("Side", selection: $pickedSide) {
                     Text("Choose").tag(PickedSide.none)
                     Text(preview.sideA).tag(PickedSide.a)
@@ -150,36 +181,41 @@ struct TakeSideView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(preview.stakeAmount != nil ? "Amount (fixed stake)" : "Amount")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.wagerInkSecondary)
                 HStack {
-                    Text("$").foregroundColor(.secondary)
+                    Text(WagerMoney.symbol(for: preview.paymentType)).foregroundColor(.wagerInkSecondary)
                     TextField("Amount", text: $amountText)
                         .keyboardType(.decimalPad)
                         .disabled(preview.stakeAmount != nil)
                 }
                 .padding(10)
-                .background(Color(.systemGray6))
-                .cornerRadius(10)
+                .background(Color.wagerCard)
+                .overlay(
+                    RoundedRectangle(cornerRadius: WagerRadius.control)
+                        .stroke(Color.wagerLine, lineWidth: 1)
+                )
+                .cornerRadius(WagerRadius.control)
             }
 
             Button(action: confirm) {
                 HStack {
                     if isSubmitting {
-                        ProgressView().progressViewStyle(.circular).tint(.white)
+                        ProgressView().progressViewStyle(.circular).tint(.wagerOnEmerald)
                     }
-                    Text(isSubmitting ? "Placing…" : "Confirm Bet")
+                    Text(isSubmitting ? "Placing…" : "Confirm bet")
                         .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(pickedSide == .none ? Color.gray : Color.wagerBrand)
-                .foregroundColor(.white)
-                .cornerRadius(12)
+                .background(pickedSide == .none ? Color.wagerLineStrong : Color.wagerEmerald)
+                .foregroundColor(.wagerOnEmerald)
+                .cornerRadius(WagerRadius.panel)
             }
             .disabled(pickedSide == .none || isSubmitting)
 
             Button("Open in WagerPals", action: onOpenInApp)
                 .buttonStyle(.bordered)
+                .tint(.wagerInkSecondary)
         }
     }
 
@@ -190,10 +226,9 @@ struct TakeSideView: View {
             Text(statusText)
                 .font(.subheadline)
                 .fontWeight(.semibold)
-                .foregroundColor(.secondary)
+                .foregroundColor(.wagerInkSecondary)
             Button("Open in WagerPals", action: onOpenInApp)
-                .buttonStyle(.borderedProminent)
-                .tint(.wagerBrand)
+                .buttonStyle(WagerPrimaryButtonStyle())
         }
     }
 
