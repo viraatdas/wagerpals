@@ -36,9 +36,9 @@ const archivoBlack = Archivo_Black({
   display: "swap",
 });
 
-const APP_TITLE = "WagerPals — bet on anything with friends";
+const APP_TITLE = "WagerPals | Bet On Your Friends' Shenanigans";
 const APP_DESCRIPTION =
-  "Bet on anything with friends. Real stakes, real fun.";
+  "Bet on your friends' shenanigans. Real stakes, real fun.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://wagerpals.io"),
@@ -73,7 +73,7 @@ export const metadata: Metadata = {
         url: "/og.png",
         width: 1200,
         height: 630,
-        alt: "WagerPals — bet with your friends",
+        alt: "WagerPals — bet on your friends' shenanigans",
       },
     ],
   },
