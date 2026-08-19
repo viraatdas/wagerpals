@@ -161,7 +161,7 @@ function faucetGrantKey(userId: string): string {
 async function applySignupGrantIfNeeded(tx: VercelPoolClient, userId: string): Promise<void> {
   const insertResult = await tx.sql`
     INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, currency)
-    VALUES (${generateId()}, ${userId}, 'deposit', ${SIGNUP_GRANT_WP}, 'completed', 'Welcome bonus — W100 to get you started', ${signupGrantKey(userId)}, 'wp')
+    VALUES (${generateId()}, ${userId}, 'deposit', ${SIGNUP_GRANT_WP}, 'completed', 'Signup bonus', ${signupGrantKey(userId)}, 'wp')
     ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
     RETURNING id
   `;

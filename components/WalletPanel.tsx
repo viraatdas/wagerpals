@@ -144,7 +144,9 @@ export default function WalletPanel({ className }: WalletPanelProps) {
   // Two separate ledgers, split by the payload's own currency field —
   // never mixed W and $ in one list. A transaction from before `currency`
   // existed on the row defaults to cash (undefined !== 'wp').
-  const wpTransactions = transactions.filter((tx: any) => tx.currency === 'wp');
+  const isGrant = (tx: any) => typeof tx.idempotency_key === 'string' && tx.idempotency_key.startsWith('signup-grant:');
+  // The signup grant seeds the balance silently (owner: no "welcome bonus" row).
+  const wpTransactions = transactions.filter((tx: any) => tx.currency === 'wp' && !isGrant(tx));
   const cashTransactions = transactions.filter((tx: any) => tx.currency !== 'wp');
 
   return (

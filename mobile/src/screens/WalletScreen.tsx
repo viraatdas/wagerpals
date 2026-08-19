@@ -515,7 +515,11 @@ export default function WalletScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <FlatList
-        data={summary.transactions}
+        // The signup grant seeds the W balance silently (owner: no
+        // "welcome bonus" row in the ledger).
+        data={summary.transactions.filter(
+          (tx) => !(typeof tx.idempotency_key === 'string' && tx.idempotency_key.startsWith('signup-grant:'))
+        )}
         renderItem={renderTx}
         keyExtractor={keyExtractor}
         ListHeaderComponent={listHeader}
