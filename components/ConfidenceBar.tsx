@@ -68,10 +68,19 @@ export default function ConfidenceBar({ sideA, sideB, size = 'compact', classNam
   const config = SIZE_CONFIG[size];
   const restingSplit = splitPercent(sideA.total, sideB.total);
 
-  // Mirrors the latest resting split into a ref so the mount-only effect
-  // below can read fresh values without needing them as dependencies.
+  // Zero-pool decision comes straight from the props' totals, never from
+  // the animated fill state — a wager with nothing staked on either side
+  // must never paint a fake 50/50 split just because splitPercent() rests
+  // there when the pool is empty.
+  const isEmpty = Math.max(0, sideA.total || 0) + Math.max(0, sideB.total || 0) <= 0;
+
+  // Mirrors the latest resting split (and empty-ness) into refs so the
+  // mount-only effect below can read fresh values without needing them as
+  // dependencies.
   const restingSplitRef = useRef(restingSplit);
   restingSplitRef.current = restingSplit;
+  const isEmptyRef = useRef(isEmpty);
+  isEmptyRef.current = isEmpty;
 
   // Both fills match the resting split on the server render and the first
   // client render — no flash of empty, no hydration mismatch.
@@ -81,8 +90,11 @@ export default function ConfidenceBar({ sideA, sideB, size = 'compact', classNam
   const hasMountedRef = useRef(false);
 
   // Mount-only flourish: both fills 0 -> their own resting width, once.
+  // Skipped entirely for an empty pool — there is no fill to animate in,
+  // and animating a hidden track would be motion with nothing to show for
+  // it.
   useEffect(() => {
-    if (prefersReducedMotion()) {
+    if (isEmptyRef.current || prefersReducedMotion()) {
       hasMountedRef.current = true;
       return;
     }
@@ -122,15 +134,23 @@ export default function ConfidenceBar({ sideA, sideB, size = 'compact', classNam
   }, [restingSplit.pctA, restingSplit.pctB]);
 
   const transitionClass = transitioning ? 'transition-[width] duration-bar ease-out-expo' : '';
-  const accessibleLabel = `${sideA.label} ${formatPercent(restingSplit.pctA)}, ${sideB.label} ${formatPercent(restingSplit.pctB)}`;
+  const accessibleLabel = isEmpty
+    ? `${sideA.label} vs ${sideB.label} — no stakes yet`
+    : `${sideA.label} ${formatPercent(restingSplit.pctA)}, ${sideB.label} ${formatPercent(restingSplit.pctB)}`;
 
   const hasAvatars = (sideA.avatars && sideA.avatars.length > 0) || (sideB.avatars && sideB.avatars.length > 0);
 
   return (
     <div className={className}>
-      <div className={`mb-1 flex items-center justify-between font-mono ${config.labelText}`}>
-        <span className="text-emerald">{formatPercent(restingSplit.pctA)}</span>
-        <span className="text-crimson-ink">{formatPercent(restingSplit.pctB)}</span>
+      <div className={`mb-1 flex items-center font-mono ${config.labelText} ${isEmpty ? '' : 'justify-between'}`}>
+        {isEmpty ? (
+          <span className="text-ink-muted">no stakes yet</span>
+        ) : (
+          <>
+            <span className="text-emerald">{formatPercent(restingSplit.pctA)}</span>
+            <span className="text-crimson-ink">{formatPercent(restingSplit.pctB)}</span>
+          </>
+        )}
       </div>
 
       <div
@@ -138,16 +158,20 @@ export default function ConfidenceBar({ sideA, sideB, size = 'compact', classNam
         aria-label={accessibleLabel}
         className={`relative w-full overflow-hidden rounded-chip bg-line ${config.track}`}
       >
-        <div
-          aria-hidden="true"
-          className={`absolute left-0 top-0 h-full bg-emerald ${transitionClass}`}
-          style={{ width: `${fillPctA}%` }}
-        />
-        <div
-          aria-hidden="true"
-          className={`absolute right-0 top-0 h-full bg-crimson ${transitionClass}`}
-          style={{ width: `${fillPctB}%` }}
-        />
+        {!isEmpty && (
+          <>
+            <div
+              aria-hidden="true"
+              className={`absolute left-0 top-0 h-full bg-emerald ${transitionClass}`}
+              style={{ width: `${fillPctA}%` }}
+            />
+            <div
+              aria-hidden="true"
+              className={`absolute right-0 top-0 h-full bg-crimson ${transitionClass}`}
+              style={{ width: `${fillPctB}%` }}
+            />
+          </>
+        )}
       </div>
 
       {hasAvatars && (

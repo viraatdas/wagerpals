@@ -7,13 +7,13 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function ClearCachePage() {
-  const [status, setStatus] = useState<string>('Clearing cache...');
+  const [status, setStatus] = useState<string>('Clearing cache…');
   const [failed, setFailed] = useState(false);
   const router = useRouter();
 
   const clearCache = async () => {
     setFailed(false);
-    setStatus('Clearing cache...');
+    setStatus('Clearing cache…');
     try {
       // Unregister all service workers
       if ('serviceWorker' in navigator) {
@@ -37,7 +37,7 @@ export default function ClearCachePage() {
       // Clear session storage
       sessionStorage.clear();
 
-      setStatus('Cache cleared successfully. Redirecting…');
+      setStatus('Cache cleared — redirecting…');
 
       // Wait a bit then redirect to home
       setTimeout(() => {
@@ -45,7 +45,7 @@ export default function ClearCachePage() {
       }, 2000);
     } catch (error) {
       console.error('Error clearing cache:', error);
-      setStatus('Error clearing cache. Please try again or refresh manually.');
+      setStatus("Couldn't clear the cache — refresh the page manually.");
       setFailed(true);
     }
   };
@@ -58,8 +58,7 @@ export default function ClearCachePage() {
   return (
     <div className="page-shell-narrow animate-rise">
       <div className="card p-6 sm:p-8 text-center">
-        <p className="eyebrow mb-2">Utility</p>
-        <h1 className="display-2 mb-3">Cache Management</h1>
+        <h1 className="display-2 mb-3">Clear cache</h1>
         <p
           className={`lede mx-auto mb-6 ${failed ? 'tone-no tone-text' : 'text-muted'}`}
         >
@@ -67,7 +66,7 @@ export default function ClearCachePage() {
         </p>
 
         <div className="panel p-5 text-left mb-6">
-          <p className="field-label mb-2">This page clears, on load:</p>
+          <p className="field-label mb-2">This clears, on load:</p>
           <ul className="list-disc list-inside space-y-1 text-sm text-muted">
             <li>Unregister service workers</li>
             <li>Clear browser caches</li>
@@ -78,7 +77,7 @@ export default function ClearCachePage() {
 
         {failed && (
           <button onClick={clearCache} className="btn-danger px-5 py-2.5">
-            Try clearing again
+            Try again
           </button>
         )}
       </div>

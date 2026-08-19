@@ -68,9 +68,9 @@ export default function JoinGroupPage() {
       const response = await fetch(`/api/groups?id=${params.id}`);
       if (!response.ok) {
         if (response.status === 404) {
-          setError('Group not found. Please check the invite link.');
+          setError('Group not found — check the invite link.');
         } else {
-          setError('Failed to load group information.');
+          setError("Couldn't load this group — try again.");
         }
         setLoading(false);
         return;
@@ -99,7 +99,7 @@ export default function JoinGroupPage() {
       }
     } catch (err) {
       console.error('Failed to fetch group:', err);
-      setError('Something went wrong. Please try again.');
+      setError("Couldn't load this group — try again.");
     } finally {
       setLoading(false);
     }
@@ -125,9 +125,9 @@ export default function JoinGroupPage() {
         const contentType = response.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
           const data = await response.json();
-          setError(data.error || 'Failed to join group');
+          setError(data.error || "Couldn't join the group — try again.");
         } else {
-          setError('Failed to join group. Please try again.');
+          setError("Couldn't join the group — try again.");
         }
         setJoining(false);
         return;
@@ -138,7 +138,7 @@ export default function JoinGroupPage() {
       router.push('/?joined=pending');
     } catch (err) {
       console.error('Failed to join group:', err);
-      setError('Something went wrong. Please try again.');
+      setError("Couldn't send the join request — try again.");
       setJoining(false);
     }
   };
@@ -165,18 +165,13 @@ export default function JoinGroupPage() {
     return (
       <div className="page-shell-narrow mobile-page">
         <div className="card rail-top tone-no p-8 text-center animate-rise">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full tone-surface border">
-            <svg className="w-6 h-6 tone-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
           <h1 className="display-3 mb-2">Group not found</h1>
           <p className="text-sm text-muted mb-6 max-w-[34ch] mx-auto">{error}</p>
           <button
             onClick={() => router.push('/')}
             className="btn-primary press"
           >
-            Go to home
+            Go to board
           </button>
         </div>
       </div>
@@ -187,11 +182,6 @@ export default function JoinGroupPage() {
     return (
       <div className="page-shell-narrow mobile-page">
         <div className="card rail-top tone-yes p-8 text-center animate-rise">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full tone-surface border">
-            <svg className="w-6 h-6 tone-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
           <h1 className="display-3 mb-2">You&apos;re already in</h1>
           <p className="text-sm text-muted mb-6">
             You&apos;re already part of <span className="font-semibold text-foreground">{group?.name}</span>.
@@ -224,7 +214,9 @@ export default function JoinGroupPage() {
           <p className="eyebrow mb-3">You&apos;re invited to join</p>
           <h1 className="display-1 break-words mb-3">{group?.name}</h1>
           <p className="lede mb-6">
-            Join to place bets, track the odds, and settle up with your friends.
+            {typeof group?.member_count === 'number' && group.member_count > 0
+              ? `${group.member_count} ${group.member_count === 1 ? 'friend is' : 'friends are'} already wagering here.`
+              : 'Join to place bets, track the odds, and settle up with your friends.'}
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-2 mb-8">

@@ -14,6 +14,23 @@ interface ConfirmationModalProps {
   cancelText?: string;
   type?: ConfirmationType;
   loading?: boolean;
+  /**
+   * Per-action loading label shown on the confirm button while `loading` is
+   * true, e.g. "Deleting bet…". Every flow needs its own verb — a single
+   * generic "Processing..." loses the verb identity a button/confirmation
+   * pair is supposed to carry through. Defaults to a naive gerund of
+   * `confirmText` (e.g. "Resolve" -> "Resolving…") for callers that don't
+   * pass one, but callers with an irregular verb (e.g. "Cancel & Refund")
+   * should pass an explicit label.
+   */
+  loadingText?: string;
+}
+
+/** Naive fallback gerund for `confirmText` when no explicit `loadingText` is given. */
+function defaultLoadingLabel(confirmText: string): string {
+  const trimmed = confirmText.trim();
+  if (!trimmed) return 'Working…';
+  return /e$/i.test(trimmed) ? `${trimmed.slice(0, -1)}ing…` : `${trimmed}ing…`;
 }
 
 const TONE_BY_TYPE: Record<ConfirmationType, string> = {
@@ -66,6 +83,7 @@ export default function ConfirmationModal({
   cancelText = 'Cancel',
   type = 'danger',
   loading = false,
+  loadingText,
 }: ConfirmationModalProps) {
   const titleId = useId();
   const confirmRef = useRef<HTMLButtonElement>(null);
@@ -142,7 +160,7 @@ export default function ConfirmationModal({
               disabled={loading}
               className={`${CONFIRM_CLASS_BY_TYPE[type]} flex-1 px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none`}
             >
-              {loading ? 'Processing...' : confirmText}
+              {loading ? loadingText ?? defaultLoadingLabel(confirmText) : confirmText}
             </button>
           </div>
         </div>

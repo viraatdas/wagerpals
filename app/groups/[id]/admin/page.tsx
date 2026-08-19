@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
 import Toast, { ToastType } from '@/components/Toast';
+import AvatarStack from '@/components/AvatarStack';
+import EmptySlip from '@/components/EmptySlip';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +50,15 @@ export default function GroupAdminPage() {
     }
   };
 
-  const handleMemberAction = async (action: string, targetUserId: string) => {
+  const MEMBER_ACTION_SUCCESS: Record<string, (username: string) => string> = {
+    approve: (username) => `@${username} is in`,
+    decline: () => 'Request declined',
+    promote: (username) => `@${username} promoted to admin`,
+    demote: (username) => `@${username} demoted to member`,
+    remove: (username) => `@${username} removed`,
+  };
+
+  const handleMemberAction = async (action: string, targetUserId: string, targetUsername: string) => {
     if (!user) return;
 
     setProcessing(true);
@@ -65,15 +75,16 @@ export default function GroupAdminPage() {
       });
 
       if (response.ok) {
-        setToast({ message: 'Action completed successfully', type: 'success' });
+        const successText = MEMBER_ACTION_SUCCESS[action]?.(targetUsername) ?? `@${targetUsername} updated`;
+        setToast({ message: successText, type: 'success' });
         fetchGroup(user.id);
       } else {
         const data = await response.json();
-        setToast({ message: data.error || 'Failed to perform action', type: 'error' });
+        setToast({ message: data.error || `Couldn't update @${targetUsername} — try again.`, type: 'error' });
       }
     } catch (error) {
       console.error('Failed to perform action:', error);
-      setToast({ message: 'Failed to perform action', type: 'error' });
+      setToast({ message: `Couldn't update @${targetUsername} — try again.`, type: 'error' });
     } finally {
       setProcessing(false);
     }
@@ -100,11 +111,11 @@ export default function GroupAdminPage() {
         fetchGroup(user.id);
       } else {
         const data = await response.json();
-        setToast({ message: data.error || 'Failed to update group settings', type: 'error' });
+        setToast({ message: data.error || "Couldn't update the group — try again.", type: 'error' });
       }
     } catch (error) {
       console.error('Failed to update group settings:', error);
-      setToast({ message: 'Failed to update group settings', type: 'error' });
+      setToast({ message: "Couldn't update the group — try again.", type: 'error' });
     } finally {
       setProcessing(false);
     }
@@ -124,11 +135,11 @@ export default function GroupAdminPage() {
         router.push('/');
       } else {
         const data = await response.json();
-        setToast({ message: data.error || 'Failed to delete group', type: 'error' });
+        setToast({ message: data.error || "Couldn't delete the group — try again.", type: 'error' });
       }
     } catch (error) {
       console.error('Failed to delete group:', error);
-      setToast({ message: 'Failed to delete group', type: 'error' });
+      setToast({ message: "Couldn't delete the group — try again.", type: 'error' });
     } finally {
       setDeleting(false);
     }
@@ -154,16 +165,11 @@ export default function GroupAdminPage() {
   if (!group) {
     return (
       <div className="page-shell mobile-page">
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <p className="empty-state-title">Group not found</p>
-          <p className="empty-state-body">This group may have been deleted, or the link is incorrect.</p>
-          <Link href="/" className="btn-primary press">Go home</Link>
-        </div>
+        <EmptySlip
+          headline="Group not found"
+          body="This group is gone, or the link's wrong."
+          action={{ label: 'Go home', href: '/' }}
+        />
       </div>
     );
   }
@@ -212,15 +218,18 @@ export default function GroupAdminPage() {
                   key={member.user_id}
                   className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground truncate">{member.username}</p>
-                    <p className="text-xs text-muted">
-                      Requested {new Date(member.joined_at).toLocaleDateString()}
-                    </p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <AvatarStack people={[{ username: member.username }]} size="sm" className="flex-none" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground truncate">{member.username}</p>
+                      <p className="font-mono text-xs text-muted">
+                        Requested {new Date(member.joined_at).toLocaleDateString()}
+                      </p>
+                    </div>
                   </div>
                   <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                     <button
-                      onClick={() => handleMemberAction('approve', member.user_id)}
+                      onClick={() => handleMemberAction('approve', member.user_id, member.username)}
                       disabled={processing}
                       aria-label={`Approve ${member.username}`}
                       className="btn-quiet-success press disabled:opacity-50"
@@ -228,7 +237,7 @@ export default function GroupAdminPage() {
                       Approve
                     </button>
                     <button
-                      onClick={() => handleMemberAction('decline', member.user_id)}
+                      onClick={() => handleMemberAction('decline', member.user_id, member.username)}
                       disabled={processing}
                       aria-label={`Decline ${member.username}`}
                       className="btn-quiet-danger press disabled:opacity-50"
@@ -241,16 +250,12 @@ export default function GroupAdminPage() {
             </ul>
           </section>
         ) : (
-          <div className="empty-state mb-10">
-            <div className="empty-state-icon">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <p className="empty-state-title">No pending requests</p>
-            <p className="empty-state-body">Nobody is waiting to join right now. Invite more people to grow the group.</p>
-            <Link href={`/groups/${params.id}`} className="btn-primary press">Invite more people</Link>
-          </div>
+          <EmptySlip
+            className="mb-10"
+            headline="No one's waiting."
+            body="Invite more people to grow the group."
+            action={{ label: 'Invite more people', href: `/groups/${params.id}` }}
+          />
         )}
 
         <section className="mb-10">
@@ -315,9 +320,7 @@ export default function GroupAdminPage() {
                     className="flex flex-col gap-3 px-4 py-4 sm:px-5 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-hairline bg-surface-sunken text-xs font-semibold text-muted">
-                        {(member.username || '?').trim().charAt(0).toUpperCase() || '?'}
-                      </span>
+                      <AvatarStack people={[{ username: member.username }]} size="sm" className="flex-none" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground truncate">{member.username}</p>
                         <div className="mt-0.5 flex items-center gap-1.5">
@@ -333,7 +336,7 @@ export default function GroupAdminPage() {
                       <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row shrink-0">
                         {member.role === 'member' ? (
                           <button
-                            onClick={() => handleMemberAction('promote', member.user_id)}
+                            onClick={() => handleMemberAction('promote', member.user_id, member.username)}
                             disabled={processing}
                             aria-label={`Promote ${member.username} to admin`}
                             className="btn-glass press text-sm disabled:opacity-50"
@@ -342,7 +345,7 @@ export default function GroupAdminPage() {
                           </button>
                         ) : (
                           <button
-                            onClick={() => handleMemberAction('demote', member.user_id)}
+                            onClick={() => handleMemberAction('demote', member.user_id, member.username)}
                             disabled={processing}
                             aria-label={`Demote ${member.username} to member`}
                             className="btn-glass press text-sm disabled:opacity-50"
@@ -353,7 +356,7 @@ export default function GroupAdminPage() {
                         <button
                           onClick={() => {
                             if (confirm(`Remove ${member.username} from the group?`)) {
-                              handleMemberAction('remove', member.user_id);
+                              handleMemberAction('remove', member.user_id, member.username);
                             }
                           }}
                           disabled={processing}
@@ -369,16 +372,11 @@ export default function GroupAdminPage() {
               </ul>
             </div>
           ) : (
-            <div className="empty-state">
-              <div className="empty-state-icon">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-3.998-4.2" />
-                </svg>
-              </div>
-              <p className="empty-state-title">No members yet</p>
-              <p className="empty-state-body">Invite people to this group to see them here.</p>
-              <Link href={`/groups/${params.id}`} className="btn-primary press">Invite more people</Link>
-            </div>
+            <EmptySlip
+              headline="No one's here yet."
+              body="Invite people and they'll show up here."
+              action={{ label: 'Invite more people', href: `/groups/${params.id}` }}
+            />
           )}
         </section>
 

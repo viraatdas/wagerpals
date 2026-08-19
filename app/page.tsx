@@ -7,16 +7,44 @@ import { useUser } from '@stackframe/stack';
 import PushNotificationPrompt from '@/components/PushNotificationPrompt';
 import UsernameModal from '@/components/UsernameModal';
 import Toast, { ToastType } from '@/components/Toast';
-import Logo from '@/components/Logo';
-import { Group } from '@/lib/types';
+import EmptySlip from '@/components/EmptySlip';
+import EventCard from '@/components/EventCard';
+import { EventWithStats, Group } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
+// A group as returned by GET /api/groups?userId= — Group plus the counts and
+// viewer-role fields that endpoint adds. See app/api/groups/route.ts.
+interface GroupSummary extends Group {
+  member_count: number;
+  is_admin: boolean;
+}
+
+// Board ordering: currently-open wagers first (most recent deadline first),
+// then everything else (ended/settled) newest first. Mirrors the ordering
+// db.events.getAllWithStats already applies per-group; re-applied here
+// because the Board combines multiple groups' event lists client-side.
+function boardOrder(a: EventWithStats, b: EventWithStats): number {
+  const aOpen = a.status === 'active' ? 0 : 1;
+  const bOpen = b.status === 'active' ? 0 : 1;
+  if (aOpen !== bOpen) return aOpen - bOpen;
+  return b.end_time - a.end_time;
+}
+
 export default function Home() {
   const router = useRouter();
-  const user = useUser({ or: "return-null" });
-  const [groups, setGroups] = useState<any[]>([]);
+  const user = useUser({ or: 'return-null' });
+
+  // Signed-in board state
+  const [groups, setGroups] = useState<GroupSummary[]>([]);
+  const [events, setEvents] = useState<EventWithStats[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+
+  // Signed-out masthead state — public events only, no group data.
+  const [publicEvents, setPublicEvents] = useState<EventWithStats[]>([]);
+  const [loadingPublic, setLoadingPublic] = useState(true);
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showUsernameModal, setShowUsernameModal] = useState(false);
@@ -28,7 +56,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!user) {
-      router.push('/auth/signin');
+      fetchPublicEvents();
       return;
     }
 
@@ -41,8 +69,9 @@ export default function Home() {
       }
       checkAndHandlePendingInvite();
     });
-    fetchGroups(user.id);
-  }, [user, router]);
+    fetchBoard(user.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const checkUsernameSelected = async () => {
     if (!user) return;
@@ -73,7 +102,6 @@ export default function Home() {
     if (pendingInvite) {
       localStorage.removeItem('pendingGroupInvite');
       sessionStorage.removeItem('pendingGroupInvite');
-      // Redirect to the join page
       router.push(`/groups/join/${pendingInvite}`);
     }
   };
@@ -120,7 +148,7 @@ export default function Home() {
 
       if (response.ok) {
         setShowUsernameModal(false);
-        setToast({ message: 'Username set successfully!', type: 'success' });
+        setToast({ message: 'Username saved.', type: 'success' });
       } else {
         const data = await response.json();
         throw new Error(data.error || 'Failed to set username');
@@ -130,17 +158,52 @@ export default function Home() {
     }
   };
 
-  const fetchGroups = async (uid: string) => {
+  // Fetches the caller's groups, then every group's events, and combines
+  // them into one board-ordered list. Reuses the same two endpoints
+  // app/all-events/page.tsx already drives (GET /api/groups?userId=,
+  // GET /api/events?groupId=) — no new API surface.
+  const fetchBoard = async (uid: string) => {
+    setLoading(true);
     try {
-      const response = await fetch(`/api/groups?userId=${uid}`);
-      if (!response.ok) throw new Error('Failed to fetch groups');
-      const data = await response.json();
-      setGroups(Array.isArray(data) ? data : []);
+      const groupsResponse = await fetch(`/api/groups?userId=${uid}`);
+      if (!groupsResponse.ok) throw new Error('Failed to fetch groups');
+      const groupsData = await groupsResponse.json();
+      const groupList: GroupSummary[] = Array.isArray(groupsData) ? groupsData : [];
+      setGroups(groupList);
+
+      const eventLists = await Promise.all(
+        groupList.map(async (group) => {
+          const res = await fetch(`/api/events?groupId=${group.id}`);
+          if (!res.ok) return [] as EventWithStats[];
+          const data = await res.json();
+          return Array.isArray(data) ? (data as EventWithStats[]) : [];
+        })
+      );
+
+      setEvents(eventLists.flat().sort(boardOrder));
     } catch (error) {
-      console.error('Failed to fetch groups:', error);
+      console.error('Failed to load board:', error);
       setGroups([]);
+      setEvents([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Signed-out visitors get whatever the board's own public feed already
+  // returns from the unauthenticated GET /api/events (no groupId) — the
+  // same endpoint app/explore/page.tsx drives. No new endpoint.
+  const fetchPublicEvents = async () => {
+    setLoadingPublic(true);
+    try {
+      const response = await fetch('/api/events');
+      const data = await response.json();
+      setPublicEvents(Array.isArray(data) ? data.sort(boardOrder) : []);
+    } catch (error) {
+      console.error('Failed to load public board:', error);
+      setPublicEvents([]);
+    } finally {
+      setLoadingPublic(false);
     }
   };
 
@@ -164,9 +227,13 @@ export default function Home() {
         setShowCreateModal(false);
         setGroupName('');
         router.push(`/groups/${newGroup.id}`);
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setToast({ message: data.error || "Couldn't create the group — try again.", type: 'error' });
       }
     } catch (error) {
       console.error('Failed to create group:', error);
+      setToast({ message: "Couldn't create the group — try again.", type: 'error' });
     } finally {
       setCreating(false);
     }
@@ -190,48 +257,74 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
-        setToast({ message: 'Join request submitted! Waiting for admin approval.', type: 'success' });
+        setToast({ message: 'Join request sent — waiting on an admin.', type: 'success' });
         setShowJoinModal(false);
         setGroupCode('');
-        fetchGroups(user.id);
+        fetchBoard(user.id);
       } else {
-        setToast({ message: data.error || 'Failed to join group', type: 'error' });
+        setToast({ message: data.error || "Couldn't join the group — try again.", type: 'error' });
       }
     } catch (error) {
       console.error('Failed to join group:', error);
-      setToast({ message: 'Failed to join group', type: 'error' });
+      setToast({ message: "Couldn't join the group — try again.", type: 'error' });
     } finally {
       setJoining(false);
     }
   };
 
-  // Presentation-only derived stats — built solely from data already in scope.
-  const groupCount = groups.length;
-  const publicGroupCount = groups.filter((g) => g.is_public).length;
-  const totalMembers = groups.reduce((sum, g) => sum + (g.member_count || 0), 0);
+  const visibleEvents =
+    selectedGroupId === 'all' ? events : events.filter((e) => e.group_id === selectedGroupId);
 
-  if (loading) {
+  const chipClass = (active: boolean) =>
+    `shrink-0 whitespace-nowrap rounded-chip px-3 py-1.5 font-sans text-sm font-medium transition-colors duration-fast ${
+      active
+        ? 'bg-emerald text-on-emerald'
+        : 'border border-line bg-card text-ink-secondary hover:border-ink-secondary'
+    }`;
+
+  // ---------------------------------------------------------------------
+  // Signed-out: compact masthead + sign-in CTA, real public cards below.
+  // ---------------------------------------------------------------------
+  if (!user) {
     return (
       <div className="page-shell mobile-page">
-        <div className="skeleton h-40 rounded-3xl mb-8" />
-        <div className="section-head mb-4">
-          <div className="skeleton-line w-28" />
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <p className="min-w-0 truncate font-sans text-sm text-ink-secondary">
+            Bet on anything with friends.
+          </p>
+          <Link
+            href="/auth/signin"
+            className="shrink-0 rounded-control bg-emerald px-4 py-2 font-sans text-sm font-medium text-on-emerald transition-colors duration-fast hover:opacity-90"
+          >
+            Sign in
+          </Link>
         </div>
-        <div className="grid gap-3">
-          <div className="skeleton h-20 rounded-2xl" />
-          <div className="skeleton h-20 rounded-2xl" />
-          <div className="skeleton h-20 rounded-2xl" />
-        </div>
+
+        {loadingPublic ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="skeleton h-56 rounded-card" />
+            <div className="skeleton h-56 rounded-card" />
+            <div className="skeleton h-56 rounded-card" />
+          </div>
+        ) : publicEvents.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {publicEvents.map((event) => (
+              <EventCard key={event.id} event={event} />
+            ))}
+          </div>
+        ) : (
+          <EmptySlip
+            headline="Nothing public right now."
+            body="Sign in to see your groups' board."
+            action={{ label: 'Sign in', href: '/auth/signin' }}
+          />
+        )}
       </div>
     );
   }
 
-  if (!user) {
-    return null; // Will redirect to signin
-  }
-
   return (
-    <>
+    <div className="page-shell mobile-page">
       {showUsernameModal && <UsernameModal onSubmit={handleUsernameSubmit} />}
       <PushNotificationPrompt />
       <Toast
@@ -247,9 +340,11 @@ export default function Home() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="create-group-title"
-            className="card-focal animate-sheet p-6 max-w-md w-full"
+            className="rounded-panel bg-card p-6 max-w-md w-full shadow-elev-4"
           >
-            <h2 id="create-group-title" className="display-3 mb-4">Create a Group</h2>
+            <h2 id="create-group-title" className="mb-4 font-display text-xl text-ink">
+              Create a Group
+            </h2>
             <form onSubmit={handleCreateGroup}>
               <label className="field-label" htmlFor="create-group-name">Group name</label>
               <input
@@ -265,16 +360,16 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="btn-glass flex-1"
+                  className="flex-1 rounded-control border border-line bg-card px-4 py-2 font-sans text-sm font-medium text-ink-secondary transition-colors duration-fast hover:border-ink-secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={creating}
-                  className="btn-primary flex-1 disabled:opacity-50"
+                  className="flex-1 rounded-control bg-emerald px-4 py-2 font-sans text-sm font-medium text-on-emerald transition-colors duration-fast hover:opacity-90 disabled:opacity-50"
                 >
-                  {creating ? 'Creating...' : 'Create'}
+                  {creating ? 'Creating…' : 'Create Group'}
                 </button>
               </div>
             </form>
@@ -288,9 +383,11 @@ export default function Home() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="join-group-title"
-            className="card-focal animate-sheet p-6 max-w-md w-full"
+            className="rounded-panel bg-card p-6 max-w-md w-full shadow-elev-4"
           >
-            <h2 id="join-group-title" className="display-3 mb-4">Join a Group</h2>
+            <h2 id="join-group-title" className="mb-4 font-display text-xl text-ink">
+              Join a Group
+            </h2>
             <form onSubmit={handleJoinGroup}>
               <label className="field-label" htmlFor="join-group-code">Group code</label>
               <input
@@ -300,23 +397,23 @@ export default function Home() {
                 onChange={(e) => setGroupCode(e.target.value)}
                 placeholder="Enter 6-digit group code"
                 maxLength={6}
-                className="input mb-6 text-center text-2xl tracking-widest numeral"
+                className="input mb-6 text-center text-2xl tracking-widest font-mono"
                 required
               />
               <div className="flex gap-3">
                 <button
                   type="button"
                   onClick={() => setShowJoinModal(false)}
-                  className="btn-glass flex-1"
+                  className="flex-1 rounded-control border border-line bg-card px-4 py-2 font-sans text-sm font-medium text-ink-secondary transition-colors duration-fast hover:border-ink-secondary"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={joining}
-                  className="btn-primary flex-1 disabled:opacity-50"
+                  className="flex-1 rounded-control bg-emerald px-4 py-2 font-sans text-sm font-medium text-on-emerald transition-colors duration-fast hover:opacity-90 disabled:opacity-50"
                 >
-                  {joining ? 'Joining...' : 'Join'}
+                  {joining ? 'Joining…' : 'Join Group'}
                 </button>
               </div>
             </form>
@@ -324,132 +421,72 @@ export default function Home() {
         </div>
       )}
 
-      {/* Hero */}
-      <div className="hero-field">
-        <div className="relative page-shell pb-10 sm:pb-14">
-          <div className="flex items-center gap-3 mb-4">
-            <Logo variant="mark" animate="mount" className="w-11 h-11 rounded-2xl" />
-          </div>
-          <h1 className="display-1 mb-3">WagerPals</h1>
-          <p className="lede mb-7">
-            Bet on anything with friends. Real stakes, real fun.
-          </p>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="btn-primary w-full sm:w-auto"
-            >
-              Create Group
-            </button>
-            <button
-              onClick={() => setShowJoinModal(true)}
-              className="btn-glass w-full sm:w-auto"
-            >
-              Join Group
-            </button>
-          </div>
-
-          {groupCount > 0 && (
-            <div className="mt-9 grid grid-cols-3 gap-4 max-w-md">
-              <div>
-                <div className="eyebrow mb-1">Groups</div>
-                <div className="stat-value numeral">{groupCount}</div>
-              </div>
-              <div>
-                <div className="eyebrow mb-1">Members</div>
-                <div className="stat-value numeral">{totalMembers}</div>
-              </div>
-              <div>
-                <div className="eyebrow mb-1">Public</div>
-                <div className="stat-value numeral">{publicGroupCount}</div>
-              </div>
-            </div>
-          )}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <h1 className="font-display text-2xl text-ink sm:text-3xl">Board</h1>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => setShowJoinModal(true)}
+            className="rounded-control border border-line bg-card px-3 py-1.5 font-sans text-sm font-medium text-ink-secondary transition-colors duration-fast hover:border-ink-secondary"
+          >
+            Join a group
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="rounded-control bg-emerald px-3 py-1.5 font-sans text-sm font-medium text-on-emerald transition-colors duration-fast hover:opacity-90"
+          >
+            New group
+          </button>
         </div>
       </div>
 
-      <div className="page-shell mobile-page pt-8">
-        {groups.length > 0 ? (
-          <div>
-            <div className="section-head mb-4">
-              <h2 className="eyebrow">Your Groups</h2>
-            </div>
-            <div className="grid gap-3 stagger-rows">
-              {groups.map((group) => (
-                <Link
-                  key={group.id}
-                  href={`/groups/${group.id}`}
-                  className="card card-interactive press block rounded-2xl p-5 min-w-0"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 ${
-                        group.is_public
-                          ? 'bg-gradient-to-br from-sky-500 to-indigo-500'
-                          : 'bg-brand-gradient'
-                      }`}>
-                        {group.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="market-title text-base truncate">
-                          {group.name}
-                        </h3>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted mt-0.5">
-                          <span>{group.member_count} members</span>
-                          <span className="w-1 h-1 rounded-full bg-hairline-strong" />
-                          <span className="font-mono truncate">{group.id}</span>
-                          {group.is_admin && (
-                            <>
-                              <span className="w-1 h-1 rounded-full bg-hairline-strong" />
-                              <span className="tone-text tone-accent">Admin</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-shrink-0 items-center gap-2">
-                      {group.is_public ? (
-                        <span className="pill tone-info">Public</span>
-                      ) : (
-                        <span className="pill tone-neutral">Private</span>
-                      )}
-                      <svg className="w-4 h-4 text-muted-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  </div>
-                </Link>
+      {loading ? (
+        <>
+          <div className="mb-6 flex gap-2">
+            <div className="skeleton h-9 w-16 rounded-chip" />
+            <div className="skeleton h-9 w-24 rounded-chip" />
+            <div className="skeleton h-9 w-24 rounded-chip" />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="skeleton h-56 rounded-card" />
+            <div className="skeleton h-56 rounded-card" />
+            <div className="skeleton h-56 rounded-card" />
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-6 flex items-center gap-2 overflow-x-auto pb-1">
+            <button onClick={() => setSelectedGroupId('all')} className={chipClass(selectedGroupId === 'all')}>
+              All
+            </button>
+            {groups.map((group) => (
+              <button
+                key={group.id}
+                onClick={() => setSelectedGroupId(group.id)}
+                className={chipClass(selectedGroupId === group.id)}
+              >
+                {group.name}
+              </button>
+            ))}
+            <Link href="/explore" className={chipClass(false)}>
+              Explore →
+            </Link>
+          </div>
+
+          {visibleEvents.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleEvents.map((event) => (
+                <EventCard key={event.id} event={event} />
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="empty-state">
-            <div className="empty-state-icon">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6-3a4 4 0 10-4-4" />
-              </svg>
-            </div>
-            <h2 className="empty-state-title">No groups yet</h2>
-            <p className="empty-state-body">
-              Create a group and invite your friends to start wagering, or join one with a code someone shared with you.
-            </p>
-            <div className="flex flex-col gap-3 sm:flex-row mt-2">
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="btn-primary"
-              >
-                Create Your First Group
-              </button>
-              <button
-                onClick={() => setShowJoinModal(true)}
-                className="btn-glass"
-              >
-                Join a Group
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </>
+          ) : (
+            <EmptySlip
+              headline="No board yet."
+              body="Start a group, then start the first bet."
+              action={{ label: 'Create a group', onClick: () => setShowCreateModal(true) }}
+            />
+          )}
+        </>
+      )}
+    </div>
   );
 }

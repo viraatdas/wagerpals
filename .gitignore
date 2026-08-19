@@ -45,3 +45,4 @@ RUDDER.md
 .rudder-worktrees/
 RUDDER_SHARED.md
 .claude/skills/rudder-*/
+.rudder-workspaces/

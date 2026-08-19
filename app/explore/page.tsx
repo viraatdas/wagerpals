@@ -1,122 +1,146 @@
-
 'use client';
-export const dynamic = 'force-dynamic';
 
+export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import EventCard from '@/components/EventCard';
-import { EventWithStats } from '@/lib/types';
+import EmptySlip from '@/components/EmptySlip';
+import { Group } from '@/lib/types';
+
+// Public group discovery — the Board's group-chip row only ever shows groups
+// the caller already belongs to (see IA-DECISIONS.md), so this page is the
+// one place to find and join a public group without an invite code. It
+// drives GET /api/groups?public=true, an existing, deliberately-anonymous
+// endpoint (see the "group membership is the read boundary" invariant in
+// CLAUDE.md) that returns public groups with member/admin counts only —
+// never a roster. Not previously wired up to any page in the app.
+
+interface PublicGroup extends Group {
+  member_count: number;
+  admin_count: number;
+}
+
+type SortKey = 'members' | 'new';
 
 export default function Explore() {
-  const [events, setEvents] = useState<EventWithStats[]>([]);
-  const [filter, setFilter] = useState<'all' | 'ending-soon' | 'most-joined' | 'new'>('all');
+  const [groups, setGroups] = useState<PublicGroup[]>([]);
+  const [sort, setSort] = useState<SortKey>('members');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchEvents();
+    fetchPublicGroups();
   }, []);
 
-  const fetchEvents = async () => {
+  const fetchPublicGroups = async () => {
     try {
-      const response = await fetch('/api/events');
+      const response = await fetch('/api/groups?public=true');
       const data = await response.json();
-      setEvents(data);
+      setGroups(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Failed to fetch events:', error);
+      console.error('Failed to fetch public groups:', error);
+      setGroups([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const getFilteredEvents = () => {
-    const now = Date.now();
-    let filtered = events.filter((e) => e.status === 'active' && e.end_time > now);
+  const sortedGroups = [...groups].sort((a, b) => {
+    if (sort === 'members') return b.member_count - a.member_count;
+    return (b.created_at ? Date.parse(b.created_at) : 0) - (a.created_at ? Date.parse(a.created_at) : 0);
+  });
 
-    switch (filter) {
-      case 'ending-soon':
-        return [...filtered].sort((a, b) => a.end_time - b.end_time);
-      case 'most-joined':
-        return [...filtered].sort((a, b) => b.total_bets - a.total_bets);
-      case 'new':
-        return [...filtered].sort((a, b) => b.end_time - a.end_time);
-      default:
-        return filtered;
-    }
-  };
+  const sorts: { key: SortKey; label: string }[] = [
+    { key: 'members', label: 'Most members' },
+    { key: 'new', label: 'Newest' },
+  ];
+
+  const chipClass = (active: boolean) =>
+    `shrink-0 whitespace-nowrap rounded-chip px-3 py-1.5 font-sans text-sm font-medium transition-colors duration-fast ${
+      active
+        ? 'bg-emerald text-on-emerald'
+        : 'border border-line bg-card text-ink-secondary hover:border-ink-secondary'
+    }`;
 
   if (loading) {
     return (
       <div className="page-shell mobile-page">
-        <div className="skeleton h-9 w-56 rounded-xl mb-6" />
-        <div className="flex flex-wrap gap-2 mb-6">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="skeleton h-10 w-28 rounded-full" />
-          ))}
+        <div className="skeleton h-9 w-52 rounded-control mb-6" />
+        <div className="mb-6 flex gap-2">
+          <div className="skeleton h-9 w-32 rounded-chip" />
+          <div className="skeleton h-9 w-24 rounded-chip" />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="skeleton h-56 rounded-2xl" />
+            <div key={i} className="skeleton h-32 rounded-card" />
           ))}
         </div>
       </div>
     );
   }
 
-  const filteredEvents = getFilteredEvents();
-
-  const filters: { key: typeof filter; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'ending-soon', label: 'Ending Soon' },
-    { key: 'most-joined', label: 'Most Joined' },
-    { key: 'new', label: 'New' },
-  ];
-
   return (
-    <div className="page-shell mobile-page animate-rise">
+    <div className="page-shell mobile-page">
       <div className="mb-6">
         <div className="flex items-baseline gap-3 flex-wrap">
-          <h1 className="display-2">Explore Events</h1>
-          <span className="numeral stat-value tone-text tone-accent">{filteredEvents.length}</span>
+          <h1 className="font-display text-2xl text-ink sm:text-3xl">Explore groups</h1>
+          {sortedGroups.length > 0 && (
+            <span className="font-mono text-lg font-medium text-emerald">{sortedGroups.length}</span>
+          )}
         </div>
-        <p className="lede mt-2">
-          Every open market that any public group has listed — sorted your way.
+        <p className="mt-2 font-sans text-sm text-ink-secondary">
+          Public groups anyone can join — no invite code needed.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 mb-6 sm:flex sm:flex-wrap">
-        {filters.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={`text-sm press ${filter === key ? 'btn-primary' : 'btn-glass'}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {sortedGroups.length > 0 && (
+        <div className="mb-6 flex flex-wrap gap-2">
+          {sorts.map(({ key, label }) => (
+            <button key={key} onClick={() => setSort(key)} className={chipClass(sort === key)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {filteredEvents.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-rows">
-          {filteredEvents.map((event) => (
-            <EventCard key={event.id} event={event} />
+      {sortedGroups.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {sortedGroups.map((group) => (
+            <Link
+              key={group.id}
+              href={`/groups/${group.id}`}
+              className="block rounded-card border border-line bg-card p-5 shadow-elev-1 transition-all duration-base ease-out-expo hover:-translate-y-0.5 hover:shadow-elev-2"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="min-w-0 truncate font-sans text-base font-medium text-ink">{group.name}</h3>
+                <span className="shrink-0 rounded-pill border border-line bg-card px-2.5 py-0.5 font-mono text-xs uppercase tracking-wide text-ink-secondary">
+                  Public
+                </span>
+              </div>
+              <p className="mt-0.5 font-mono text-xs text-ink-muted">#{group.id}</p>
+
+              <div className="mt-4 flex items-center gap-5">
+                <div>
+                  <div className="font-mono text-2xl font-medium text-amber-ink">{group.member_count}</div>
+                  <div className="font-sans text-xs text-ink-muted">
+                    {group.member_count === 1 ? 'member' : 'members'}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-mono text-2xl font-medium text-amber-ink">{group.admin_count}</div>
+                  <div className="font-sans text-xs text-ink-muted">
+                    {group.admin_count === 1 ? 'admin' : 'admins'}
+                  </div>
+                </div>
+              </div>
+            </Link>
           ))}
         </div>
       ) : (
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
-            </svg>
-          </div>
-          <h2 className="empty-state-title">No active public markets</h2>
-          <p className="empty-state-body">
-            Nothing is open right now. Check back soon, or head to one of your groups and list a market yourself.
-          </p>
-          <Link href="/all-events" className="btn-primary mt-2">
-            View Your Events
-          </Link>
-        </div>
+        <EmptySlip
+          headline="No public groups yet."
+          body="Start one from the Board, or check back soon."
+          action={{ label: 'Go to Board', href: '/' }}
+        />
       )}
     </div>
   );

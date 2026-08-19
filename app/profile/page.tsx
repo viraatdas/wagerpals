@@ -6,30 +6,11 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useUser } from '@stackframe/stack';
 import { useRouter } from 'next/navigation';
-import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
-import { loadStripe } from '@stripe/stripe-js';
+import Link from 'next/link';
 import Toast, { ToastType } from '@/components/Toast';
 import { validateUsername } from '@/lib/utils';
 import { subscribeToWebPush } from '@/components/PushNotificationPrompt';
-
-/**
- * Tracks the active theme so Stripe Elements can follow it. Elements renders in
- * its own iframe and its appearance API only accepts literal colour strings, so
- * it cannot read our CSS custom properties — it has to be told, and re-told
- * whenever the header toggle flips the attribute.
- */
-function useThemeAttr(): 'dark' | 'light' {
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  useEffect(() => {
-    const read = () =>
-      setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
-    read();
-    const observer = new MutationObserver(read);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => observer.disconnect();
-  }, []);
-  return theme;
-}
+import WalletPanel from '@/components/WalletPanel';
 
 type NotificationCategoryKey =
   | 'bets'
@@ -56,46 +37,16 @@ const NOTIFICATION_CATEGORY_OPTIONS: { key: NotificationCategoryKey; label: stri
   { key: 'payments', label: 'Payouts', hint: 'A payout lands in your wallet.' },
 ];
 
-function formatTxTimestamp(value?: string): string {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
-function txTone(tx: any): string {
-  if (tx.type === 'winnings' || tx.type === 'payout') return 'tone-gold';
-  return tx.amount > 0 ? 'tone-win' : 'tone-loss';
-}
-
-const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-  ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
-  : null;
-
 export default function ProfilePage() {
   const user = useUser({ or: "return-null" });
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState<any>(null);
-  const stripeTheme = useThemeAttr();
   const [newUsername, setNewUsername] = useState('');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
-  const [wallet, setWallet] = useState<{ balance: number } | null>(null);
-  const [transactions, setTransactions] = useState<any[]>([]);
-  const [walletDataLoading, setWalletDataLoading] = useState(true);
-  const [depositAmount, setDepositAmount] = useState('');
-  const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [walletAction, setWalletAction] = useState<'none' | 'deposit' | 'withdraw'>('none');
-  const [walletLoading, setWalletLoading] = useState(false);
-  const [depositClientSecret, setDepositClientSecret] = useState<string | null>(null);
   const [notifPrefs, setNotifPrefs] = useState<NotificationPreferencesState | null>(null);
   const [notifLoading, setNotifLoading] = useState(true);
   const [notifError, setNotifError] = useState<string | null>(null);
@@ -109,16 +60,6 @@ export default function ProfilePage() {
       return;
     }
     fetchUserData();
-    fetchWallet();
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('wallet') === 'deposit') {
-        setWalletAction('deposit');
-        setTimeout(() => {
-          document.getElementById('wallet')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
-      }
-    }
   }, [user, router]);
 
   useEffect(() => {
@@ -199,11 +140,11 @@ export default function ProfilePage() {
         setNotifPrefs(data);
       } else {
         setNotifPrefs(previous);
-        setNotifError('Failed to update notification setting.');
+        setNotifError("Couldn't save that — try again.");
       }
     } catch (error) {
       setNotifPrefs(previous);
-      setNotifError('Failed to update notification setting.');
+      setNotifError("Couldn't save that — try again.");
     } finally {
       setNotifSavingKeys((prev) => {
         const next = new Set(prev);
@@ -237,11 +178,11 @@ export default function ProfilePage() {
         setNotifPrefs(data);
       } else {
         setNotifPrefs(previous);
-        setNotifError('Failed to update notification setting.');
+        setNotifError("Couldn't save that — try again.");
       }
     } catch (error) {
       setNotifPrefs(previous);
-      setNotifError('Failed to update notification setting.');
+      setNotifError("Couldn't save that — try again.");
     } finally {
       setNotifSavingKeys((prev) => {
         const next = new Set(prev);
@@ -266,80 +207,6 @@ export default function ProfilePage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchWallet = async () => {
-    if (!user) return;
-    try {
-      const response = await fetch(`/api/wallet?userId=${user.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setWallet(data.wallet);
-        setTransactions(data.transactions || []);
-      }
-    } catch {
-      // Wallet may not exist yet, that's fine
-    } finally {
-      setWalletDataLoading(false);
-    }
-  };
-
-  const handleWalletAction = async (action: 'deposit' | 'withdraw') => {
-    if (!user) return;
-    const amount = action === 'deposit' ? depositAmount : withdrawAmount;
-    if (!amount || parseFloat(amount) <= 0) return;
-
-    if (action === 'deposit' && !stripePromise) {
-      setToast({ message: 'Stripe is not configured for deposits.', type: 'error' });
-      return;
-    }
-
-    setWalletLoading(true);
-    try {
-      const response = await fetch('/api/wallet', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ user_id: user.id, action, amount }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        if (action === 'deposit' && data.clientSecret) {
-          setDepositClientSecret(data.clientSecret);
-          setToast({ message: 'Enter your payment details to complete the deposit.', type: 'info' });
-        } else {
-          setToast({ message: `${action === 'withdraw' ? 'Withdrawal' : 'Deposit'} successful!`, type: 'success' });
-          setWalletAction('none');
-          setDepositAmount('');
-          setWithdrawAmount('');
-          setDepositClientSecret(null);
-          fetchWallet();
-        }
-      } else {
-        setToast({ message: data.error || 'Transaction failed', type: 'error' });
-      }
-    } catch {
-      setToast({ message: 'Transaction failed', type: 'error' });
-    } finally {
-      setWalletLoading(false);
-    }
-  };
-
-  const resetWalletForm = () => {
-    setWalletAction('none');
-    setDepositAmount('');
-    setWithdrawAmount('');
-    setDepositClientSecret(null);
-  };
-
-  const handleDepositComplete = async () => {
-    setToast({ message: 'Deposit complete. Your balance will update shortly.', type: 'success' });
-    resetWalletForm();
-    await fetchWallet();
-    setTimeout(fetchWallet, 1500);
   };
 
   const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -383,13 +250,13 @@ export default function ProfilePage() {
         const updated = await response.json();
         setUserData(updated);
         setEditing(false);
-        setToast({ message: 'Username updated successfully!', type: 'success' });
+        setToast({ message: 'Username saved.', type: 'success' });
       } else {
         const data = await response.json();
-        setError(data.error || 'Failed to update username');
+        setError(data.error || "Couldn't save that username — try again.");
       }
     } catch (error: any) {
-      setError('Failed to update username');
+      setError("Couldn't save that username — try again.");
     } finally {
       setSaving(false);
     }
@@ -436,7 +303,7 @@ export default function ProfilePage() {
         <div className="card-focal hero-field p-6 sm:p-8 mb-8 overflow-hidden">
           <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-16 w-16 sm:h-20 sm:w-20 flex-none items-center justify-center rounded-full bg-[--color-accent-fill] text-2xl sm:text-3xl font-display font-bold text-[--color-accent-hover]">
+              <div className="flex h-16 w-16 sm:h-20 sm:w-20 flex-none items-center justify-center rounded-pill bg-amber/15 border-2 border-amber text-2xl sm:text-3xl font-display font-bold text-amber-ink">
                 {userData.username?.charAt(0)?.toUpperCase() || '?'}
               </div>
               <div className="min-w-0">
@@ -447,8 +314,8 @@ export default function ProfilePage() {
             <div className="sm:text-right">
               <p className="eyebrow mb-1 sm:text-right">Lifetime net</p>
               <p
-                className={`numeral text-4xl sm:text-5xl tone-text ${
-                  userData.net_total > 0 ? 'tone-win' : userData.net_total < 0 ? 'tone-loss' : 'tone-neutral'
+                className={`font-mono text-4xl sm:text-5xl ${
+                  userData.net_total > 0 ? 'text-emerald' : userData.net_total < 0 ? 'text-crimson-ink' : 'text-ink-muted'
                 }`}
               >
                 {userData.net_total > 0 ? '+' : userData.net_total < 0 ? '-' : ''}$
@@ -465,14 +332,14 @@ export default function ProfilePage() {
           </div>
           <div className="grid grid-cols-3 gap-3 sm:gap-4">
             <div className="card p-4 sm:p-5">
-              <p className="eyebrow mb-2">Total Wagered</p>
-              <p className="stat-value break-words">${userData.total_bet?.toFixed(2) || '0.00'}</p>
+              <p className="eyebrow mb-2">Total wagered</p>
+              <p className="font-mono text-2xl text-ink break-words">${userData.total_bet?.toFixed(2) || '0.00'}</p>
             </div>
             <div className="card p-4 sm:p-5">
-              <p className="eyebrow mb-2">Net Total</p>
+              <p className="eyebrow mb-2">Net total</p>
               <p
-                className={`stat-value tone-text break-words ${
-                  userData.net_total > 0 ? 'tone-win' : userData.net_total < 0 ? 'tone-loss' : 'tone-neutral'
+                className={`font-mono text-2xl break-words ${
+                  userData.net_total > 0 ? 'text-emerald' : userData.net_total < 0 ? 'text-crimson-ink' : 'text-ink-muted'
                 }`}
               >
                 {userData.net_total > 0 ? '+' : userData.net_total < 0 ? '-' : ''}$
@@ -480,8 +347,10 @@ export default function ProfilePage() {
               </p>
             </div>
             <div className="card p-4 sm:p-5">
-              <p className="eyebrow mb-2">Win Streak</p>
-              <p className="stat-value">🔥 {userData.streak || 0}</p>
+              <p className="eyebrow mb-2">Win streak</p>
+              <p className={`font-mono text-2xl ${userData.streak > 0 ? 'text-emerald' : 'text-ink'}`}>
+                {userData.streak || 0}
+              </p>
             </div>
           </div>
         </div>
@@ -504,7 +373,7 @@ export default function ProfilePage() {
                   onClick={() => setEditing(true)}
                   className="btn-primary px-4 py-2 whitespace-nowrap self-start sm:self-auto"
                 >
-                  Change Username
+                  Change username
                 </button>
               </div>
             ) : (
@@ -556,7 +425,7 @@ export default function ProfilePage() {
                     disabled={saving || !!error || newUsername === userData.username}
                     className="btn-primary flex-1 px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {saving ? 'Saving...' : 'Save'}
+                    {saving ? 'Saving…' : 'Save'}
                   </button>
                 </div>
               </form>
@@ -564,196 +433,33 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Wallet */}
-        <div id="wallet" className="scroll-mt-24 mb-8">
+        {/* Wallet — shared with /wallet (components/WalletPanel.tsx). Keeps
+            the old /profile?wallet=deposit#wallet deep link working: the
+            panel owns the id="wallet" anchor and reads the query param
+            itself. See IA-DECISIONS.md #2. */}
+        <div className="mb-8">
           <div className="section-head mb-4">
             <span className="eyebrow">Wallet</span>
           </div>
-          <div className="card p-5 sm:p-7">
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <p className="eyebrow">Available balance</p>
-              <span className="pill tone-neutral">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h.01M11 15h2M5 7h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V9a2 2 0 012-2z" />
-                </svg>
-                USD
-              </span>
-            </div>
-            <div className="numeral text-4xl sm:text-5xl mb-5">
-              ${wallet?.balance?.toFixed(2) || '0.00'}
-            </div>
-            {!stripePromise && (
-              <div className="tone-pending tone-surface border rounded-xl px-3 py-2 text-sm mb-4">
-                <span className="tone-text">
-                  Card deposits are not configured yet. Add Stripe keys in Vercel to enable live wallet funding.
-                </span>
-              </div>
-            )}
-
-            {walletAction === 'none' ? (
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  onClick={() => setWalletAction('deposit')}
-                  className="btn-primary flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h.01M11 15h2M5 7h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V9a2 2 0 012-2z" />
-                  </svg>
-                  Deposit with Card
-                </button>
-                <button
-                  onClick={() => setWalletAction('withdraw')}
-                  className="btn-glass flex-1 px-4 py-2.5"
-                >
-                  Withdraw
-                </button>
-              </div>
-            ) : depositClientSecret && stripePromise && walletAction === 'deposit' ? (
-              <div className="panel p-3">
-                <Elements
-                  stripe={stripePromise}
-                  options={{
-                    clientSecret: depositClientSecret,
-                    // Stripe Elements renders in its own iframe and its appearance API
-                    // only accepts literal colour strings — CSS custom properties do not
-                    // cross that boundary. This is the documented exception to the
-                    // tokens-only rule (CLAUDE.md §8); both sets below are copied from
-                    // app/globals.css and must be updated in lockstep with it.
-                    appearance:
-                      stripeTheme === 'light'
-                        ? {
-                            theme: 'stripe',
-                            variables: {
-                              colorPrimary: '#0A7C43',         // light --color-accent
-                              colorBackground: '#FFFFFF',      // light --color-surface
-                              colorText: '#10131A',            // light --color-text
-                              colorTextSecondary: '#5A6472',   // light --color-text-secondary
-                              colorTextPlaceholder: '#8A94A3', // light --color-text-muted
-                              colorDanger: '#C62828',          // light --color-no
-                              borderRadius: '12px',
-                              fontFamily: 'IBM Plex Sans, system-ui, sans-serif',
-                            },
-                          }
-                        : {
-                            theme: 'night',
-                            variables: {
-                              colorPrimary: '#24E17A',         // --color-accent
-                              colorBackground: '#121417',      // --color-surface
-                              colorText: '#E9ECEF',            // --color-text
-                              colorTextSecondary: '#A2A9B2',   // --color-text-secondary
-                              colorTextPlaceholder: '#6B737D', // --color-text-muted
-                              colorDanger: '#FF5C63',          // --color-no
-                              borderRadius: '12px',
-                              fontFamily: 'IBM Plex Sans, system-ui, sans-serif',
-                            },
-                          },
-                  }}
-                >
-                  <DepositPaymentForm
-                    loading={walletLoading}
-                    setLoading={setWalletLoading}
-                    onSuccess={handleDepositComplete}
-                    onError={(message) => setToast({ message, type: 'error' })}
-                    onCancel={resetWalletForm}
-                  />
-                </Elements>
-              </div>
-            ) : (
-              <div className="panel p-3">
-                <p className="field-hint mb-3">
-                  {walletAction === 'deposit' ? 'Deposit amount, then card form opens' : 'Withdraw amount'}
-                </p>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <div className="flex-1 relative">
-                    <label htmlFor="wallet-amount" className="sr-only">
-                      {walletAction === 'deposit' ? 'Deposit amount' : 'Withdraw amount'}
-                    </label>
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">$</span>
-                    <input
-                      id="wallet-amount"
-                      type="number"
-                      step="0.01"
-                      min="1"
-                      max="500"
-                      value={walletAction === 'deposit' ? depositAmount : withdrawAmount}
-                      onChange={(e) => walletAction === 'deposit' ? setDepositAmount(e.target.value) : setWithdrawAmount(e.target.value)}
-                      placeholder="0.00"
-                      className="input pl-7"
-                      autoFocus
-                    />
-                  </div>
-                  <button
-                    onClick={() => handleWalletAction(walletAction)}
-                    disabled={walletLoading}
-                    className="btn-primary w-full sm:w-auto px-5 py-2.5 disabled:opacity-50"
-                  >
-                    {walletLoading ? '...' : 'Go'}
-                  </button>
-                  <button
-                    onClick={resetWalletForm}
-                    className="btn-glass w-full sm:w-auto px-3 py-2.5"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <WalletPanel />
         </div>
 
-        {/* Transactions ledger */}
+        {/* Friends — reachable from here on mobile, where the bottom tab
+            bar only has room for Board/Live/History/Profile (see
+            IA-DECISIONS.md #5). */}
         <div className="mb-8">
-          <div className="section-head mb-4">
-            <span className="eyebrow">Transactions</span>
-          </div>
-          {walletDataLoading ? (
-            <div className="card divide-y divide-[--color-border]">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-3">
-                  <div className="skeleton h-2 w-2 rounded-full flex-none" />
-                  <div className="flex-1">
-                    <div className="skeleton-line w-1/3" />
-                  </div>
-                  <div className="skeleton-line w-14" />
-                </div>
-              ))}
+          <Link
+            href="/users"
+            className="card card-interactive flex items-center justify-between gap-3 p-4 sm:p-5"
+          >
+            <div>
+              <p className="font-sans font-semibold text-ink">Friends</p>
+              <p className="field-hint mt-0.5">Records, streaks, and who&apos;s up</p>
             </div>
-          ) : transactions.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h.01M11 15h2M5 7h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V9a2 2 0 012-2z" />
-                </svg>
-              </div>
-              <p className="empty-state-title">No transactions yet</p>
-              <p className="empty-state-body">
-                Deposit to fund your wallet, and every bet, win, and payout will show up here.
-              </p>
-              <button
-                onClick={() => setWalletAction('deposit')}
-                className="btn-primary px-4 py-2 mt-1"
-              >
-                Make a deposit
-              </button>
-            </div>
-          ) : (
-            <div className="card divide-y divide-[--color-border]">
-              {transactions.slice(0, 5).map((tx: any) => (
-                <div key={tx.id} className={`flex items-center gap-3 px-4 py-3 ${txTone(tx)}`}>
-                  <span className="tone-dot" aria-hidden="true" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-foreground truncate">{tx.description || tx.type}</p>
-                    {tx.created_at && (
-                      <p className="text-xs text-muted">{formatTxTimestamp(tx.created_at)}</p>
-                    )}
-                  </div>
-                  <span className="numeral tone-text text-base whitespace-nowrap">
-                    {tx.amount > 0 ? '+' : '-'}${Math.abs(tx.amount).toFixed(2)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+            <svg className="w-5 h-5 text-ink-muted flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
         </div>
 
         {/* Notifications */}
@@ -769,12 +475,12 @@ export default function ProfilePage() {
                 <div className="skeleton h-10 rounded-2xl" />
               </div>
             ) : !notifPrefs ? (
-              <p className="text-sm text-muted">Unable to load notification preferences right now.</p>
+              <p className="text-sm text-ink-muted">Couldn&apos;t load your notification settings — try again.</p>
             ) : (
               <>
-                <div className="flex items-center justify-between gap-4 pb-4 border-b border-[--color-border]">
+                <div className="flex items-center justify-between gap-4 pb-4 border-b border-line">
                   <div>
-                    <p id="notif-master-label" className="text-sm font-medium text-foreground">
+                    <p id="notif-master-label" className="text-sm font-medium text-ink">
                       Push notifications
                     </p>
                     <p className="field-hint mt-0.5">
@@ -799,7 +505,7 @@ export default function ProfilePage() {
                       }`}
                     >
                       <div className="min-w-0">
-                        <p id={`notif-${key}-label`} className="text-sm text-foreground">
+                        <p id={`notif-${key}-label`} className="text-sm text-ink">
                           {label}
                         </p>
                         <p className="field-hint mt-0.5">{hint}</p>
@@ -819,16 +525,16 @@ export default function ProfilePage() {
                   <p className="tone-no tone-text text-sm mt-3">{notifError}</p>
                 )}
 
-                <div className="mt-5 pt-4 border-t border-[--color-border]">
+                <div className="mt-5 pt-4 border-t border-line">
                   {deviceEnabled ? (
-                    <p className="text-sm text-muted">Notifications are enabled on this device.</p>
+                    <p className="text-sm text-ink-muted">Notifications are enabled on this device.</p>
                   ) : (
                     <button
                       onClick={handleEnableOnDevice}
                       disabled={deviceEnabling}
                       className="btn-glass text-sm px-4 py-2 disabled:opacity-50"
                     >
-                      {deviceEnabling ? 'Enabling...' : 'Enable on this device'}
+                      {deviceEnabling ? 'Enabling…' : 'Enable on this device'}
                     </button>
                   )}
                 </div>
@@ -845,11 +551,11 @@ export default function ProfilePage() {
           <div className="card p-4 sm:p-6 space-y-3">
             <div>
               <p className="eyebrow mb-1">Email</p>
-              <p className="text-foreground break-words">{user.primaryEmail}</p>
+              <p className="text-ink break-words">{user.primaryEmail}</p>
             </div>
             <div>
               <p className="eyebrow mb-1">User ID</p>
-              <p className="text-muted text-xs sm:text-sm font-mono break-all">{user.id}</p>
+              <p className="text-ink-muted text-xs sm:text-sm font-mono break-all">{user.id}</p>
             </div>
           </div>
         </div>
@@ -906,70 +612,3 @@ function ToggleSwitch({
   );
 }
 
-function DepositPaymentForm({
-  loading,
-  setLoading,
-  onSuccess,
-  onError,
-  onCancel,
-}: {
-  loading: boolean;
-  setLoading: (loading: boolean) => void;
-  onSuccess: () => Promise<void>;
-  onError: (message: string) => void;
-  onCancel: () => void;
-}) {
-  const stripe = useStripe();
-  const elements = useElements();
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!stripe || !elements) return;
-
-    setLoading(true);
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        return_url: `${window.location.origin}/profile`,
-      },
-      redirect: 'if_required',
-    });
-
-    if (error) {
-      onError(error.message || 'Payment failed');
-      setLoading(false);
-      return;
-    }
-
-    if (paymentIntent?.status === 'succeeded' || paymentIntent?.status === 'processing') {
-      await onSuccess();
-    } else {
-      onError('Payment was not completed.');
-    }
-
-    setLoading(false);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <PaymentElement />
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <button
-          type="submit"
-          disabled={!stripe || !elements || loading}
-          className="btn-primary flex-1 px-4 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? 'Processing...' : 'Pay'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={loading}
-          className="btn-glass w-full sm:w-auto px-4 py-2.5 disabled:opacity-50"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
-  );
-}

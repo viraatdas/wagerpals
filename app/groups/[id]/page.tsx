@@ -6,13 +6,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
 import EventCard from '@/components/EventCard';
 import { EventWithStats } from '@/lib/types';
+import AvatarStack from '@/components/AvatarStack';
+import EmptySlip from '@/components/EmptySlip';
 
 export const dynamic = 'force-dynamic';
-
-const getInitials = (name?: string) => {
-  const trimmed = (name || '').trim();
-  return trimmed ? trimmed[0].toUpperCase() : '?';
-};
 
 export default function GroupPage() {
   const params = useParams();
@@ -153,16 +150,11 @@ export default function GroupPage() {
   if (!group) {
     return (
       <div className="page-shell mobile-page">
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <p className="empty-state-title">Group not found</p>
-          <p className="empty-state-body">This group may have been deleted, or the invite link is incorrect.</p>
-          <Link href="/" className="btn-primary press">Go home</Link>
-        </div>
+        <EmptySlip
+          headline="Group not found"
+          body="This group is gone, or the link's wrong."
+          action={{ label: 'Go home', href: '/' }}
+        />
       </div>
     );
   }
@@ -305,16 +297,12 @@ export default function GroupPage() {
       )}
 
       {events.length === 0 && (
-        <div className="mt-10 empty-state">
-          <div className="empty-state-icon">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m-6 4h6m-6 4h4M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
-            </svg>
-          </div>
-          <p className="empty-state-title">No events yet</p>
-          <p className="empty-state-body">This group hasn&apos;t made a bet yet. Create the group&apos;s first event to get things moving.</p>
-          <Link href="/create" className="btn-primary press">Create the first event</Link>
-        </div>
+        <EmptySlip
+          className="mt-10"
+          headline="No action yet."
+          body="Create the group's first event."
+          action={{ label: 'Create the first event', href: '/create' }}
+        />
       )}
 
       {/* Member roster */}
@@ -327,10 +315,8 @@ export default function GroupPage() {
             <ul className="divide-y divide-hairline">
               {members.map((member: any) => (
                 <li key={member.user_id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-hairline bg-surface-sunken text-xs font-semibold text-muted">
-                    {getInitials(member.username)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                  <AvatarStack people={[{ username: member.username }]} size="sm" className="flex-none" />
+                  <span className="min-w-0 flex-1 truncate font-sans text-sm font-medium text-foreground">
                     {member.username}
                   </span>
                   {member.user_id === group.created_by && (
@@ -344,16 +330,11 @@ export default function GroupPage() {
             </ul>
           </div>
         ) : (
-          <div className="empty-state">
-            <div className="empty-state-icon">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 10-3.998-4.2" />
-              </svg>
-            </div>
-            <p className="empty-state-title">No members yet</p>
-            <p className="empty-state-body">Share the invite link so friends can join this group.</p>
-            <button onClick={handleCopyInviteLink} className="btn-primary press">Share invite link</button>
-          </div>
+          <EmptySlip
+            headline="No one's here yet."
+            body="Share the invite link so friends can join this group."
+            action={{ label: 'Share invite link', onClick: handleCopyInviteLink }}
+          />
         )}
       </section>
     </div>

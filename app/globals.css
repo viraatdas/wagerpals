@@ -881,27 +881,11 @@ input, select, textarea {
   }
 
   /* ==========================================================
-     4. MARKET CHROME — the signature element
+     4. MARKET CHROME
+     (.odds-track/.odds-fill removed — the signature element is now
+     components/ConfidenceBar.tsx, the single source everywhere a
+     wager appears.)
      ========================================================== */
-  .odds-track {
-    display: flex;
-    width: 100%;
-    height: 0.625rem;
-    border-radius: var(--radius-pill);
-    overflow: hidden;
-    background: var(--color-surface-sunken);
-    border: 1px solid var(--color-border);
-    isolation: isolate;
-  }
-  .odds-fill {
-    height: 100%;
-    min-width: 0;
-    transition: width var(--duration-slow) var(--ease-out);
-  }
-  .odds-fill-yes { background: var(--color-yes); }
-  .odds-fill-no { background: var(--color-no); }
-  /* Hairline between the two halves so a 100/0 split still reads. */
-  .odds-fill-no { box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.7); }
 
   /* Stat cell — eyebrow above a numeral. Plex Mono, same reasoning as
      .numeral: this is a number, not a headline. */

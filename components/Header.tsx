@@ -5,12 +5,26 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
 import Logo from './Logo';
-import ThemeToggle from './ThemeToggle';
 
-const navItems = [
+// The six IA labels (see IA-DECISIONS.md — bindings are fixed, not mine to
+// re-litigate). "Create" is deliberately not in this list: it's the primary
+// action button, not a nav item.
+const desktopLinks = [
+  { href: '/', label: 'Board' },
+  { href: '/all-events', label: 'Live' },
+  { href: '/activity', label: 'History' },
+  { href: '/wallet', label: 'Wallet' },
+  { href: '/users', label: 'Friends' },
+  { href: '/profile', label: 'Profile' },
+];
+
+// Mobile bottom-tab bar: same labels, but only four slots fit comfortably
+// at 360px (per IA-DECISIONS.md #5) — Wallet stays reachable via the
+// header's balance chip, Friends via a link on the Profile page.
+const mobileNavItems = [
   {
     href: '/',
-    label: 'Groups',
+    label: 'Board',
     icon: (
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m6-4a4 4 0 11-8 0 4 4 0 018 0zm6 1a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -19,7 +33,7 @@ const navItems = [
   },
   {
     href: '/all-events',
-    label: 'Events',
+    label: 'Live',
     icon: (
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -27,26 +41,8 @@ const navItems = [
     ),
   },
   {
-    href: '/calendar',
-    label: 'Calendar',
-    icon: (
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M8 15h.01M12 15h.01M16 15h.01M8 18h.01M12 18h.01M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
-      </svg>
-    ),
-  },
-  {
-    href: '/create',
-    label: 'Create',
-    icon: (
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m7-7H5" />
-      </svg>
-    ),
-  },
-  {
     href: '/activity',
-    label: 'Activity',
+    label: 'History',
     icon: (
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -91,18 +87,9 @@ export default function Header() {
     return path === '/' ? pathname === '/' : pathname.startsWith(path);
   };
 
-  const desktopLinks = [
-    { href: '/', label: 'Groups' },
-    { href: '/all-events', label: 'All Events' },
-    { href: '/calendar', label: 'Calendar' },
-    { href: '/activity', label: 'Activity' },
-    { href: '/users', label: 'Users' },
-    { href: '/profile', label: 'Profile' },
-  ];
-
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-hairline bg-ground/85 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-line bg-paper/85 backdrop-blur-xl">
         <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3.5">
           <div className="flex justify-between items-center gap-2 sm:gap-3">
             <Link href="/" className="flex min-w-0 items-center gap-2 flex-shrink whitespace-nowrap group">
@@ -116,15 +103,15 @@ export default function Header() {
             <nav className="flex flex-shrink-0 items-center justify-end gap-2 md:gap-5 min-w-0">
               {user && (
                 <Link
-                  href="/profile?wallet=deposit#wallet"
-                  className="tone-yes tone-surface press inline-flex h-10 max-w-[130px] sm:max-w-none items-center justify-center gap-1.5 overflow-hidden rounded-full border px-2.5 sm:px-3 whitespace-nowrap hover:brightness-95 transition-[filter]"
-                  title="Deposit money into your wallet"
+                  href="/wallet"
+                  className="press inline-flex h-10 max-w-[130px] sm:max-w-none items-center justify-center gap-1.5 overflow-hidden rounded-control border border-line bg-card px-2.5 sm:px-3 whitespace-nowrap hover:border-hairline-strong transition-colors"
+                  title="View your wallet"
                 >
-                  <svg className="tone-text w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0 text-ink-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h.01M11 15h2M5 7h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V9a2 2 0 012-2z" />
                   </svg>
-                  <span className="tone-text hidden sm:inline text-xs font-semibold uppercase tracking-wide">Wallet</span>
-                  <span className="numeral tone-text truncate text-sm">${walletBalance?.toFixed(2) || '0.00'}</span>
+                  <span className="hidden sm:inline text-xs font-semibold uppercase tracking-wide text-ink-secondary">Wallet</span>
+                  <span className="font-mono truncate text-sm text-ink">${walletBalance?.toFixed(2) || '0.00'}</span>
                 </Link>
               )}
 
@@ -135,15 +122,13 @@ export default function Header() {
                     key={link.href}
                     href={link.href}
                     className={`press relative hidden md:inline-flex items-center px-1 py-2 text-sm transition-colors whitespace-nowrap ${
-                      active
-                        ? 'tone-accent tone-text font-semibold'
-                        : 'text-muted hover:text-foreground font-medium'
+                      active ? 'text-ink font-semibold' : 'text-ink-secondary hover:text-ink font-medium'
                     }`}
                   >
                     {link.label}
                     <span
                       aria-hidden="true"
-                      className={`pointer-events-none absolute inset-x-1 -bottom-0.5 h-0.5 origin-left rounded-full bg-brand-2 transition-transform duration-base ease-out-expo ${
+                      className={`pointer-events-none absolute inset-x-1 -bottom-0.5 h-0.5 origin-left rounded-pill bg-emerald ${
                         active ? 'scale-x-100' : 'scale-x-0'
                       }`}
                     />
@@ -151,33 +136,42 @@ export default function Header() {
                 );
               })}
 
-              <Link href="/create" className="hidden md:inline-flex btn-primary text-sm px-4 py-2 flex-shrink-0">
-                Create Event
+              <Link
+                href="/create"
+                className="press hidden md:inline-flex items-center rounded-control bg-emerald px-4 py-2 text-sm font-semibold text-on-emerald transition-[filter] hover:brightness-95 flex-shrink-0"
+              >
+                Create
+              </Link>
+              <Link
+                href="/create"
+                className="press md:hidden inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-control bg-emerald text-on-emerald transition-[filter] hover:brightness-95"
+                aria-label="Create"
+                title="Create"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14m7-7H5" />
+                </svg>
               </Link>
 
-              <ThemeToggle className="hidden md:inline-flex flex-shrink-0" />
-
               {user && (
-                <div className="hidden md:flex items-center gap-3 ml-1 pl-5 border-l border-hairline">
-                  <span className="text-sm font-medium text-muted truncate max-w-[120px]">
+                <div className="hidden md:flex items-center gap-3 ml-1 pl-5 border-l border-line">
+                  <span className="text-sm font-medium text-ink-secondary truncate max-w-[120px]">
                     {user.displayName || user.primaryEmail || 'User'}
                   </span>
                   <button
                     onClick={handleLogout}
-                    className="tone-no tone-text press text-xs font-semibold uppercase tracking-wide opacity-70 hover:opacity-100 transition-opacity whitespace-nowrap"
+                    className="press text-xs font-semibold uppercase tracking-wide text-crimson-ink opacity-70 hover:opacity-100 transition-opacity whitespace-nowrap"
                   >
                     Sign Out
                   </button>
                 </div>
               )}
 
-              <ThemeToggle className="md:hidden flex-shrink-0" />
-
               {user && (
                 <div className="md:hidden flex items-center min-w-0">
                   <button
                     onClick={handleLogout}
-                    className="tone-no tone-surface tone-text press inline-flex h-10 w-10 items-center justify-center rounded-full border text-xs font-semibold hover:brightness-95 transition-[filter]"
+                    className="press inline-flex h-10 w-10 items-center justify-center rounded-control border border-line bg-card text-xs font-semibold text-crimson-ink hover:border-hairline-strong transition-colors"
                     title={`${user.displayName || user.primaryEmail} - Sign Out`}
                     aria-label="Account sign out"
                   >
@@ -190,21 +184,21 @@ export default function Header() {
         </div>
       </header>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-hairline bg-ground/95 backdrop-blur-xl mobile-bottom-nav">
-        <div className="grid grid-cols-6 px-1 pt-1">
-          {navItems.map((item) => {
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-line bg-paper/95 backdrop-blur-xl mobile-bottom-nav">
+        <div className="grid grid-cols-4 px-1 pt-1">
+          {mobileNavItems.map((item) => {
             const active = isActive(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`press relative flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] transition-colors ${
-                  active ? 'tone-accent tone-text font-semibold' : 'text-muted hover:text-foreground font-medium'
+                className={`press relative flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-panel text-[11px] transition-colors ${
+                  active ? 'text-ink font-semibold' : 'text-ink-secondary hover:text-ink font-medium'
                 }`}
               >
                 <span
                   aria-hidden="true"
-                  className={`absolute top-0 inset-x-4 h-0.5 origin-left rounded-full bg-brand-2 transition-transform duration-base ease-out-expo ${
+                  className={`absolute top-0 inset-x-4 h-0.5 origin-left rounded-pill bg-emerald ${
                     active ? 'scale-x-100' : 'scale-x-0'
                   }`}
                 />

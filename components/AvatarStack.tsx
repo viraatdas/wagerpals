@@ -29,7 +29,9 @@ const SIZE_CLASSES: Record<AvatarStackSize, { box: string; text: string }> = {
 function initials(username: string): string {
   const trimmed = username.trim();
   if (!trimmed) return '?';
-  return trimmed.slice(0, 2).toUpperCase();
+  // Single letter, not two — overlapping chips stacking two-letter initials
+  // read as alphabet soup.
+  return trimmed.charAt(0).toUpperCase();
 }
 
 /**

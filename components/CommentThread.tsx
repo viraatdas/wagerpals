@@ -15,6 +15,7 @@ import {
 import CommentForm, { type MentionMember } from '@/components/CommentForm';
 import ConfirmationModal from '@/components/ConfirmationModal';
 import Toast, { type ToastType } from '@/components/Toast';
+import EmptySlip from '@/components/EmptySlip';
 
 export interface CommentThreadProps {
   eventId: string;
@@ -70,31 +71,23 @@ function avatarSizeClass(depth: number): string {
   return AVATAR_SIZE_CLASSES[Math.max(0, idx)];
 }
 
-// Small fixed palette of tone classes used purely as decorative avatar tint —
-// deliberately excludes tone-yes/tone-no since those are reserved for real
-// YES/NO and WIN/LOSS signal elsewhere in the app.
-const AVATAR_TONES = ['tone-accent', 'tone-info', 'tone-gold', 'tone-pending', 'tone-neutral'] as const;
-
-function avatarTone(username: string): (typeof AVATAR_TONES)[number] {
-  let hash = 0;
-  for (let i = 0; i < username.length; i++) {
-    hash = (hash + username.charCodeAt(i) * (i + 1)) % AVATAR_TONES.length;
-  }
-  return AVATAR_TONES[hash] ?? AVATAR_TONES[0];
-}
-
 function Avatar({ username, depth }: { username: string; depth: number }) {
   const label = username || '?';
-  const tone = avatarTone(label);
   const initial = label.trim().charAt(0).toUpperCase() || '?';
+  // People are always amber, everywhere — the redesign's absolute colour
+  // rule. This used to rotate through a five-tone palette (including
+  // tone-gold, which means "won money" everywhere else in the app) to help
+  // distinguish commenters by colour; that rotation is gone so gold stays
+  // money-only, and amber alone carries "this is a person" consistently
+  // with AvatarStack.
   return (
     <span
       aria-hidden="true"
-      className={`${tone} tone-surface ${avatarSizeClass(
+      className={`border-amber bg-amber/15 text-amber-ink ${avatarSizeClass(
         depth
-      )} inline-flex shrink-0 items-center justify-center rounded-full border font-semibold`}
+      )} inline-flex shrink-0 items-center justify-center rounded-full border-2 font-sans font-semibold`}
     >
-      <span className="tone-text">{initial}</span>
+      {initial}
     </span>
   );
 }
@@ -131,7 +124,7 @@ function extractErrorMessage(res: Response, data: any): string {
       : "You're commenting too fast — try again in a moment";
   }
   if (data && typeof data.error === 'string' && data.error.trim()) return data.error;
-  return `Something went wrong (${res.status})`;
+  return `Couldn't do that (${res.status}) — try again.`;
 }
 
 function countDescendants(node: CommentNode<CommentWithMeta>): number {
@@ -208,7 +201,10 @@ function ReactionRow({ comment, actions }: { comment: CommentWithMeta; actions: 
               aria-label={`React with ${r.emoji}, ${r.count} ${r.count === 1 ? 'reaction' : 'reactions'}`}
               aria-pressed={isActive}
               className={`pill press disabled:cursor-not-allowed disabled:opacity-60 ${
-                isActive ? 'tone-accent pill-solid' : 'tone-neutral'
+                // Reaction chips are a people thing, so they stay in the
+                // amber family (tone-pending is the amber tone) whether
+                // active or not — solid once you've reacted, tinted otherwise.
+                isActive ? 'tone-pending pill-solid' : 'tone-pending'
               }`}
               onClick={() => actions.toggleReaction(comment, r.emoji)}
             >
@@ -255,7 +251,7 @@ function ReactionRow({ comment, actions }: { comment: CommentWithMeta; actions: 
             aria-label="Add reaction"
             aria-haspopup="menu"
             aria-expanded={isPickerOpen}
-            className="pill tone-neutral press"
+            className="pill tone-pending press"
             onClick={() => (isPickerOpen ? actions.closeReactionPicker() : actions.openReactionPicker(comment.id))}
           >
             <span aria-hidden="true">+</span>
@@ -358,7 +354,7 @@ function CommentNodeItem({ node, actions }: { node: CommentNode<CommentWithMeta>
                     seg.type === 'mention' ? (
                       <span
                         key={i}
-                        className="tone-accent tone-surface tone-text break-words rounded border px-1 py-0.5 font-medium [overflow-wrap:anywhere]"
+                        className="tone-pending tone-surface tone-text break-words rounded border px-1 py-0.5 font-medium [overflow-wrap:anywhere]"
                         title={seg.value}
                       >
                         {seg.value}
@@ -589,7 +585,7 @@ export default function CommentThread({
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         if (myRequestId !== requestIdRef.current) return;
-        setError(err instanceof Error ? err.message : 'Failed to load comments');
+        setError(err instanceof Error ? err.message : "Couldn't load comments — try again.");
       } finally {
         if (myRequestId === requestIdRef.current) {
           setLoading(false);
@@ -765,7 +761,7 @@ export default function CommentThread({
           return next;
         });
         setTotalCount((prev) => Math.max(0, prev - 1));
-        throw err instanceof Error ? err : new Error('Failed to post comment');
+        throw err instanceof Error ? err : new Error("Couldn't post that comment — try again.");
       }
     },
     [currentUserId, currentUsername, eventId, markJustLanded]
@@ -819,7 +815,7 @@ export default function CommentThread({
           return next;
         });
         setTotalCount((prev) => Math.max(0, prev - 1));
-        throw err instanceof Error ? err : new Error('Failed to post reply');
+        throw err instanceof Error ? err : new Error("Couldn't post that reply — try again.");
       }
     },
     [currentUserId, currentUsername, eventId, markJustLanded]
@@ -849,7 +845,7 @@ export default function CommentThread({
       setComments((prev) =>
         prev.map((c) => (c.id === comment.id ? { ...c, content: previousContent, edited_at: previousEditedAt } : c))
       );
-      throw err instanceof Error ? err : new Error('Failed to save comment');
+      throw err instanceof Error ? err : new Error("Couldn't save that comment — try again.");
     }
   }, []);
 
@@ -890,7 +886,7 @@ export default function CommentThread({
           : [...prev, target]
       );
       setTotalCount((prev) => prev + 1);
-      setToast({ message: err instanceof Error ? err.message : 'Failed to delete comment', type: 'error' });
+      setToast({ message: err instanceof Error ? err.message : "Couldn't delete that comment — try again.", type: 'error' });
     } finally {
       setDeletingIds((prev) => {
         const next = new Set(prev);
@@ -943,7 +939,7 @@ export default function CommentThread({
         })
         .catch((err) => {
           setComments((prev) => prev.map((c) => (c.id === comment.id ? { ...c, reactions: previousReactions } : c)));
-          setToast({ message: err instanceof Error ? err.message : 'Failed to react', type: 'error' });
+          setToast({ message: err instanceof Error ? err.message : "Couldn't add that reaction — try again.", type: 'error' });
         })
         .finally(() => {
           setReactionInFlight((prev) => {
@@ -1004,11 +1000,12 @@ export default function CommentThread({
         isOpen={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
-        title="Delete Comment"
-        message={`Are you sure you want to delete ${
+        title="Delete comment"
+        message={`Delete ${
           deleteTarget ? `@${deleteTarget.username}'s comment` : 'this comment'
-        }? This action cannot be undone.`}
+        }? This can't be undone.`}
         confirmText="Delete"
+        loadingText="Deleting…"
         type="danger"
         loading={deleteTarget !== null && deletingIds.has(deleteTarget.id)}
       />
@@ -1024,7 +1021,7 @@ export default function CommentThread({
             members={members}
             submitLabel="Post"
             pendingLabel="Posting…"
-            placeholder="Add a comment…  (@ to mention)"
+            placeholder="Add a comment… (@ to mention)"
             maxLength={MAX_COMMENT_LENGTH}
             textareaId={composerId}
             onSubmit={handleTopLevelSubmit}
@@ -1060,24 +1057,15 @@ export default function CommentThread({
           </button>
         </div>
       ) : tree.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon" aria-hidden="true">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-            </svg>
-          </div>
-          <p className="empty-state-title">No one has said anything yet.</p>
-          <p className="empty-state-body">Be the first to weigh in on this market — your take could shape how the group calls it.</p>
-          {canWrite && (
-            <button
-              type="button"
-              className="btn-glass text-sm px-4 py-2"
-              onClick={() => document.getElementById(composerId)?.focus()}
-            >
-              Write the first comment
-            </button>
-          )}
-        </div>
+        <EmptySlip
+          headline="No one has said anything yet."
+          body="Be the first to weigh in on this market — your take could shape how the group calls it."
+          action={
+            canWrite
+              ? { label: 'Write the first comment', onClick: () => document.getElementById(composerId)?.focus() }
+              : undefined
+          }
+        />
       ) : (
         <ul className="divide-y divide-hairline">
           {tree.map((node) => (

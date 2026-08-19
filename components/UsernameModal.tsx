@@ -10,6 +10,7 @@ interface UsernameModalProps {
 export default function UsernameModal({ onSubmit }: UsernameModalProps) {
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const titleId = useId();
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -43,9 +44,12 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
     if (username.trim()) {
       try {
         setError(null);
+        setSubmitting(true);
         await onSubmit(username.trim());
       } catch (error: any) {
-        setError(error.message || 'Failed to create username');
+        setError(error.message || "Couldn't save that username — try again.");
+      } finally {
+        setSubmitting(false);
       }
     }
   };
@@ -106,10 +110,10 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
 
           <button
             type="submit"
-            disabled={!username.trim() || !!error}
+            disabled={!username.trim() || !!error || submitting}
             className="btn-primary w-full py-3 text-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
           >
-            Continue
+            {submitting ? 'Saving…' : 'Save username'}
           </button>
         </form>
 

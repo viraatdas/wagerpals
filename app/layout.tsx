@@ -1,34 +1,44 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans, Oswald } from "next/font/google";
+import { Archivo_Black, IBM_Plex_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import Header from "@/components/Header";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import MobileAppBanner from "@/components/MobileAppBanner";
 import { ClientProviders } from "@/components/ClientProviders";
-import ThemeScript from "@/components/ThemeScript";
 
-// UI face. Humanist rather than neutral-grotesque: this product's content is
-// people arguing with each other, and Plex has a spoken warmth Inter doesn't.
-// Carries everything that is language rather than quantity.
-const plex = IBM_Plex_Sans({
+// Body face. Plus Jakarta Sans carries everything that is language rather
+// than quantity: body copy, names, comments, buttons. See DESIGN-SPEC.md
+// §Typography — "regular/medium weight; avoid bold except for names."
+const plusJakartaSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
   variable: "--font-sans",
   display: "swap",
 });
-// Display face. Condensed and chunky with tabular lining figures — reserved for
-// quantities and verdicts (stakes, odds, side counts, countdown, SETTLED), so a
-// column of money aligns and the numbers read before the labels. See DESIGN.md.
-const oswald = Oswald({
+// Data face. IBM Plex Mono's tabular figures are the reason it is here:
+// every stake, odds line, percentage and countdown lines up in a column
+// instead of drifting the way proportional numerals do. This is what gives
+// the board its ticker precision — see the .numeral / .stat-value classes
+// below, and the global .font-mono rule that bakes in tabular-nums.
+const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["400", "500"],
+  variable: "--font-mono",
+  display: "swap",
+});
+// Display face. Archivo Black is a single-weight (400) headline face —
+// page titles, wordmark, section headers. Sparingly, and never body copy;
+// see DESIGN-SPEC.md §Typography.
+const archivoBlack = Archivo_Black({
+  subsets: ["latin"],
+  weight: ["400"],
   variable: "--font-display",
   display: "swap",
 });
 
-const APP_TITLE = "WagerPals - Polymarket for friends";
+const APP_TITLE = "WagerPals — bet on anything with friends";
 const APP_DESCRIPTION =
-  "A public, lightweight place where friends create events and share a ledger of bets";
+  "Bet on anything with friends. Real stakes, real fun.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://wagerpals.io"),
@@ -81,7 +91,7 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   viewportFit: "cover",
-  themeColor: "#ffffff",
+  themeColor: "#FAF7F0",
 };
 
 export default function RootLayout({
@@ -90,9 +100,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${plex.variable} ${oswald.variable}`}>
+    <html lang="en" className={`${plusJakartaSans.variable} ${ibmPlexMono.variable} ${archivoBlack.variable}`}>
       <body className="font-sans antialiased text-foreground">
-        <ThemeScript />
         <ClientProviders>
           <ServiceWorkerRegistration />
           <a href="#main" className="skip-link">
@@ -101,7 +110,21 @@ export default function RootLayout({
           <div className="min-h-screen flex flex-col">
             <MobileAppBanner />
             <Header />
-            <main id="main" className="flex-1">
+            {/*
+              Bottom clearance for Header.tsx's fixed mobile bottom-tab bar
+              (the `<nav className="md:hidden fixed bottom-0 ...">` there),
+              applied once here rather than per-page. Sized to match that
+              bar's actual footprint: 1px top border + 4px (pt-1) + 56px
+              (each tab's min-h-[56px]) + its own bottom padding
+              (max(safe-area, 8px)) = 61px + max(safe-area, 8px). The bar
+              is `md:hidden`, so the extra clearance is scoped to the same
+              breakpoint; at md and up this falls back to the ordinary
+              safe-area inset only.
+            */}
+            <main
+              id="main"
+              className="flex-1 pb-[calc(61px+max(env(safe-area-inset-bottom),8px))] md:pb-[env(safe-area-inset-bottom)]"
+            >
               {children}
             </main>
           </div>

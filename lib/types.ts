@@ -81,6 +81,19 @@ export interface ActivityItem {
   content?: string;
 }
 
+/** One entry in EventWithStats.bettor_preview — see that field's doc comment. */
+export interface EventBettorPreview {
+  username: string;
+  avatar_url?: string;
+  side: string;
+}
+
+/** EventWithStats.latest_comment — see that field's doc comment. */
+export interface EventLatestComment {
+  username: string;
+  content: string;
+}
+
 export interface EventWithStats extends Event {
   side_stats: Record<string, { count: number; total: number }>;
   total_bets: number;
@@ -88,6 +101,19 @@ export interface EventWithStats extends Event {
   bets: Bet[];
   // Populated only by db.events.getAllWithStats (the list query); absent elsewhere.
   comment_count?: number;
+  // Populated only by db.events.getAllWithStats (the list query); absent elsewhere
+  // (including the ?id= detail payload, which has the full `bets` array instead).
+  // Up to ~6 most-recently-active DISTINCT bettors for the event (one entry per
+  // user_id, keyed off their latest bet), with the side they backed — lets list
+  // cards render avatar clusters without a second round trip. Same disclosure
+  // level as the existing `bets` array on the detail payload (both are
+  // unauthenticated reads today), just batched for the list.
+  bettor_preview?: EventBettorPreview[];
+  // Populated only by db.events.getAllWithStats (the list query); absent elsewhere.
+  // The single most recent top-level (non-reply) comment on the event, content
+  // trimmed server-side to ~140 chars. Same disclosure level as reading comments
+  // directly for an event id today, just batched for the list.
+  latest_comment?: EventLatestComment;
 }
 
 export interface NetResult {
