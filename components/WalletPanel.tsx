@@ -294,8 +294,13 @@ export default function WalletPanel({ className }: WalletPanelProps) {
         <div className="mb-1 flex items-center justify-between gap-3">
           <p className="eyebrow">W balance</p>
         </div>
-        <div className="mb-3 text-4xl sm:text-5xl text-emerald">
-          <WAmount value={wallet?.wp_balance ?? 0} animate className="font-mono" />
+        {/* Small and inline per the owner — the $ cash balance stays the hero;
+            W reads as a compact figure beside its label. */}
+        <div className="mb-3 flex items-baseline gap-2">
+          <span className="text-xl sm:text-2xl text-emerald">
+            <WAmount value={wallet?.wp_balance ?? 0} animate className="font-mono" />
+          </span>
+          <span className="text-xs text-ink-muted">to stake</span>
         </div>
         <p className="field-hint mb-4">Out of W? You get W10 back every day.</p>
 
