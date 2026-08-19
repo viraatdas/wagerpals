@@ -13,19 +13,21 @@ import { ApiError, toApiError } from '../utils/errors';
 import { tapHeavy, tapMedium, success, warning, error as hapticError } from '../utils/haptics';
 import { colors, font, radius, spacing, tokens } from '../theme';
 import { Avatar, Button, Card, EmptyState, ErrorState, Pill, SectionHeader, Skeleton, SkeletonList, Toggle } from '../components';
+import TextInputModal from '../components/TextInputModal';
 
 type GroupData = Group & { members?: GroupMember[]; pending_requests?: GroupMember[] };
-type MemberAction = 'approve' | 'decline' | 'promote' | 'demote' | 'remove';
-type SectionKey = 'pending' | 'admins' | 'members';
+// Flat-groups model: there's exactly one admin per group (the creator), so
+// promote/demote no longer exist. approve/decline survive only to let a
+// creator clear out any legacy 'pending' rows written before joins-by-code
+// became instantly active — new joins never produce one.
+type MemberAction = 'approve' | 'decline' | 'remove';
+type SectionKey = 'pending' | 'members';
 
-// Per-action success copy — each of approve/decline/promote/demote/remove
-// names the actual member and the actual outcome instead of a generic
-// "Action completed."
+// Per-action success copy — each names the actual member and the actual
+// outcome instead of a generic "Action completed."
 const ACTION_CONFIRMATION: Record<MemberAction, (username: string) => string> = {
   approve: (u) => `${u} is in.`,
   decline: (u) => `Declined ${u}'s request.`,
-  promote: (u) => `${u} is now an admin.`,
-  demote: (u) => `${u} is no longer an admin.`,
   remove: (u) => `Removed ${u} from the group.`,
 };
 const CONFIRMATION_VISIBLE_MS = 2200;
@@ -54,23 +56,9 @@ const ACTION_CONFIG: Record<
     destructive: true,
     failTitle: "Couldn't decline request",
   },
-  promote: {
-    title: 'Promote to admin',
-    message: (u) => `Make ${u} an admin? They'll be able to manage members and group settings.`,
-    confirmLabel: 'Promote',
-    destructive: false,
-    failTitle: "Couldn't promote member",
-  },
-  demote: {
-    title: 'Remove admin access',
-    message: (u) => `Remove admin access from ${u}? They'll remain a regular member.`,
-    confirmLabel: 'Demote',
-    destructive: true,
-    failTitle: "Couldn't demote admin",
-  },
   remove: {
     title: 'Remove member',
-    message: (u) => `Remove ${u} from the group? They'll need to request to join again.`,
+    message: (u) => `Remove ${u} from the group? They'd need a fresh invite to come back.`,
     confirmLabel: 'Remove',
     destructive: true,
     failTitle: "Couldn't remove member",
@@ -84,10 +72,6 @@ function applyMemberAction(list: GroupMember[], action: MemberAction, targetUser
     case 'decline':
     case 'remove':
       return list.filter((m) => m.user_id !== targetUserId);
-    case 'promote':
-      return list.map((m) => (m.user_id === targetUserId ? { ...m, role: 'admin' as const } : m));
-    case 'demote':
-      return list.map((m) => (m.user_id === targetUserId ? { ...m, role: 'member' as const } : m));
     default:
       return list;
   }
@@ -105,8 +89,9 @@ export default function GroupAdminScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [rowBusy, setRowBusy] = useState<Record<string, MemberAction | undefined>>({});
-  const [resolverUpdating, setResolverUpdating] = useState<string | null>(null);
-  const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
+  const [isTogglingCash, setIsTogglingCash] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const statusTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -164,23 +149,23 @@ export default function GroupAdminScreen() {
     loadData({ isRefresh: true }).catch(() => {});
   }, [loadData]);
 
-  const viewerIsAdmin = useMemo(
-    () => members.some((m) => m.user_id === user?.id && m.role === 'admin' && m.status === 'active'),
-    [members, user?.id]
-  );
+  // Flat-groups model: there's one admin per group — the creator. This
+  // screen is their "Manage" screen; nobody else can promote/demote or
+  // reach it at all (see the not-creator branch below).
+  const viewerIsCreator = !!user && !!group && user.id === group.created_by;
 
   const sections = useMemo<MemberSection[]>(() => {
+    // 'pending' rows are legacy — new joins-by-code are instantly active —
+    // but a creator can still clear out any that were written before this
+    // change, so the section stays if any survive.
     const pending = members.filter((m) => m.status === 'pending');
     const active = members.filter((m) => m.status === 'active');
-    const admins = active.filter((m) => m.role === 'admin');
-    const regular = active.filter((m) => m.role === 'member');
 
     const result: MemberSection[] = [];
     if (pending.length > 0) {
       result.push({ key: 'pending', title: `Pending Requests (${pending.length})`, data: pending });
     }
-    result.push({ key: 'admins', title: `Admins (${admins.length})`, data: admins });
-    result.push({ key: 'members', title: `Members (${regular.length})`, data: regular });
+    result.push({ key: 'members', title: `Members (${active.length})`, data: active });
     return result;
   }, [members]);
 
@@ -240,44 +225,13 @@ export default function GroupAdminScreen() {
     [runMemberAction]
   );
 
-  const runResolverChange = useCallback(
-    async (member: GroupMember) => {
-      if (resolverUpdating) return;
-      setResolverUpdating(member.user_id);
-      try {
-        const updated = await apiService.updateGroupSettings({ id: groupId, resolver_user_id: member.user_id });
-        setGroup((prev) => (prev ? { ...prev, ...updated } : (updated as GroupData)));
-        success();
-      } catch (err) {
-        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups');
-        hapticError();
-        Alert.alert("Couldn't set resolver", apiErr.userMessage);
-      } finally {
-        setResolverUpdating(null);
-      }
-    },
-    [groupId, resolverUpdating]
-  );
-
-  const handleResolverChange = useCallback(
-    (member: GroupMember) => {
-      if (!group || member.user_id === group.resolver_user_id || resolverUpdating) return;
-      const label = member.username || 'this member';
-      Alert.alert('Set Resolver', `Make ${label} the resolver for paid events? They'll decide the outcome of cash bets.`, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Set Resolver', onPress: () => void runResolverChange(member) },
-      ]);
-    },
-    [group, resolverUpdating, runResolverChange]
-  );
-
-  const runVisibilityToggle = useCallback(
-    async (nextIsPublic: boolean) => {
-      if (!group || isTogglingVisibility) return;
+  const runCashToggle = useCallback(
+    async (nextCashEnabled: boolean) => {
+      if (!group || isTogglingCash) return;
       warning();
-      setIsTogglingVisibility(true);
+      setIsTogglingCash(true);
       try {
-        const updated = await apiService.updateGroupSettings({ id: groupId, is_public: nextIsPublic });
+        const updated = await apiService.updateGroupSettings({ id: groupId, cash_enabled: nextCashEnabled });
         setGroup((prev) => (prev ? { ...prev, ...updated } : (updated as GroupData)));
         success();
       } catch (err) {
@@ -285,30 +239,52 @@ export default function GroupAdminScreen() {
         hapticError();
         Alert.alert("Couldn't update group", apiErr.userMessage);
       } finally {
-        setIsTogglingVisibility(false);
+        setIsTogglingCash(false);
       }
     },
-    [group, groupId, isTogglingVisibility]
+    [group, groupId, isTogglingCash]
   );
 
-  // Audit finding B7: is_public isn't just a visibility flag — it decides
-  // whether open bets are settled in points or real cash. Flipping it
-  // retroactively changes the currency of every open bet in the group, so
-  // the confirm copy has to say that explicitly, not just "are you sure?".
-  const handleVisibilityToggle = useCallback(
-    (nextIsPublic: boolean) => {
+  const handleCashToggle = useCallback(
+    (nextCashEnabled: boolean) => {
       if (!group) return;
-      const title = nextIsPublic ? 'Switch to free points?' : 'Switch to paid wallet betting?';
-      const message = nextIsPublic
-        ? 'Every open bet in this group is currently backed by real money held in the group wallet. Switching to free points retroactively converts those open bets to points — the currency they settle in changes for everyone, right now. This cannot be undone automatically.'
-        : 'Switching to paid wallet betting retroactively converts every open bet in this group from free points to real money, and new bets will move funds through the group wallet. This cannot be undone automatically.';
-
-      Alert.alert(title, message, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', style: 'destructive', onPress: () => void runVisibilityToggle(nextIsPublic) },
-      ]);
+      if (!nextCashEnabled) {
+        // Turning cash off is non-destructive to existing money — it only
+        // stops NEW cash events from being created — so it needs no confirm.
+        void runCashToggle(false);
+        return;
+      }
+      Alert.alert(
+        'Turn on cash wagers?',
+        'Members will be able to stake real money from their wallets on new events in this group.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Turn on', onPress: () => void runCashToggle(true) },
+        ]
+      );
     },
-    [group, runVisibilityToggle]
+    [group, runCashToggle]
+  );
+
+  const runRenameGroup = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed || isRenaming) return;
+      setIsRenaming(true);
+      try {
+        const updated = await apiService.updateGroupSettings({ id: groupId, name: trimmed });
+        setGroup((prev) => (prev ? { ...prev, ...updated } : (updated as GroupData)));
+        success();
+        setShowRenameModal(false);
+      } catch (err) {
+        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups');
+        hapticError();
+        Alert.alert("Couldn't rename group", apiErr.userMessage);
+      } finally {
+        setIsRenaming(false);
+      }
+    },
+    [groupId, isRenaming]
   );
 
   const runDeleteGroup = useCallback(async () => {
@@ -374,8 +350,9 @@ export default function GroupAdminScreen() {
     );
   }
 
-  // ---- Loaded, but the signed-in user isn't an admin: nothing to manage here ----
-  if (group && !viewerIsAdmin) {
+  // ---- Loaded, but the signed-in user isn't the creator: nothing to manage here ----
+  // Flat-groups model: only the creator manages a group — no admin roster.
+  if (group && !viewerIsCreator) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <SectionList
@@ -384,8 +361,8 @@ export default function GroupAdminScreen() {
           keyExtractor={() => 'noop'}
           ListEmptyComponent={
             <ErrorState
-              title="Admins only"
-              message="You don't have permission to manage this group."
+              title="Creator only"
+              message="Only the person who created this group can manage it."
               onRetry={handleRefresh}
               retryLabel="Refresh"
             />
@@ -397,8 +374,7 @@ export default function GroupAdminScreen() {
     );
   }
 
-  const activeMembers = members.filter((m) => m.status === 'active');
-  const isCreator = !!user && !!group && user.id === group.created_by;
+  const isCreator = viewerIsCreator;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -430,49 +406,34 @@ export default function GroupAdminScreen() {
             <View style={styles.section}>
               <SectionHeader title="Group Settings" />
               <Card>
-                <Toggle
-                  label="Free points mode"
-                  description={
-                    group?.is_public
-                      ? 'Bets settle in free points, not real money.'
-                      : 'Bets move real money through the group wallet.'
-                  }
-                  value={!!group?.is_public}
-                  onValueChange={handleVisibilityToggle}
-                  disabled={isTogglingVisibility}
-                />
-
-                {!group?.is_public && (
-                  <View style={styles.resolverBlock}>
-                    <Text style={styles.resolverLabel}>
-                      Resolver: {group?.resolver?.username ? `@${group.resolver.username}` : 'Not set'}
+                <Pressable
+                  style={styles.renameRow}
+                  onPress={() => setShowRenameModal(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Rename group"
+                >
+                  <View style={styles.renameTextCol}>
+                    <Text style={styles.renameLabel}>Name</Text>
+                    <Text style={styles.renameValue} numberOfLines={1} ellipsizeMode="tail">
+                      {group?.name}
                     </Text>
-                    <View style={styles.resolverList}>
-                      {activeMembers.map((member) => {
-                        const selected = group?.resolver_user_id === member.user_id;
-                        const busy = resolverUpdating === member.user_id;
-                        return (
-                          <Pressable
-                            key={member.user_id}
-                            style={[styles.resolverChip, selected && styles.resolverChipSelected]}
-                            onPress={() => handleResolverChange(member)}
-                            disabled={!!resolverUpdating}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Set @${member.username || 'member'} as resolver`}
-                          >
-                            <Text
-                              style={[styles.resolverChipText, selected && styles.resolverChipTextSelected]}
-                              numberOfLines={1}
-                              ellipsizeMode="tail"
-                            >
-                              {busy ? 'Setting…' : `@${member.username || 'member'}`}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
                   </View>
-                )}
+                  <Ionicons name="create-outline" size={18} color={colors.textMuted} />
+                </Pressable>
+
+                <View style={styles.settingsDivider} />
+
+                <Toggle
+                  label="Cash wagers"
+                  description={
+                    group?.cash_enabled
+                      ? 'Members can stake real money from their wallets.'
+                      : 'Bets stake W — WagerPals’ play currency.'
+                  }
+                  value={!!group?.cash_enabled}
+                  onValueChange={handleCashToggle}
+                  disabled={isTogglingCash}
+                />
               </Card>
             </View>
           </View>
@@ -532,32 +493,11 @@ export default function GroupAdminScreen() {
             );
           }
 
-          if (section.key === 'admins') {
-            return (
-              <View style={styles.memberRow}>
-                <Avatar username={item.username} size="md" />
-                <View style={styles.memberTextCol}>
-                  <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">
-                    {username}
-                  </Text>
-                  <Pill label="Admin" tone="brand" size="sm" />
-                </View>
-                {!isSelf && (
-                  <View style={styles.rowActions}>
-                    <Button
-                      title="Demote"
-                      size="sm"
-                      variant="secondary"
-                      loading={busyAction === 'demote'}
-                      disabled={isBusy}
-                      onPress={() => handleMemberAction('demote', item.user_id, username)}
-                    />
-                  </View>
-                )}
-              </View>
-            );
-          }
-
+          // Flat-groups model: one section for every active member. The
+          // creator is labeled, not "Admin" — there's no promote/demote,
+          // and the creator can't remove themselves (deleting the group is
+          // the only way to end it).
+          const isRowCreator = item.user_id === group?.created_by;
           return (
             <View style={styles.memberRow}>
               <Avatar username={item.username} size="md" />
@@ -565,27 +505,21 @@ export default function GroupAdminScreen() {
                 <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">
                   {username}
                 </Text>
-                <Pill label="Member" tone="neutral" size="sm" />
+                <Pill label={isRowCreator ? 'Creator' : 'Member'} tone={isRowCreator ? 'brand' : 'neutral'} size="sm" />
               </View>
-              <View style={styles.rowActions}>
-                <Button
-                  title="Promote"
-                  size="sm"
-                  variant="primary"
-                  loading={busyAction === 'promote'}
-                  disabled={isBusy}
-                  onPress={() => handleMemberAction('promote', item.user_id, username)}
-                />
-                <Button
-                  title="Remove"
-                  size="sm"
-                  variant="danger"
-                  icon="trash-outline"
-                  loading={busyAction === 'remove'}
-                  disabled={isBusy}
-                  onPress={() => handleMemberAction('remove', item.user_id, username)}
-                />
-              </View>
+              {!isRowCreator && !isSelf && (
+                <View style={styles.rowActions}>
+                  <Button
+                    title="Remove"
+                    size="sm"
+                    variant="danger"
+                    icon="trash-outline"
+                    loading={busyAction === 'remove'}
+                    disabled={isBusy}
+                    onPress={() => handleMemberAction('remove', item.user_id, username)}
+                  />
+                </View>
+              )}
             </View>
           );
         }}
@@ -610,6 +544,17 @@ export default function GroupAdminScreen() {
             </View>
           ) : null
         }
+      />
+
+      <TextInputModal
+        visible={showRenameModal}
+        title="Rename group"
+        placeholder="Group name"
+        defaultValue={group?.name}
+        onSubmit={runRenameGroup}
+        onCancel={() => setShowRenameModal(false)}
+        submitText="Save"
+        loading={isRenaming}
       />
     </SafeAreaView>
   );
@@ -659,45 +604,32 @@ const styles = StyleSheet.create({
   section: {
     padding: spacing.lg,
   },
-  resolverBlock: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  resolverLabel: {
-    fontFamily: font.sans,
-    fontSize: tokens.fontSize.sm,
-    color: colors.textMuted,
-    marginBottom: spacing.sm,
-  },
-  resolverList: {
+  renameRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  resolverChip: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
     minHeight: 44,
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.surface,
-    maxWidth: '100%',
+    gap: spacing.md,
   },
-  resolverChipSelected: {
-    backgroundColor: colors.mintFill,
-    borderColor: colors.mint,
+  renameTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
-  resolverChipText: {
-    fontFamily: font.sansMedium,
-    color: colors.textMuted,
-    fontSize: tokens.fontSize.sm,
+  renameLabel: {
+    fontFamily: font.sans,
+    fontSize: tokens.fontSize.xs,
+    color: colors.textFaint,
+    marginBottom: 2,
   },
-  resolverChipTextSelected: {
+  renameValue: {
     fontFamily: font.sansSemiBold,
-    color: colors.mint,
+    fontSize: tokens.fontSize.base,
+    color: colors.text,
+  },
+  settingsDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginVertical: spacing.md,
   },
   pendingHeaderWrap: {
     flexDirection: 'row',

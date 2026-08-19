@@ -9,8 +9,9 @@ export interface User {
   username_selected?: boolean;
 }
 
-// Mirrors lib/types.ts PaymentType exactly. 'none' events are points-only;
-// 'cash' events move real money through the escrow/wallet engine.
+// Mirrors lib/types.ts PaymentType exactly. 'none' events stake W (WagerPals'
+// play currency — see W-CURRENCY-SPEC.md); 'cash' events move real money
+// through the escrow/wallet engine.
 export type PaymentType = 'none' | 'cash';
 
 export interface Event {
@@ -19,10 +20,23 @@ export interface Event {
   description?: string;
   side_a: string;
   side_b: string;
+  // No-expiry product rules (see the mobile W-currency/product-rules brief):
+  // status is only ever 'active' | 'resolved', end_time is meaningless (kept
+  // only because the column still exists server-side) and must never drive
+  // UI — no countdowns, no "Ends"/"Ended" copy, no closing-betting logic.
+  // Left required (rather than deleted) so existing object literals built
+  // ahead of a POST don't need to change; screens simply stop reading it.
   end_time: number;
   status: 'active' | 'resolved';
   group_id: string;
   is_public?: boolean;
+  // Creator-only resolve/cancel: only the caller whose id matches
+  // `created_by` may resolve/cancel/delete this event (fallback: the
+  // group's own `created_by`, for legacy events written before this column
+  // was populated). `creator_username` is exposed for the quiet
+  // "Started by X" line — see EventDetailScreen.
+  created_by?: string;
+  creator_username?: string;
   resolver?: GroupMember | null;
   resolution?: {
     winning_side: string;
@@ -48,6 +62,10 @@ export interface Bet {
   amount: number;
   note?: string;
   timestamp: number;
+  // Always false under the no-expiry product rules — end_time no longer
+  // closes betting, so nothing can make a bet "late". Kept (rather than
+  // removed) since the column and field still exist server-side; UI must
+  // not render a "Late" pill off this anymore.
   is_late: boolean;
   escrow_hold_id?: string | null;
 }
@@ -66,6 +84,9 @@ export interface ActivityItem {
   note?: string;
   winning_side?: string;
   content?: string;
+  // The owning event's payment_type ('cash' = $, 'none' = W); absent when the
+  // event was deleted. Mirrors lib/types.ts ActivityItem.
+  payment_type?: 'none' | 'cash';
 }
 
 export interface EventWithStats extends Event {
@@ -109,7 +130,15 @@ export interface Group {
   resolver_user_id?: string;
   resolver?: GroupMember | null;
   is_public?: boolean;
+  // Whether members can stake real money from their wallets in this group,
+  // independent of `is_public` — POST /api/groups accepts this on create,
+  // PATCH updates it (creator-only). A group with cash_enabled: false is
+  // W-only; CreateEventScreen hides the Cash payment option accordingly.
+  cash_enabled?: boolean;
   created_at?: string;
+  // Flat-groups model: there is one admin per group, the creator.
+  // `is_admin` now means exactly "is the creator" — no promote/demote, no
+  // separate admin roster.
   is_admin?: boolean;
   member_count?: number;
   admin_count?: number;
@@ -120,7 +149,12 @@ export interface GroupMember {
   group_id: string;
   user_id: string;
   username?: string;
+  // Flat-groups model: 'admin' only ever describes the creator now (see
+  // Group.is_admin) — nobody else can hold it, so promote/demote no longer
+  // exist as member actions.
   role: 'admin' | 'member';
+  // Joins by code are instantly active — 'pending' only survives on rows
+  // written before this change (legacy data). New joins never produce one.
   status: 'pending' | 'active';
   joined_at?: string;
 }
@@ -142,8 +176,15 @@ export interface GroupWithMembers extends Group {
 
 export interface Wallet {
   user_id: string;
+  // USD cash balance — Stripe deposits/withdrawals, cash-event escrow.
   balance: number;
   currency: string;
+  // W (WagerPals play-currency) balance — GET /api/wallet returns this
+  // beside `balance`. Never purchasable, never withdrawable, never
+  // interchangeable with `balance`. See W-CURRENCY-SPEC.md. Optional only
+  // because a stale cached payload (older client) might not carry it yet;
+  // treat a missing value as 0, never as "unknown".
+  wp_balance?: number;
   updated_at?: string;
 }
 
@@ -175,6 +216,11 @@ export interface Transaction {
   event_id?: string | null;
   stripe_payment_intent_id?: string;
   idempotency_key?: string | null;
+  // W-CURRENCY-SPEC.md: transactions are tagged 'usd' or 'wp'. Deposits and
+  // withdrawals are always 'usd' (no Stripe/withdrawal path exists for W).
+  // Optional + defaults to 'usd' on read so an older cached payload without
+  // this field still renders correctly as cash.
+  currency?: 'usd' | 'wp';
 }
 
 export type EscrowHoldStatus = 'held' | 'released' | 'refunded';

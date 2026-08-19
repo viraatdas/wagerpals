@@ -12,6 +12,7 @@ export { Pill, type PillProps, type PillTone, type PillSize } from './Pill';
 export { Avatar, type AvatarProps, type AvatarSize } from './Avatar';
 export { SectionHeader, type SectionHeaderProps } from './SectionHeader';
 export { Money, type MoneyProps, type MoneySize, type MoneyTone } from './Money';
+export { WMark, WAmount, type WMarkProps, type WAmountProps, type WAmountSize, type WAmountTone } from './WMark';
 export { ListRow, type ListRowProps } from './ListRow';
 export { ProgressBar, SplitBar, type ProgressBarProps, type SplitBarProps, type ProgressTone } from './ProgressBar';
 

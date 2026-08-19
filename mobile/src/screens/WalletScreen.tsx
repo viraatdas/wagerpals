@@ -26,7 +26,7 @@ import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
 import { Transaction, WalletSummary } from '../types';
 import { ApiError, toApiError } from '../utils/errors';
-import { formatMoney, formatRelativeTime } from '../utils/format';
+import { formatMoney, formatW, formatRelativeTime } from '../utils/format';
 import { generateId } from '../utils/helpers';
 import { success, error as hapticError, tapMedium } from '../utils/haptics';
 import { colors, spacing, tokens } from '../theme';
@@ -39,6 +39,7 @@ import {
   ErrorState,
   LoadingState,
   Money,
+  WAmount,
   Pill,
   SectionHeader,
   SkeletonCard,
@@ -154,13 +155,24 @@ const TransactionRow = React.memo(function TransactionRow({ item }: { item: Tran
             ) : null}
           </View>
         </View>
-        <Money
-          amount={safeAmount(item.amount)}
-          tone={isWonMoney ? 'neutral' : 'auto'}
-          signed
-          size="md"
-          style={[styles.txAmount, isWonMoney && styles.goldAmount]}
-        />
+        {item.currency === 'wp' ? (
+          <WAmount
+            value={safeAmount(item.amount)}
+            tone={isWonMoney ? 'neutral' : 'auto'}
+            signed
+            size="md"
+            color={isWonMoney ? tokens.color.gold : undefined}
+            style={styles.txAmount}
+          />
+        ) : (
+          <Money
+            amount={safeAmount(item.amount)}
+            tone={isWonMoney ? 'neutral' : 'auto'}
+            signed
+            size="md"
+            style={[styles.txAmount, isWonMoney && styles.goldAmount]}
+          />
+        )}
       </View>
     </Card>
   );
@@ -426,6 +438,7 @@ export default function WalletScreen() {
 
   const available = safeAmount(summary.available);
   const escrowed = safeAmount(summary.escrow_held_total);
+  const wpBalance = safeAmount(summary.wallet.wp_balance);
   const depositAmountNum = parseFloat(depositAmount);
   const depositValid = depositAmount.length > 0 && Number.isFinite(depositAmountNum) && depositAmountNum > 0 && depositAmountNum <= MAX_TRANSACTION_AMOUNT;
   const withdrawAmountNum = parseFloat(withdrawAmount);
@@ -450,6 +463,15 @@ export default function WalletScreen() {
           Escrowed funds are held for bets on events that haven&apos;t settled yet. They&apos;re yours — you just
           can&apos;t spend or withdraw them until the event resolves.
         </Text>
+      </Card>
+
+      {/* W — WagerPals' play currency — is a separate ledger from cash: no
+          Stripe, no withdrawals, never interchangeable with $. Kept in its
+          own card, visually apart from the $ area above. */}
+      <Card style={styles.wCard}>
+        <Text style={styles.wLabel}>W balance</Text>
+        <WAmount value={wpBalance} tone="neutral" size="lg" style={styles.wAmountWrap} />
+        <Text style={styles.wFaucetText}>Out of W? You get W10 back every day.</Text>
       </Card>
 
       <View style={styles.actionsRow}>
@@ -605,6 +627,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: tokens.lineHeight.xs,
     maxWidth: 300,
+  },
+  // W's own card — a separate ledger from cash, so it gets a separate
+  // surface rather than living inside the $ hero card above.
+  wCard: {
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    backgroundColor: colors.bg2,
+  },
+  wLabel: {
+    fontSize: tokens.fontSize.sm,
+    color: colors.textMuted,
+    marginBottom: spacing.sm,
+  },
+  wAmountWrap: {
+    marginBottom: spacing.sm,
+  },
+  wFaucetText: {
+    fontSize: tokens.fontSize.xs,
+    color: colors.textFaint,
+    textAlign: 'center',
   },
   actionsRow: {
     flexDirection: 'row',

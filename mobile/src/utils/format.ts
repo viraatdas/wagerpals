@@ -20,6 +20,23 @@ export function formatMoney(n: number, opts?: { sign?: boolean }): string {
   return formatted;
 }
 
+// Plain-text form of a W (play-currency) amount, e.g. "W40" (no space) —
+// for accessibility labels, activity strings and anywhere a <WAmount> isn't
+// renderable (plain strings, notification copy). Mirrors formatMoney's
+// shape/signature but without decimals for whole numbers, since W stakes
+// are typically integers; a fractional amount still renders with 2 decimals
+// rather than silently truncating.
+export function formatW(n: number, opts?: { sign?: boolean }): string {
+  const value = safeNumber(n);
+  const abs = Math.abs(value);
+  const digits = Number.isInteger(abs) ? String(abs) : abs.toFixed(2);
+  const formatted = `W${digits}`;
+  if (opts?.sign && value !== 0) {
+    return value > 0 ? `+${formatted}` : `-${formatted}`;
+  }
+  return formatted;
+}
+
 // Above $1000, collapse to one decimal ("$1.2k") so amounts stay scannable
 // in tight UI (activity rows, wallet summaries). Below that, behaves like
 // formatMoney.

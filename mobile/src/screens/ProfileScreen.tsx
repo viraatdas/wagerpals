@@ -23,6 +23,7 @@ import {
   ListRow,
   LoadingState,
   Money,
+  WAmount,
   Pill,
   SectionHeader,
   SkeletonCard,
@@ -330,6 +331,12 @@ export default function ProfileScreen() {
                 />
               </View>
             </View>
+            {/* W is a separate ledger from cash — its own row, not folded
+                into the $ balance above. */}
+            <View style={styles.wRow}>
+              <Text style={styles.walletLabel}>W balance</Text>
+              <WAmount value={safeAmount(walletSummary.wallet.wp_balance)} tone="neutral" size="md" />
+            </View>
             <Button
               title="Add funds"
               onPress={goToWallet}
@@ -492,6 +499,15 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
     marginBottom: spacing.xs,
+  },
+  wRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: spacing.md,
+    marginBottom: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
   addFundsButton: {
     marginBottom: spacing.sm,

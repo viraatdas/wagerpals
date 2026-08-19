@@ -22,8 +22,9 @@ import { SkeletonList } from '../components/Skeleton';
 import { Card } from '../components/Card';
 import { Pill, PillTone } from '../components/Pill';
 import { Money } from '../components/Money';
+import { WAmount } from '../components/WMark';
 import { SplitBar } from '../components/ProgressBar';
-import { formatCountdown, formatMoney } from '../utils/format';
+import { formatMoney } from '../utils/format';
 import { ApiError, toApiError } from '../utils/errors';
 import { colors, font, radius, spacing, tokens } from '../theme';
 
@@ -41,15 +42,12 @@ type EventListItem = Event & {
   total_participants?: number;
 };
 
+// No-expiry status mapping: active -> "Live", resolved -> "Settled".
 function getStatusPill(item: EventListItem): { label: string; tone: PillTone } {
   if (item.status === 'resolved') {
-    return { label: 'Resolved', tone: 'yes' };
+    return { label: 'Settled', tone: 'yes' };
   }
-  const countdown = formatCountdown(item.end_time);
-  if (countdown.isPast) {
-    return { label: 'Ended', tone: 'no' };
-  }
-  return { label: countdown.label, tone: 'pending' };
+  return { label: 'Live', tone: 'brand' };
 }
 
 interface EventCardProps {
@@ -92,7 +90,11 @@ const EventCard = React.memo(function EventCard({ item, onPress }: EventCardProp
 
       <View style={styles.footerRow}>
         <Text style={styles.potLabel}>Pot</Text>
-        <Money amount={potTotal} size="sm" tone="neutral" />
+        {item.payment_type === 'cash' ? (
+          <Money amount={potTotal} size="sm" tone="neutral" />
+        ) : (
+          <WAmount value={potTotal} size="sm" tone="neutral" />
+        )}
       </View>
     </Card>
   );

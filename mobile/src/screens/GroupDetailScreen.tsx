@@ -23,7 +23,6 @@ import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
 import { Event, EventWithStats, Group, GroupMember, WalletSummary } from '../types';
 import { ApiError, toApiError } from '../utils/errors';
-import { formatCountdown } from '../utils/format';
 import { tapLight } from '../utils/haptics';
 import { colors, font, gradients, radius, spacing, tokens, glow } from '../theme';
 import {
@@ -32,6 +31,7 @@ import {
   EmptyState,
   ErrorState,
   Money,
+  WAmount,
   Pill,
   SectionHeader,
   Skeleton,
@@ -54,7 +54,7 @@ const EventRow = React.memo(function EventRow({
   onPress: (eventId: string) => void;
 }) {
   const isResolved = event.status === 'resolved';
-  const countdown = formatCountdown(event.end_time);
+  const isCash = event.payment_type === 'cash';
   // GET /api/events (list) includes side_stats/total_bets/total_participants
   // at runtime even though the plain `Event` type (shared with POST bodies)
   // doesn't declare them — narrow locally rather than touching shared types.
@@ -69,18 +69,15 @@ const EventRow = React.memo(function EventRow({
         <Text style={styles.eventTitle} numberOfLines={2} ellipsizeMode="tail">
           {event.title}
         </Text>
-        <Money amount={pot} tone="neutral" size="sm" />
+        {isCash ? <Money amount={pot} tone="neutral" size="sm" /> : <WAmount value={pot} tone="neutral" size="sm" />}
       </View>
 
       <SplitBar aValue={aTotal} bValue={bTotal} aLabel={event.side_a} bLabel={event.side_b} />
 
       <View style={styles.eventFooterRow}>
-        {isResolved ? (
-          <Pill label="Resolved" tone="yes" />
-        ) : (
-          <Pill label={countdown.label} tone={countdown.isPast ? 'neutral' : 'brand'} />
-        )}
-        {event.payment_type === 'cash' && <Pill label="Cash" tone="info" />}
+        {/* No-expiry status mapping: active -> "Live", resolved -> "Settled". */}
+        <Pill label={isResolved ? 'Settled' : 'Live'} tone={isResolved ? 'yes' : 'brand'} />
+        {isCash && <Pill label="Cash" tone="info" />}
       </View>
     </Card>
   );
@@ -99,7 +96,7 @@ export default function GroupDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isCreator, setIsCreator] = useState(false);
   const [userStatus, setUserStatus] = useState<'active' | 'pending'>('active');
   const [copied, setCopied] = useState(false);
 
@@ -132,13 +129,15 @@ export default function GroupDetailScreen() {
         if (seq !== loadSeq.current) return; // superseded by a newer load
 
         const userMember = groupData.members?.find((m) => m.user_id === user.id);
-        const nextIsAdmin = userMember?.role === 'admin';
+        // Flat-groups model: the only admin is the creator.
+        const nextIsCreator = groupData.created_by === user.id;
         const nextStatus: 'active' | 'pending' = userMember?.status || 'pending';
 
         // Members and wallet are independent of each other and of the
         // group/events fetch above — fire them concurrently. The wallet leg
-        // is optional context (balance shown in the paid-group card) and
-        // must degrade to null rather than failing the whole screen.
+        // is optional context (cash balance shown when the group has cash
+        // wagers on) and must degrade to null rather than failing the whole
+        // screen.
         const [membersData, walletData] = await Promise.all([
           groupData.members
             ? Promise.resolve(groupData.members)
@@ -146,7 +145,7 @@ export default function GroupDetailScreen() {
                 console.warn('[GroupDetail] members leg failed:', err);
                 return [] as GroupMember[];
               }),
-          !groupData.is_public
+          groupData.cash_enabled
             ? apiService.getWallet(user.id).catch((err) => {
                 console.warn('[GroupDetail] optional wallet leg failed:', err);
                 return null;
@@ -158,7 +157,7 @@ export default function GroupDetailScreen() {
 
         setGroup(groupData);
         setEvents(eventsData);
-        setIsAdmin(nextIsAdmin);
+        setIsCreator(nextIsCreator);
         setUserStatus(nextStatus);
         setMembers(membersData);
         setWalletSummary(walletData);
@@ -235,22 +234,24 @@ export default function GroupDetailScreen() {
     navigation.navigate('GroupAdmin' as never, { groupId } as never);
   }, [navigation, groupId]);
 
-  const { activeEvents, endedEvents } = useMemo(() => {
-    const now = Date.now();
-    return {
-      activeEvents: events.filter((e) => e.status === 'active' && e.end_time > now),
-      endedEvents: events.filter((e) => e.status === 'resolved' || (e.status === 'active' && e.end_time <= now)),
-    };
-  }, [events]);
+  // No-expiry rules: status is the only thing that splits the list now —
+  // end_time no longer closes an event, so it can't decide this.
+  const { activeEvents, endedEvents } = useMemo(
+    () => ({
+      activeEvents: events.filter((e) => e.status === 'active'),
+      endedEvents: events.filter((e) => e.status === 'resolved'),
+    }),
+    [events]
+  );
 
   const listItems = useMemo<EventListItem[]>(() => {
     const items: EventListItem[] = [];
     if (activeEvents.length > 0) {
-      items.push({ kind: 'section', id: 'section-active', label: `Active Events (${activeEvents.length})` });
+      items.push({ kind: 'section', id: 'section-active', label: `Live (${activeEvents.length})` });
       activeEvents.forEach((e) => items.push({ kind: 'event', id: e.id, event: e }));
     }
     if (endedEvents.length > 0) {
-      items.push({ kind: 'section', id: 'section-ended', label: `Ended Events (${endedEvents.length})` });
+      items.push({ kind: 'section', id: 'section-ended', label: `Settled (${endedEvents.length})` });
       endedEvents.forEach((e) => items.push({ kind: 'event', id: e.id, event: e }));
     }
     return items;
@@ -303,6 +304,9 @@ export default function GroupDetailScreen() {
   }
 
   // ---- Pending approval ----
+  // Joins by code are instantly active now (flat-groups model) — a
+  // 'pending' status can only survive on a legacy row written before that
+  // change, so this is a rare fallback, not the normal join path.
   if (userStatus === 'pending') {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -314,11 +318,11 @@ export default function GroupDetailScreen() {
             <View style={styles.pendingIconChip}>
               <Ionicons name="hourglass-outline" size={32} color={colors.amber} />
             </View>
-            <Text style={styles.pendingTitle}>Pending Approval</Text>
+            <Text style={styles.pendingTitle}>Waiting on the creator</Text>
             <Text style={styles.pendingText} numberOfLines={3} ellipsizeMode="tail">
-              Your request to join "{group?.name}" is waiting for admin approval.
+              Your request to join "{group?.name}" hasn't been approved yet.
             </Text>
-            <Text style={styles.pendingSubtext}>You'll be notified when you're approved.</Text>
+            <Text style={styles.pendingSubtext}>You'll be notified when you're in.</Text>
             <Button title="Go Back" variant="secondary" onPress={() => navigation.goBack()} style={styles.pendingButton} />
           </View>
         </ScrollView>
@@ -326,8 +330,11 @@ export default function GroupDetailScreen() {
     );
   }
 
-  const isPaidGroup = !group?.is_public;
+  const cashEnabled = !!group?.cash_enabled;
   const available = walletSummary?.available ?? walletSummary?.wallet.balance ?? 0;
+  // Group has no creator_username field of its own (unlike Event) — derive
+  // it from the already-loaded member roster instead of inventing a field.
+  const creatorUsername = members.find((m) => m.user_id === group?.created_by)?.username;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -365,19 +372,19 @@ export default function GroupDetailScreen() {
                 <Text style={styles.memberCount}>
                   <Text style={styles.memberCountNumber}>{members.length}</Text> members
                 </Text>
-                {isPaidGroup && group?.resolver?.username ? (
+                {creatorUsername ? (
                   <>
                     <Text style={styles.dot}>•</Text>
                     <Text style={styles.memberCount} numberOfLines={1} ellipsizeMode="tail">
-                      Resolver @{group.resolver.username}
+                      Started by @{creatorUsername}
                     </Text>
                   </>
                 ) : null}
               </View>
 
               <View style={styles.pillsRow}>
-                {isAdmin && <Pill label="Admin" tone="brand" size="sm" />}
-                <Pill label={group?.is_public ? 'Free Points' : 'Paid'} tone={group?.is_public ? 'neutral' : 'pending'} size="sm" />
+                {isCreator && <Pill label="Creator" tone="brand" size="sm" />}
+                <Pill label={cashEnabled ? 'Cash' : 'W only'} tone={cashEnabled ? 'pending' : 'neutral'} size="sm" />
               </View>
             </View>
 
@@ -385,11 +392,11 @@ export default function GroupDetailScreen() {
               <ErrorState compact title="Couldn't refresh" message={error.userMessage} onRetry={handleRefresh} style={styles.inlineError} />
             ) : null}
 
-            {isPaidGroup && (
+            {cashEnabled && (
               <View style={styles.walletCard}>
                 <View style={styles.walletHeader}>
                   <View style={styles.walletTextCol}>
-                    <Text style={styles.walletLabel}>Paid group wallet</Text>
+                    <Text style={styles.walletLabel}>Cash wallet</Text>
                     <Money amount={available} tone="neutral" size="lg" />
                   </View>
                   <Pressable style={styles.depositButtonWrap} onPress={handleDeposit} accessibilityRole="button" accessibilityLabel="Deposit funds">
@@ -433,7 +440,7 @@ export default function GroupDetailScreen() {
 
       <View style={styles.bottomBar}>
         <Button title="Create Event" onPress={handleCreateEvent} variant="primary" style={styles.bottomBarButton} icon="add-circle-outline" />
-        {isAdmin && (
+        {isCreator && (
           <Button title="Manage Group" onPress={handleManageGroup} variant="secondary" style={styles.bottomBarButton} icon="settings-outline" />
         )}
       </View>

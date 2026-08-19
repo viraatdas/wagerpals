@@ -120,11 +120,11 @@ export default function JoinGroupScreen() {
       try {
         await apiService.joinGroup(codeToUse, user.id);
         success();
-        Alert.alert(
-          'Request submitted',
-          "You're on the list! We'll notify you as soon as an admin approves your request.",
-          [{ text: 'OK', onPress: () => navigation.navigate('Main' as never) }]
-        );
+        // Joins by code are instantly active (flat-groups model) — no
+        // approval queue, so this drops straight into the group.
+        Alert.alert("You're in.", undefined, [
+          { text: 'Go to group', onPress: () => navigation.navigate('GroupDetail' as never, { groupId: codeToUse } as never) },
+        ]);
       } catch (err) {
         const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups/join');
         hapticError();
@@ -255,7 +255,7 @@ export default function JoinGroupScreen() {
             />
           </View>
 
-          <Text style={styles.note}>Your request will be pending until an admin approves it.</Text>
+          <Text style={styles.note}>You're in as soon as you join — no approval needed.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -7,6 +7,8 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, font, radius, spacing, tokens } from '../theme';
 import { tapLight } from '../utils/haptics';
+import { WMark } from './WMark';
+import { formatMoney, formatW } from '../utils/format';
 
 export interface AmountInputProps {
   value: string;
@@ -19,6 +21,13 @@ export interface AmountInputProps {
   /** The user's current balance, if relevant — renders "Available: $X.XX". */
   available?: number;
   editable?: boolean;
+  /**
+   * 'usd' (default) renders the "$" prefix and $-denominated copy — every
+   * existing cash call site is unchanged. 'wp' swaps in the W mark and
+   * W-denominated copy for play-money bets (W-CURRENCY-SPEC.md) — never
+   * show a dollar sign on a W stake.
+   */
+  currency?: 'usd' | 'wp';
 }
 
 /** Strips a raw keystroke buffer down to a valid decimal-amount string. */
@@ -56,16 +65,18 @@ export function AmountInput({
   quickAmounts,
   available,
   editable = true,
+  currency = 'usd',
 }: AmountInputProps) {
   const numericValue = parseFloat(value);
   const hasNumericValue = value.length > 0 && !isNaN(numericValue);
   const overMax = max !== undefined && hasNumericValue && numericValue > max;
   const overAvailable = available !== undefined && hasNumericValue && numericValue > available;
+  const fmt = currency === 'wp' ? formatW : formatMoney;
 
   const derivedError =
     error ??
     (overMax
-      ? `Max amount is $${max!.toFixed(2)}`
+      ? `Max amount is ${fmt(max!)}`
       : overAvailable
         ? 'Exceeds available balance'
         : undefined);
@@ -89,7 +100,11 @@ export function AmountInput({
           !editable && styles.inputWrapDisabled,
         ]}
       >
-        <Text style={styles.prefix}>$</Text>
+        {currency === 'wp' ? (
+          <WMark size={tokens.fontSize['3xl']} color={colors.textMuted} style={styles.prefixMark} />
+        ) : (
+          <Text style={styles.prefix}>$</Text>
+        )}
         <TextInput
           style={styles.input}
           value={value}
@@ -105,17 +120,22 @@ export function AmountInput({
 
       {quickAmounts && quickAmounts.length > 0 ? (
         <View style={styles.quickRow}>
-          {quickAmounts.map((amount) => (
-            <Pressable
-              key={amount}
-              onPress={() => handleQuickAmount(amount)}
-              accessibilityRole="button"
-              accessibilityLabel={`$${amount}`}
-              style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
-            >
-              <Text style={styles.chipText}>${amount}</Text>
-            </Pressable>
-          ))}
+          {quickAmounts.map((amount) => {
+            // Preserve the exact old "$5" (no forced decimals) look for
+            // cash chips — only the wp case routes through formatW.
+            const chipLabel = currency === 'wp' ? formatW(amount) : `$${amount}`;
+            return (
+              <Pressable
+                key={amount}
+                onPress={() => handleQuickAmount(amount)}
+                accessibilityRole="button"
+                accessibilityLabel={chipLabel}
+                style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+              >
+                <Text style={styles.chipText}>{chipLabel}</Text>
+              </Pressable>
+            );
+          })}
         </View>
       ) : null}
 
@@ -125,7 +145,7 @@ export function AmountInput({
             {derivedError}
           </Text>
         ) : available !== undefined ? (
-          <Text style={styles.availableText}>Available: ${available.toFixed(2)}</Text>
+          <Text style={styles.availableText}>Available: {fmt(available)}</Text>
         ) : null}
       </View>
     </View>
@@ -162,6 +182,9 @@ const styles = StyleSheet.create({
     fontFamily: font.monoMedium,
     fontSize: tokens.fontSize['3xl'],
     color: colors.textMuted,
+    marginRight: spacing.xs,
+  },
+  prefixMark: {
     marginRight: spacing.xs,
   },
   input: {

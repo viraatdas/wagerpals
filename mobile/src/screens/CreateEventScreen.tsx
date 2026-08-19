@@ -13,7 +13,6 @@ import { tapMedium, success, error as hapticError } from '../utils/haptics';
 import {
   FormScreen,
   Field,
-  DateTimeField,
   AmountInput,
   SegmentedControl,
   Toggle,
@@ -42,7 +41,6 @@ interface FormErrors {
   title?: string;
   sideA?: string;
   sideB?: string;
-  endTime?: string;
   stake?: string;
 }
 
@@ -50,7 +48,6 @@ function validateForm(input: {
   title: string;
   sideA: string;
   sideB: string;
-  endTime: number | null;
   paymentType: PaymentType;
   stakeAmount: string;
 }): FormErrors {
@@ -79,12 +76,6 @@ function validateForm(input: {
 
   if (!errors.sideA && !errors.sideB && trimmedA.toLowerCase() === trimmedB.toLowerCase()) {
     errors.sideB = 'Side B must be different from side A.';
-  }
-
-  if (input.endTime == null) {
-    errors.endTime = 'Pick when this ends.';
-  } else if (input.endTime <= Date.now()) {
-    errors.endTime = 'End time must be in the future.';
   }
 
   if (input.paymentType === 'cash') {
@@ -124,7 +115,6 @@ export default function CreateEventScreen() {
   const [title, setTitle] = useState('');
   const [sideA, setSideA] = useState('');
   const [sideB, setSideB] = useState('');
-  const [endTime, setEndTime] = useState<number | null>(null);
   const [paymentType, setPaymentType] = useState<PaymentType>('none');
   const [stakeAmount, setStakeAmount] = useState('');
   const [subjectUserId, setSubjectUserId] = useState<string | null>(null);
@@ -208,11 +198,9 @@ export default function CreateEventScreen() {
 
   const subjectUsername = subjectCandidates.find((u) => u.id === subjectUserId)?.username;
 
-  // Group-level cash enablement (a parallel change adds `cash_enabled` to
-  // GET /api/groups; POST /api/events now rejects payment_type: 'cash' for a
-  // group where it's false). The shared Group type doesn't declare the field
-  // yet, so it's read defensively off the raw response — a missing field
-  // (older cached payload) is treated as disabled, never as enabled.
+  // Group-level cash enablement — POST /api/events rejects payment_type:
+  // 'cash' for a group where it's false. A missing value (older cached
+  // payload) is treated as disabled, never as enabled.
   const [cashEnabled, setCashEnabled] = useState(false);
 
   useEffect(() => {
@@ -221,7 +209,7 @@ export default function CreateEventScreen() {
       .getGroup(groupId)
       .then((g) => {
         if (cancelled) return;
-        setCashEnabled((g as any)?.cash_enabled ?? false);
+        setCashEnabled(g?.cash_enabled ?? false);
       })
       .catch(() => {
         // Non-fatal: the cash option just stays hidden, same as a group
@@ -238,7 +226,7 @@ export default function CreateEventScreen() {
       return;
     }
 
-    const errors = validateForm({ title, sideA, sideB, endTime, paymentType, stakeAmount });
+    const errors = validateForm({ title, sideA, sideB, paymentType, stakeAmount });
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
       return;
@@ -262,7 +250,8 @@ export default function CreateEventScreen() {
         title: title.trim(),
         side_a: sideA.trim(),
         side_b: sideB.trim(),
-        end_time: endTime as number,
+        // No-expiry rules: end_time is meaningless server-side now — don't
+        // send one.
         group_id: groupId,
         creator_user_id: user.id,
         creator_username: creatorUsername,
@@ -383,17 +372,6 @@ export default function CreateEventScreen() {
           returnKeyType="done"
         />
 
-        <DateTimeField
-          label="When does this end?"
-          value={endTime}
-          onChange={(ts) => {
-            setEndTime(ts);
-            if (formErrors.endTime) setFormErrors((prev) => ({ ...prev, endTime: undefined }));
-          }}
-          minimumDate={new Date()}
-          error={formErrors.endTime}
-        />
-
         {cashEnabled ? (
           <>
             <Text style={styles.sectionLabel}>Payment</Text>
@@ -421,7 +399,10 @@ export default function CreateEventScreen() {
           </>
         ) : null}
 
-        <Text style={styles.sectionLabel}>Tag Someone (optional)</Text>
+        <View style={styles.subjectHeaderRow}>
+          <Ionicons name="person-outline" size={14} color={colors.amber} />
+          <Text style={styles.sectionLabel}>This bet is about someone (optional)</Text>
+        </View>
         {membersLoading ? (
           <LoadingState compact label="Loading group members…" />
         ) : membersError ? (
@@ -433,16 +414,16 @@ export default function CreateEventScreen() {
               value={subjectUserId}
               onChange={setSubjectUserId}
               placeholder="No one — general bet"
-              hint="Tag the group member this wager is about."
+              hint="Pick who this wager is about."
             />
             {subjectUserId ? (
               <Toggle
-                label={`Notify ${subjectUsername ?? 'them'}`}
-                value={notifySubject}
-                onValueChange={setNotifySubject}
+                label="Keep it secret from them"
+                value={!notifySubject}
+                onValueChange={(secret) => setNotifySubject(!secret)}
                 description={
                   notifySubject
-                    ? undefined
+                    ? `${subjectUsername ?? 'They'} will be notified about this bet.`
                     : `Quiet bet — ${subjectUsername ?? 'they'} won't be notified.`
                 }
               />
@@ -475,6 +456,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     marginBottom: spacing.sm,
+  },
+  subjectHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   sideLabelRow: {
     flexDirection: 'row',

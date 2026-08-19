@@ -31,11 +31,16 @@ import { Card } from '../components/Card';
 import { Pill, PillTone } from '../components/Pill';
 import { Avatar } from '../components/Avatar';
 import { Money } from '../components/Money';
+import { WAmount } from '../components/WMark';
 import { SplitBar } from '../components/ProgressBar';
 import { SectionHeader } from '../components/SectionHeader';
+import { BottomSheet } from '../components/BottomSheet';
+import { Field } from '../components/Field';
+import { Toggle } from '../components/Toggle';
+import { Button } from '../components/Button';
 import { tapMedium, tapLight, success, error as hapticError } from '../utils/haptics';
 import { ApiError, toApiError } from '../utils/errors';
-import { formatCountdown, truncate } from '../utils/format';
+import { truncate } from '../utils/format';
 import { colors, font, radius, spacing, tokens } from '../theme';
 
 // Matches the tab bar's own height (see navigation/MainTabNavigator.tsx) —
@@ -59,13 +64,11 @@ type WagerCardItem = Event & {
   latest_comment?: EventLatestComment;
 };
 
+// No-expiry status mapping: there is no countdown/closing concept anymore —
+// an event is only ever 'active' ("Live") or 'resolved' ("Settled").
 function getStatusPill(item: WagerCardItem): { label: string; tone: PillTone } {
   if (item.status === 'resolved') {
-    return { label: 'Resolved', tone: 'yes' };
-  }
-  const countdown = formatCountdown(item.end_time);
-  if (countdown.isPast) {
-    return { label: 'Ended', tone: 'no' };
+    return { label: 'Settled', tone: 'yes' };
   }
   return { label: 'Live', tone: 'brand' };
 }
@@ -84,6 +87,7 @@ const WagerCard = React.memo(function WagerCard({ item, onPress }: WagerCardProp
   const sideAStats = item.side_stats?.[item.side_a] ?? { count: 0, total: 0 };
   const sideBStats = item.side_stats?.[item.side_b] ?? { count: 0, total: 0 };
   const potTotal = sideAStats.total + sideBStats.total;
+  const isCash = item.payment_type === 'cash';
   const previewBettors = item.bettor_preview?.slice(0, 3) ?? [];
   const playerCount = item.total_participants ?? 0;
 
@@ -119,7 +123,11 @@ const WagerCard = React.memo(function WagerCard({ item, onPress }: WagerCardProp
           </Text>
         </View>
         <View style={styles.stakedWrap}>
-          <Money amount={potTotal} size="md" tone="neutral" />
+          {isCash ? (
+            <Money amount={potTotal} size="md" tone="neutral" />
+          ) : (
+            <WAmount value={potTotal} size="md" tone="neutral" />
+          )}
           <Text style={styles.stakedLabel}>staked</Text>
         </View>
       </View>
@@ -159,6 +167,9 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState<ApiError | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupCashEnabled, setNewGroupCashEnabled] = useState(false);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const insets = useSafeAreaInsets();
 
   // Guards against setState-after-unmount from a fetch that resolves after
@@ -233,21 +244,33 @@ export default function HomeScreen() {
     loadBoard({ silent: true });
   }, [loadBoard]);
 
-  const handleCreateGroup = useCallback(async (groupName: string) => {
-    if (!user) return;
-
+  const closeCreateModal = useCallback(() => {
     setShowCreateModal(false);
+    setNewGroupName('');
+    setNewGroupCashEnabled(false);
+  }, []);
+
+  const handleCreateGroup = useCallback(async () => {
+    if (!user || !newGroupName.trim() || isCreatingGroup) return;
+
+    setIsCreatingGroup(true);
     try {
-      const newGroup = await apiService.createGroup(groupName, user.id);
+      const newGroup = await apiService.createGroup(newGroupName.trim(), user.id, newGroupCashEnabled);
       success();
+      closeCreateModal();
       navigation.navigate('GroupDetail' as never, { groupId: newGroup.id } as never);
     } catch (err) {
       hapticError();
       const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups');
-      Alert.alert('Error', apiErr.userMessage);
+      Alert.alert("Couldn't create group", apiErr.userMessage);
+    } finally {
+      setIsCreatingGroup(false);
     }
-  }, [user, navigation]);
+  }, [user, newGroupName, newGroupCashEnabled, isCreatingGroup, navigation, closeCreateModal]);
 
+  // Joins by code are instantly active now (flat-groups model) — no more
+  // "waiting for admin approval" queue, so this drops straight into the
+  // group instead of leaving the person on the board.
   const handleJoinGroup = useCallback(async (groupCode: string) => {
     if (!user) return;
 
@@ -255,14 +278,14 @@ export default function HomeScreen() {
     try {
       await apiService.joinGroup(groupCode.toUpperCase(), user.id);
       success();
-      Alert.alert('Request sent', 'Join request submitted — waiting for admin approval.');
       loadBoard({ silent: true });
+      navigation.navigate('GroupDetail' as never, { groupId: groupCode.toUpperCase() } as never);
     } catch (err) {
       hapticError();
       const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups');
-      Alert.alert('Error', apiErr.userMessage);
+      Alert.alert("Couldn't join group", apiErr.userMessage);
     }
-  }, [user, loadBoard]);
+  }, [user, loadBoard, navigation]);
 
   const handleGroupPress = useCallback((item: Group) => {
     navigation.navigate('GroupDetail' as never, { groupId: item.id } as never);
@@ -278,15 +301,14 @@ export default function HomeScreen() {
     }
   }, [groups, navigation]);
 
-  // Active wagers first (most urgent — soonest to end — leads the board),
-  // then resolved ones (most recently decided first).
+  // Active wagers lead the board (no-expiry rules mean there's no "soonest
+  // to end" to sort by anymore — see the mobile product-rules brief), then
+  // resolved ones, most recently decided first.
   const sortedWagers = useMemo(() => {
-    const active = wagers
-      .filter((w) => w.status === 'active')
-      .sort((a, b) => a.end_time - b.end_time);
+    const active = wagers.filter((w) => w.status === 'active');
     const resolved = wagers
       .filter((w) => w.status !== 'active')
-      .sort((a, b) => (b.resolution?.resolved_at ?? b.end_time) - (a.resolution?.resolved_at ?? a.end_time));
+      .sort((a, b) => (b.resolution?.resolved_at ?? 0) - (a.resolution?.resolved_at ?? 0));
     return [...active, ...resolved];
   }, [wagers]);
 
@@ -456,15 +478,31 @@ export default function HomeScreen() {
       />
 
       {/* Modals */}
-      <TextInputModal
-        visible={showCreateModal}
-        title="Create Group"
-        message="Enter a name for your new betting group"
-        placeholder="Group name"
-        onSubmit={handleCreateGroup}
-        onCancel={() => setShowCreateModal(false)}
-        submitText="Create"
-      />
+      <BottomSheet visible={showCreateModal} onClose={closeCreateModal} title="Create group" snapToContent>
+        <Field
+          label="Group name"
+          value={newGroupName}
+          onChangeText={setNewGroupName}
+          placeholder="e.g. Sunday Football"
+          returnKeyType="done"
+          autoCorrect={false}
+        />
+        <Toggle
+          label="Cash wagers"
+          description="Members can stake real money from their wallets."
+          value={newGroupCashEnabled}
+          onValueChange={setNewGroupCashEnabled}
+        />
+        <Button
+          title="Create"
+          onPress={handleCreateGroup}
+          variant="primary"
+          fullWidth
+          loading={isCreatingGroup}
+          disabled={!newGroupName.trim() || isCreatingGroup}
+          style={styles.createGroupButton}
+        />
+      </BottomSheet>
 
       <TextInputModal
         visible={showJoinModal}
@@ -488,6 +526,9 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl,
+  },
+  createGroupButton: {
+    marginTop: spacing.md,
   },
   stateFill: {
     flex: 1,

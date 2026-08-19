@@ -327,10 +327,10 @@ class ApiService {
     );
   }
 
-  async createGroup(name: string, createdBy: string): Promise<Group> {
+  async createGroup(name: string, createdBy: string, cashEnabled?: boolean): Promise<Group> {
     const group = await this.request<Group>('/api/groups', {
       method: 'POST',
-      body: JSON.stringify({ name, created_by: createdBy }),
+      body: JSON.stringify({ name, created_by: createdBy, cash_enabled: cashEnabled }),
     });
     this.invalidate('/api/groups');
     return group;
@@ -349,8 +349,13 @@ class ApiService {
     return this.request<GroupMember[]>(`/api/groups/members?groupId=${encodeURIComponent(groupId)}`);
   }
 
+  // Flat-groups model: there's only one admin per group (the creator), so
+  // promote/demote no longer exist as actions. approve/decline are kept
+  // only to let a creator clear out any legacy 'pending' rows written
+  // before joins-by-code became instantly active — new joins never produce
+  // one, so most groups will never show these.
   async manageGroupMember(
-    action: 'approve' | 'decline' | 'promote' | 'demote' | 'remove',
+    action: 'approve' | 'decline' | 'remove',
     groupId: string,
     adminUserId: string,
     targetUserId: string
@@ -372,6 +377,8 @@ class ApiService {
     id: string;
     resolver_user_id?: string;
     is_public?: boolean;
+    cash_enabled?: boolean;
+    name?: string;
   }): Promise<Group> {
     const group = await this.request<Group>('/api/groups', {
       method: 'PATCH',
@@ -467,7 +474,10 @@ class ApiService {
     description?: string;
     side_a: string;
     side_b: string;
-    end_time: number;
+    // No-expiry product rules: end_time is meaningless server-side now.
+    // Optional so create screens can simply not send it — see
+    // CreateEventScreen/CreateEventFromInviteScreen.
+    end_time?: number;
     group_id: string;
     creator_user_id: string;
     creator_username: string;
