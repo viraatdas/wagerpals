@@ -12,9 +12,9 @@ export interface MentionMember {
 export interface CommentFormProps {
   members?: MentionMember[]; // @autocomplete source (active group members)
   initialContent?: string; // prefilled text for edit mode
-  submitLabel?: string; // default 'Post Comment'
+  submitLabel?: string; // default 'Post comment'
   pendingLabel?: string; // default 'Posting…'
-  placeholder?: string; // default 'Add a comment…  (@ to mention)'
+  placeholder?: string; // default 'Add a comment… (@ to mention)'
   autoFocus?: boolean;
   maxLength?: number; // default MAX_COMMENT_LENGTH from '@/lib/comments'
   disabled?: boolean;
@@ -49,9 +49,9 @@ function getMentionCandidates(members: MentionMember[], query: string): MentionM
 export default function CommentForm({
   members = [],
   initialContent = '',
-  submitLabel = 'Post Comment',
+  submitLabel = 'Post comment',
   pendingLabel = 'Posting…',
-  placeholder = 'Add a comment…  (@ to mention)',
+  placeholder = 'Add a comment… (@ to mention)',
   autoFocus = false,
   maxLength = MAX_COMMENT_LENGTH,
   disabled = false,
@@ -204,7 +204,7 @@ export default function CommentForm({
         setContent('');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : "Couldn't post that — try again.");
     } finally {
       setSubmitting(false);
     }
@@ -220,7 +220,7 @@ export default function CommentForm({
   return (
     <form onSubmit={handleSubmit} className={`card ${compact ? 'p-3' : 'p-4'}`}>
       {replyingToUsername && (
-        <div className="tone-info tone-surface mb-2.5 flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5">
+        <div className="tone-pending tone-surface mb-2.5 flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5">
           <span className="tone-text min-w-0 truncate text-xs font-medium">
             Replying to <span className="font-semibold">@{replyingToUsername}</span>
           </span>
@@ -275,7 +275,7 @@ export default function CommentForm({
                 onClick={() => acceptMention(member)}
                 className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm transition ${
                   i === clampedHighlight
-                    ? 'tone-accent tone-text bg-[var(--tone-fill)]'
+                    ? 'tone-pending tone-text bg-[var(--tone-fill)]'
                     : 'text-foreground hover:bg-surface-sunken'
                 }`}
               >

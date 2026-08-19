@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react';
 import { useUser } from '@stackframe/stack';
 import { useRouter } from 'next/navigation';
 import { User } from '@/lib/types';
+import AvatarStack from '@/components/AvatarStack';
+import EmptySlip from '@/components/EmptySlip';
 
 interface Group {
   id: string;
@@ -159,30 +161,21 @@ export default function UsersPage() {
   return (
     <div className="page-shell-narrow mobile-page animate-rise">
       <p className="eyebrow mb-2">Leaderboard</p>
-      <h1 className="display-1 mb-2">Users</h1>
+      <h1 className="display-1 mb-2">Friends</h1>
       <p className="lede mb-8">View members from your groups, ranked by net.</p>
 
       {groups.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 100-8 4 4 0 000 8zm6 0a4 4 0 100-8" />
-            </svg>
-          </div>
-          <p className="empty-state-title">You&apos;re not part of any groups yet</p>
-          <p className="empty-state-body">
-            Join or create a group to see who&apos;s winning and who owes who.
-          </p>
-          <button onClick={() => router.push('/')} className="btn-primary">
-            Go to Home
-          </button>
-        </div>
+        <EmptySlip
+          headline="No friends in yet."
+          body="Join or create a group to see who's up."
+          action={{ label: 'Go to board', onClick: () => router.push('/') }}
+        />
       ) : (
         <>
           {/* Group selector */}
           <div className="mb-8">
             <label className="field-label" id="group-selector-label">
-              Select Group
+              Select group
             </label>
             <div className="group-dropdown relative">
               <button
@@ -282,17 +275,10 @@ export default function UsersPage() {
               </div>
             </div>
           ) : users.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon">
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                </svg>
-              </div>
-              <p className="empty-state-title">No members in this group yet</p>
-              <p className="empty-state-body">
-                Invite friends to this group and their bets will show up on the leaderboard.
-              </p>
-            </div>
+            <EmptySlip
+              headline="No members in this group yet"
+              body="Invite friends and their bets land on the leaderboard."
+            />
           ) : (
             <div className="space-y-4">
               <div className="section-head">
@@ -306,9 +292,7 @@ export default function UsersPage() {
                 <div className="tone-gold card-focal hero-field rail-top relative overflow-hidden p-5 sm:p-7">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                      <div className="tone-surface flex h-12 w-12 flex-none items-center justify-center rounded-[var(--radius-control)] border text-lg font-bold tone-text sm:h-14 sm:w-14">
-                        {initialOf(first.username)}
-                      </div>
+                      <AvatarStack people={[{ username: first.username }]} size="lg" className="flex-none" />
                       <div className="min-w-0">
                         <p className="eyebrow tone-text mb-1">Rank 1</p>
                         <p className="market-title truncate text-xl text-foreground sm:text-2xl">
@@ -344,9 +328,7 @@ export default function UsersPage() {
                     u ? (
                       <div key={u.id} className={`${netTone(u.net_total)} card flex items-center justify-between gap-3 p-4`}>
                         <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-9 w-9 flex-none items-center justify-center rounded-[var(--radius-chip)] bg-[var(--color-surface-sunken)] text-sm font-bold text-muted">
-                            {initialOf(u.username)}
-                          </div>
+                          <AvatarStack people={[{ username: u.username }]} size="md" className="flex-none" />
                           <div className="min-w-0">
                             <p className="eyebrow mb-0.5">Rank {i + 2}</p>
                             <p className="truncate font-medium text-foreground">@{u.username}</p>
@@ -354,7 +336,7 @@ export default function UsersPage() {
                         </div>
                         <div className="flex-none text-right">
                           <p className="numeral tone-text text-lg">{netText(u.net_total)}</p>
-                          {u.streak > 0 && <p className="mt-0.5 text-xs text-muted">🔥 {u.streak}</p>}
+                          {u.streak > 0 && <p className="mt-0.5 font-mono text-xs text-muted">🔥 {u.streak} streak</p>}
                         </div>
                       </div>
                     ) : null
@@ -373,13 +355,13 @@ export default function UsersPage() {
                         className={`${netTone(u.net_total)} flex items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 transition-colors last:border-b-0 hover:bg-[var(--color-surface-sunken)]`}
                       >
                         <span className="numeral w-6 flex-none text-sm text-muted">{rank}</span>
-                        <div className="flex h-8 w-8 flex-none items-center justify-center rounded-[var(--radius-chip)] bg-[var(--color-surface-sunken)] text-xs font-bold text-muted">
-                          {initialOf(u.username)}
-                        </div>
+                        <AvatarStack people={[{ username: u.username }]} size="sm" className="flex-none" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-foreground">
                             @{u.username}
-                            {u.streak > 0 && <span className="ml-1.5 text-xs font-normal text-muted">🔥 {u.streak}</span>}
+                            {u.streak > 0 && (
+                              <span className="ml-1.5 font-mono text-xs font-normal text-muted">🔥 {u.streak} streak</span>
+                            )}
                           </p>
                         </div>
                         <div className="flex-none text-right">

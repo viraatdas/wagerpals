@@ -3,103 +3,187 @@
 @tailwind utilities;
 
 /* ============================================================
-   WagerPals — light design system
-   Near-white canvas, crisp white cards, hairline borders,
-   one confident blue accent. Polymarket-like data density.
+   WagerPals — "The Board" (see DESIGN-SPEC.md)
+
+   Light mode only, deliberately. No dark theme exists in this
+   codebase anymore — see DECISIONS.md for why it was cut. Every
+   component class and Tailwind key below reads through ONE set
+   of token values.
+
+   Thesis: data (odds, stakes) gets sportsbook treatment — precise,
+   tabular, high contrast, Emerald/Crimson. People (avatars,
+   reactions, banter) get friend-chaos treatment — loose, warm,
+   Amber. Amber never touches a money value.
    ============================================================ */
 
 :root {
-  /* ============================================================
-     WagerPals — "after-hours ticker" (see DESIGN.md)
-     A near-black room with one live green readout. Green means
-     live / up / won and nothing else; every structural surface is
-     quiet charcoal so the numbers read first.
+  /* ==========================================================
+     CANONICAL PALETTE — single source of truth.
+     Every hex below was measured with WCAG 2.x contrast math
+     (script: scratchpad/contrast.py). See the Foundation agent's
+     final report for the full measured table.
+     ========================================================== */
 
-     NOTE: mobile/src/theme.ts is deliberately NOT mirroring this
-     palette yet — the iOS app stays on its light theme until a
-     follow-up pass (PRODUCT.md §Platform). That divergence is
-     intentional, not drift.
-     ============================================================ */
+  /* Ground */
+  --color-paper: #FAF7F0;   /* page background — warm off-white, never stark white */
+  --color-card: #FFFFFF;    /* crisp white card surface, sits ON paper */
+
+  /* Ink — primary always passes; secondary/muted are measured to
+     stay >=4.5:1 on BOTH paper and card (the binding constraint is
+     card, the lighter of the two). */
+  --color-ink: #1C1B17;            /* 16.11:1 paper / 17.23:1 card */
+  --color-ink-secondary: #575448;  /*  7.09:1 paper /  7.59:1 card */
+  --color-ink-muted: #747060;      /*  4.64:1 paper /  4.97:1 card */
+
+  /* Emerald — favor / winning side / positive stakes / primary CTA.
+     Passes AA as text as-is on both grounds. */
+  --color-emerald: #0F7A4C;        /* 5.02:1 paper / 5.37:1 card */
+  --color-emerald-hover: #0C5F3B;
+  --color-emerald-rgb: 15 122 76;
+  --color-emerald-fill: rgb(var(--color-emerald-rgb) / 0.10);
+
+  /* Crimson — against / losing side / negative stakes.
+     The canonical hex measures 4.09:1 / 4.38:1 — under the 4.5:1
+     body-text floor, so it is FILLS, BARS, RINGS and LARGE NUMERALS
+     ONLY (it still clears the 3:1 large-text/control-boundary bar).
+     Small crimson text uses the darker -ink twin below. */
+  --color-crimson: #D64545;        /* 4.09:1 paper / 4.38:1 card — fills/large only */
+  --color-crimson-hover: #CF2E2E;
+  --color-crimson-ink: #D23333;    /* 4.61:1 paper / 4.93:1 card — small text */
+  --color-crimson-rgb: 214 69 69;
+  --color-crimson-fill: rgb(var(--color-crimson-rgb) / 0.10);
+
+  /* Amber — the "human" accent: avatar rings, reaction chips, badges.
+     NEVER used for money. The canonical hex measures only 1.87:1 /
+     2.00:1 — it fails even the 3:1 large-text/boundary bar, so it is
+     FILLS, RINGS and BADGE BACKDROPS ONLY, never text and never a
+     control boundary on its own. Small amber text uses the -ink twin. */
+  --color-amber: #F2A93B;          /* 1.87:1 paper / 2.00:1 card — decorative only */
+  --color-amber-hover: #F09C1E;
+  --color-amber-ink: #9D630A;      /* 4.65:1 paper / 4.97:1 card — small text */
+  --color-amber-rgb: 242 169 59;
+  --color-amber-fill: rgb(var(--color-amber-rgb) / 0.15);
+
+  /* Line — hairline borders, dividers. Not text-bearing. */
+  --color-line: #E7E2D6;
+  --color-line-rgb: 231 226 214;
+  /* Darker twin for anything that needs a real 3:1 non-text boundary
+     (input borders, stronger dividers) — measured 3.02:1 / 3.23:1. */
+  --color-line-strong: #978F74;
+
+  /* White ink — used on any sufficiently dark/saturated solid fill (Emerald,
+     Crimson-ink, Info-ink, Ink-muted). Named generically because more than
+     one tone's solid pill background lands on it; see the per-tone
+     --tone-on-solid comments below for which. */
+  --color-ink-inverse: #FFFFFF;
+  /* Ink that sits on a filled Emerald surface (primary CTA, solid pills). */
+  --color-on-emerald: var(--color-ink-inverse);  /* 5.37:1 on Emerald */
+
+  /* Neutral "informational" tone — not in the spec's 3-color system,
+     kept for pre-existing badges (Public / Creator / Free points /
+     event_created activity) that describe neither money nor a person.
+     Measured the same way as the crimson/amber ink twins. */
+  --color-info: #0B7FBF;
+  --color-info-ink: #0A76B2;       /* 4.62:1 paper / 4.94:1 card */
+  --color-info-rgb: 11 127 191;
+  --color-info-fill: rgb(var(--color-info-rgb) / 0.10);
+
+  /* "Gold" — a distinct coin/trophy tone reserved for money that has been
+     WON (existing product convention, kept). Deliberately NOT the same
+     token as --color-amber: amber is reserved for people and must never
+     touch a money value, so a genuinely separate hue carries this instead. */
+  --color-gold: #D87606;           /* 3.01:1 paper / 3.22:1 card — fills/large only */
+  --color-gold-ink: #92400E;       /* 6.63:1 paper / 7.09:1 card — small text */
+  --color-gold-rgb: 216 118 6;
+  --color-gold-fill: rgb(var(--color-gold-rgb) / 0.12);
+
+  /* ==========================================================
+     LEGACY / BACK-COMPAT ALIASES
+     ------------------------------------------------------------
+     Every existing component class in this file and every existing
+     Tailwind key in tailwind.config.ts reads through these names.
+     Re-pointing them here is what makes the whole app run on the
+     canonical palette above without touching every call site.
+     Nothing below this point introduces a new color — it only
+     re-labels the canonical values above.
+     ========================================================== */
 
   /* Base canvas */
-  --bg: #0A0B0D;
-  --bg-2: #121417;
-  --surface: 233 236 239;  /* light ink channels — rgb(var(--surface)/a) yields subtle lifts on near-black */
-  --foreground: #E9ECEF;
-  --muted: #A2A9B2;
-  --muted-2: #6B737D;
+  --bg: var(--color-paper);
+  --bg-2: var(--color-card);
+  --surface: 28 27 23;   /* ink channels — rgb(var(--surface)/a) tints on paper/card */
+  --foreground: var(--color-ink);
+  --muted: var(--color-ink-secondary);
+  --muted-2: var(--color-ink-muted);
 
-  /* Brand ramp — the single phosphor-green accent (light → base → deep) */
-  --brand-1: #6EF9A5;
-  --brand-2: #24E17A;
-  --brand-3: #0F9E56;
-  --brand-1-rgb: 110 249 165;
-  --brand-2-rgb: 36 225 122;
-  --brand-3-rgb: 15 158 86;
+  /* Brand ramp — now the Emerald ramp (light -> base -> deep). brand-2 is
+     also used as literal text color (wordmark, links), which is why the
+     base step is exactly --color-emerald: it already passes AA as text. */
+  --brand-1: #3FA073;
+  --brand-2: var(--color-emerald);
+  --brand-3: var(--color-emerald-hover);
+  --brand-1-rgb: 63 160 115;
+  --brand-2-rgb: 15 122 76;
+  --brand-3-rgb: 12 95 59;
 
-  /* Semantic accents (legacy neon names, dark-theme values) */
-  --neon-violet: #A78BFA;
-  --neon-cyan: #4CC2FF;
-  --neon-mint: #24E17A; /* yes / win */
-  --neon-rose: #FF5C63; /* no / loss */
-  --neon-amber: #FFB020;
-  --neon-violet-rgb: 167 139 250;
-  --neon-cyan-rgb: 76 194 255;
-  --neon-mint-rgb: 36 225 122;
-  --neon-rose-rgb: 255 92 99;
-  --neon-amber-rgb: 255 176 32;
+  /* Semantic accents (legacy "neon" names). Kept pointed at coherent
+     values for any lingering reference; the live app no longer uses
+     these directly (grep confirms zero usage outside this file). */
+  --neon-violet: #6E5BC4;
+  --neon-cyan: var(--color-info);
+  --neon-mint: var(--color-emerald);
+  --neon-rose: var(--color-crimson);
+  --neon-amber: var(--color-amber);
+  --neon-violet-rgb: 110 91 196;
+  --neon-cyan-rgb: 11 127 191;
+  --neon-mint-rgb: 15 122 76;
+  --neon-rose-rgb: 214 69 69;
+  --neon-amber-rgb: 242 169 59;
 
-  --border: 255 255 255; /* white channels — rgb(var(--border)/0.08) ≈ #252A31 hairline on near-black */
+  --border: 28 27 23;    /* ink channels — rgb(var(--border)/0.1) ≈ hairline on paper/card */
 
-  color-scheme: dark;
-
-  /* ============================================================
-     Canonical design tokens — single source of truth
-     ============================================================ */
+  color-scheme: light;
 
   /* Surfaces */
-  --color-bg: #0A0B0D;
-  --color-surface: #121417;
-  /* "sunken" steps AWAY from the card toward the page ground, exactly as it did
-     in the light theme (white card -> grey well). On near-black that means
-     darker, so row hovers recede rather than glare. */
-  --color-surface-sunken: #0E1013;
-  --color-surface-elevated: #1B1F25;
+  --color-bg: var(--color-paper);
+  --color-surface: var(--color-card);
+  --color-surface-sunken: #F1ECE1;
+  --color-surface-elevated: var(--color-card);
   /* Borders */
-  --color-border: #252A31;
-  --color-border-strong: #333A43;
+  --color-border: var(--color-line);
+  --color-border-strong: var(--color-line-strong);
   /* Text */
-  --color-text: #E9ECEF;
-  --color-text-secondary: #A2A9B2;
-  --color-text-muted: #6B737D;
-  --color-text-inverse: #0A0B0D;
-  /* Signature accent — phosphor green.
-     ALWAYS dark-text-on-green: #24E17A carries #0A0B0D at 11.4:1 and white at
-     1.8:1, so a green button labels itself with --color-text-inverse. */
-  --color-accent: #24E17A;
-  --color-accent-hover: #6EF9A5;
-  --color-accent-soft: #6EF9A5;
-  --color-accent-deep: #0F9E56;
-  --color-accent-fill: rgba(36, 225, 122, 0.12);
-  /* Semantic */
-  --color-yes: #24E17A;      --color-yes-fill: rgba(36, 225, 122, 0.12);
-  --color-no: #FF5C63;       --color-no-fill: rgba(255, 92, 99, 0.12);
-  --color-win: #24E17A;      --color-loss: #FF5C63;
-  --color-pending: #FFB020;  --color-pending-fill: rgba(255, 176, 32, 0.12);
-  --color-info: #4CC2FF;     --color-info-fill: rgba(76, 194, 255, 0.12);
+  --color-text: var(--color-ink);
+  --color-text-secondary: var(--color-ink-secondary);
+  --color-text-muted: var(--color-ink-muted);
+  --color-text-inverse: var(--color-on-emerald);
+  /* Signature accent — Emerald */
+  --color-accent: var(--color-emerald);
+  --color-accent-hover: var(--color-emerald-hover);
+  --color-accent-soft: var(--color-emerald);
+  --color-accent-deep: var(--color-emerald-hover);
+  --color-accent-fill: var(--color-emerald-fill);
+  /* Primary-CTA fill — solid Emerald, white label (--color-on-emerald). */
+  --color-cta-from: var(--color-emerald);
+  --color-cta-to: var(--color-emerald-hover);
+  --color-on-cta: var(--color-on-emerald);
+  /* Semantic tones */
+  --color-yes: var(--color-emerald);   --color-yes-fill: var(--color-emerald-fill);
+  --color-no: var(--color-crimson);    --color-no-fill: var(--color-crimson-fill);
+  --color-win: var(--color-emerald);   --color-loss: var(--color-crimson);
+  --color-pending: var(--color-amber); --color-pending-fill: var(--color-amber-fill);
   /* RGB channel twins so Tailwind alpha modifiers (bg-accent/10) work */
-  --color-accent-rgb: 36 225 122;
-  --color-accent-hover-rgb: 110 249 165;
-  --color-accent-soft-rgb: 110 249 165;
-  --color-yes-rgb: 36 225 122;
-  --color-no-rgb: 255 92 99;
-  --color-win-rgb: 36 225 122;
-  --color-loss-rgb: 255 92 99;
-  --color-pending-rgb: 255 176 32;
-  --color-info-rgb: 76 194 255;
-  --color-surface-rgb: 18 20 23;
-  --color-border-rgb: 37 42 49;
-  --color-text-rgb: 233 236 239;
+  --color-accent-rgb: var(--color-emerald-rgb);
+  --color-accent-hover-rgb: 12 95 59;
+  --color-accent-soft-rgb: var(--color-emerald-rgb);
+  --color-yes-rgb: 15 122 76;
+  --color-no-rgb: 214 69 69;
+  --color-win-rgb: 15 122 76;
+  --color-loss-rgb: 214 69 69;
+  --color-pending-rgb: 242 169 59;
+  --color-surface-rgb: 255 255 255;
+  --color-border-rgb: 231 226 214;
+  --color-text-rgb: 28 27 23;
 
   /* Type scale — values are Tailwind's defaults so nothing reflows */
   --text-xs: 0.75rem;   --leading-xs: 1rem;
@@ -119,25 +203,24 @@
   --space-5: 1.25rem; --space-6: 1.5rem; --space-8: 2rem; --space-10: 2.5rem;
   --space-12: 3rem; --space-16: 4rem; --space-20: 5rem; --space-24: 6rem;
 
-  /* Radii — semantic names (do NOT map these onto Tailwind's sm/md/lg/xl keys) */
-  --radius-chip: 0.625rem;    /* 10px */
-  --radius-control: 1rem;     /* 16px */
-  --radius-card: 1.375rem;    /* 22px */
-  --radius-panel: 1.75rem;    /* 28px */
+  /* Radii — semantic names (do NOT map these onto Tailwind's sm/md/lg/xl keys).
+     Structured elements (cards, buttons, inputs) are crisp 8-12px; only
+     avatars, reaction chips and status pills are fully rounded. */
+  --radius-control: 0.5rem;    /* 8px */
+  --radius-chip: 0.5rem;       /* 8px */
+  --radius-card: 0.625rem;     /* 10px */
+  --radius-panel: 0.75rem;     /* 12px */
   --radius-pill: 9999px;
 
-  /* Elevation — the room is lit from above, so every level carries a real
-     offset and a soft blur. On near-black a light-theme whisper is invisible. */
-  --shadow-elev-1: 0 1px 2px rgba(0, 0, 0, 0.40);
-  --shadow-elev-2: 0 4px 12px -2px rgba(0, 0, 0, 0.50), 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-elev-3: 0 12px 32px -6px rgba(0, 0, 0, 0.60), 0 2px 6px rgba(0, 0, 0, 0.40);
-  --shadow-elev-4: 0 24px 56px -12px rgba(0, 0, 0, 0.70), 0 4px 12px rgba(0, 0, 0, 0.45);
-  --shadow-accent: 0 4px 16px -4px rgba(36, 225, 122, 0.35);
-  /* The world's signature: a colored edge plus bloom that sits ON TOP of the
-     normal elevation shadow. Only ever applied to a card with recent activity. */
+  /* Elevation — soft, evenly-lit shadows on a warm-white ground. */
+  --shadow-elev-1: 0 1px 2px rgba(28, 27, 23, 0.05);
+  --shadow-elev-2: 0 4px 12px -2px rgba(28, 27, 23, 0.08), 0 1px 2px rgba(28, 27, 23, 0.04);
+  --shadow-elev-3: 0 12px 32px -6px rgba(28, 27, 23, 0.10), 0 2px 6px rgba(28, 27, 23, 0.05);
+  --shadow-elev-4: 0 24px 56px -12px rgba(28, 27, 23, 0.14), 0 4px 12px rgba(28, 27, 23, 0.06);
+  --shadow-accent: 0 4px 16px -4px rgb(var(--color-emerald-rgb) / 0.30);
   --shadow-live:
-    0 0 0 1px rgba(36, 225, 122, 0.35),
-    0 0 24px -6px rgba(36, 225, 122, 0.25);
+    0 0 0 1px rgb(var(--color-emerald-rgb) / 0.35),
+    0 0 20px -6px rgb(var(--color-emerald-rgb) / 0.22);
 
   /* Motion */
   --duration-instant: 100ms;
@@ -145,118 +228,10 @@
   --duration-base: 220ms;
   --duration-slow: 360ms;
   --duration-slower: 600ms;
+  --duration-bar: 400ms;   /* confidence bar fill — the signature ticker flourish */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-/* ============================================================
-   LIGHT MODE — the same room with the lights on.
-   Dark stays the default (see DESIGN.md); this block only applies
-   when the user explicitly asks for light via the header toggle,
-   which sets data-theme="light" on <html>.
-
-   Only VALUES change here. Every token name, every component class
-   and every Tailwind key is identical to the dark block above, so
-   nothing in the app needs to know which theme is active.
-
-   Two things genuinely invert rather than just lighten:
-
-   1. --color-text-inverse. It is the label colour on any accent
-      fill. On dark, the accent is bright green and takes near-black
-      ink; on light, the accent is the DEEP green and takes white.
-      Flipping this one token re-labels every primary button, solid
-      pill, skip link and success/danger button at once.
-
-   2. --surface and --border are raw RGB CHANNELS consumed as
-      rgb(var(--x) / a). On dark they are white-ish so overlays
-      lighten; on light they must be near-black so the same
-      rgb(var(--border) / 0.1) still reads as a hairline instead of
-      vanishing into the page.
-   ============================================================ */
-:root[data-theme="light"] {
-  /* Base canvas */
-  --bg: #F7F9FA;
-  --bg-2: #FFFFFF;
-  --surface: 16 19 26;   /* dark ink channels — rgb(var(--surface)/a) tints on white */
-  --foreground: #10131A;
-  --muted: #5A6472;
-  --muted-2: #8A94A3;
-
-  /* Brand ramp — the deep end of the same phosphor green. #24E17A is 1.7:1 on
-     white and cannot carry text or a label, so light mode runs the ramp darker. */
-  --brand-1: #12B45E;
-  --brand-2: #0A7C43;
-  --brand-3: #075C32;
-  --brand-1-rgb: 18 180 94;
-  --brand-2-rgb: 10 124 67;
-  --brand-3-rgb: 7 92 50;
-
-  /* Semantic accents, darkened for a light ground */
-  --neon-violet: #5B4BD6;
-  --neon-cyan: #0B7FBF;
-  --neon-mint: #0A7C43;
-  --neon-rose: #C62828;
-  --neon-amber: #B26A00;
-  --neon-violet-rgb: 91 75 214;
-  --neon-cyan-rgb: 11 127 191;
-  --neon-mint-rgb: 10 124 67;
-  --neon-rose-rgb: 198 40 40;
-  --neon-amber-rgb: 178 106 0;
-
-  --border: 16 19 26;    /* dark channels — rgb(var(--border)/0.1) ≈ #E3E7EC hairline on white */
-
-  color-scheme: light;
-
-  /* Surfaces */
-  --color-bg: #F7F9FA;
-  --color-surface: #FFFFFF;
-  --color-surface-sunken: #EEF1F4;
-  --color-surface-elevated: #FFFFFF;
-  /* Borders */
-  --color-border: #E3E7EC;
-  --color-border-strong: #CBD2DA;
-  /* Text */
-  --color-text: #10131A;
-  --color-text-secondary: #5A6472;
-  --color-text-muted: #8A94A3;
-  --color-text-inverse: #FFFFFF;   /* white label on the deep-green accent — see note above */
-  /* Signature accent */
-  --color-accent: #0A7C43;
-  --color-accent-hover: #075C32;
-  --color-accent-soft: #12B45E;
-  --color-accent-deep: #075C32;
-  --color-accent-fill: rgba(10, 124, 67, 0.10);
-  /* Semantic */
-  --color-yes: #0A7C43;      --color-yes-fill: rgba(10, 124, 67, 0.10);
-  --color-no: #C62828;       --color-no-fill: rgba(198, 40, 40, 0.10);
-  --color-win: #0A7C43;      --color-loss: #C62828;
-  --color-pending: #B26A00;  --color-pending-fill: rgba(178, 106, 0, 0.10);
-  --color-info: #0B7FBF;     --color-info-fill: rgba(11, 127, 191, 0.10);
-  /* RGB channel twins */
-  --color-accent-rgb: 10 124 67;
-  --color-accent-hover-rgb: 7 92 50;
-  --color-accent-soft-rgb: 18 180 94;
-  --color-yes-rgb: 10 124 67;
-  --color-no-rgb: 198 40 40;
-  --color-win-rgb: 10 124 67;
-  --color-loss-rgb: 198 40 40;
-  --color-pending-rgb: 178 106 0;
-  --color-info-rgb: 11 127 191;
-  --color-surface-rgb: 255 255 255;
-  --color-border-rgb: 227 231 236;
-  --color-text-rgb: 16 19 26;
-
-  /* Elevation — on white the room is lit far more evenly, so the same offsets
-     carry a fraction of the opacity they need on near-black. */
-  --shadow-elev-1: 0 1px 2px rgba(16, 19, 26, 0.05);
-  --shadow-elev-2: 0 4px 12px -2px rgba(16, 19, 26, 0.08), 0 1px 2px rgba(16, 19, 26, 0.04);
-  --shadow-elev-3: 0 12px 32px -6px rgba(16, 19, 26, 0.10), 0 2px 6px rgba(16, 19, 26, 0.05);
-  --shadow-elev-4: 0 24px 56px -12px rgba(16, 19, 26, 0.14), 0 4px 12px rgba(16, 19, 26, 0.06);
-  --shadow-accent: 0 4px 16px -4px rgba(10, 124, 67, 0.30);
-  --shadow-live:
-    0 0 0 1px rgba(10, 124, 67, 0.35),
-    0 0 20px -6px rgba(10, 124, 67, 0.22);
 }
 
 * {
@@ -284,6 +259,14 @@ body {
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
   min-height: 100vh;
+}
+
+/* Every number on the board — stakes, odds, percentages, countdowns — is
+   IBM Plex Mono with tabular figures, so columns of numbers align. This
+   makes tabular-nums a property of the "font-mono" utility itself rather
+   than something every consumer has to remember to add. */
+.font-mono {
+  font-variant-numeric: tabular-nums;
 }
 
 main {
@@ -338,12 +321,12 @@ input, select, textarea {
 @layer components {
   /* Card surface (formerly frosted glass) — white, hairline border, soft shadow */
   .glass {
-    background: #ffffff;
+    background: var(--color-card);
     border: 1px solid rgb(var(--border) / 0.1);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   }
   .glass-strong {
-    background: #ffffff;
+    background: var(--color-card);
     border: 1px solid rgb(var(--border) / 0.12);
     box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.08),
       0 1px 3px rgba(0, 0, 0, 0.05);
@@ -373,7 +356,8 @@ input, select, textarea {
     color: var(--brand-2);
   }
 
-  /* Primary CTA — solid blue with a whisper of depth */
+  /* Primary CTA — solid Emerald. 8px control radius, never a pill — the
+     board reserves full-round for avatars, reaction chips and status pills. */
   .btn-primary {
     position: relative;
     display: inline-flex;
@@ -381,12 +365,11 @@ input, select, textarea {
     justify-content: center;
     gap: 0.5rem;
     font-weight: 600;
-    /* Dark ink on green, never white: --color-accent carries #0A0B0D at 11.4:1
-       and white at 1.8:1. See DESIGN.md §Palette. */
-    color: var(--color-text-inverse);
-    border-radius: 9999px;
+    /* White on Emerald, always — see --color-on-emerald (5.37:1 measured). */
+    color: var(--color-on-cta);
+    border-radius: var(--radius-control);
     padding: 0.625rem 1.25rem;
-    background: linear-gradient(180deg, var(--brand-1), var(--brand-2));
+    background: linear-gradient(180deg, var(--color-cta-from), var(--color-cta-to));
     box-shadow: 0 1px 2px rgb(var(--color-accent-rgb) / 0.35),
       inset 0 1px 0 0 rgba(255, 255, 255, 0.18);
     transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, filter 0.2s ease;
@@ -398,7 +381,7 @@ input, select, textarea {
   }
   .btn-primary:active { transform: scale(0.96); }
 
-  /* Secondary button — white, bordered */
+  /* Secondary button — white, bordered. Same 8px control radius as primary. */
   .btn-glass {
     display: inline-flex;
     align-items: center;
@@ -406,23 +389,23 @@ input, select, textarea {
     gap: 0.5rem;
     font-weight: 500;
     color: var(--foreground);
-    border-radius: 9999px;
+    border-radius: var(--radius-control);
     padding: 0.625rem 1.25rem;
-    /* The secondary button is a raised surface, not a white slab — on a dark
-       ground #ffffff reads as a hole punched in the page and drops its own
-       label to ~1.5:1. */
     background: var(--color-surface-elevated);
     border: 1px solid var(--color-border-strong);
     box-shadow: var(--shadow-elev-1);
     transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, border-color 0.2s ease;
   }
+  /* Was: background: var(--color-surface-raised, #232830) — that token is
+     defined nowhere, so the near-black fallback always won and painted the
+     button almost black. Fixed onto a real, defined token. */
   .btn-glass:hover {
-    background: var(--color-surface-raised, #232830);
-    border-color: rgb(var(--border) / 0.28);
+    background: var(--color-surface-sunken);
+    border-color: var(--color-border-strong);
   }
   .btn-glass:active { transform: scale(0.96); }
 
-  /* Pills / chips — light tinted */
+  /* Pills / chips — light tinted. Fully rounded: chips describe state/people. */
   .chip {
     display: inline-flex;
     align-items: center;
@@ -431,25 +414,25 @@ input, select, textarea {
     font-weight: 600;
     letter-spacing: 0.01em;
     padding: 0.25rem 0.6rem;
-    border-radius: 9999px;
+    border-radius: var(--radius-pill);
     background: rgb(var(--surface) / 0.04);
     border: 1px solid rgb(var(--border) / 0.1);
     color: var(--muted);
   }
   .chip-live {
-    color: #15803d;
-    background: rgba(22, 163, 74, 0.08);
-    border-color: rgba(22, 163, 74, 0.25);
+    color: var(--color-emerald);
+    background: var(--color-emerald-fill);
+    border-color: rgb(var(--color-emerald-rgb) / 0.25);
   }
   .chip-yes {
-    color: #15803d;
-    background: rgba(22, 163, 74, 0.08);
-    border-color: rgba(22, 163, 74, 0.25);
+    color: var(--color-emerald);
+    background: var(--color-emerald-fill);
+    border-color: rgb(var(--color-emerald-rgb) / 0.25);
   }
   .chip-no {
-    color: #b91c1c;
-    background: rgba(220, 38, 38, 0.07);
-    border-color: rgba(220, 38, 38, 0.22);
+    color: var(--color-crimson-ink);
+    background: var(--color-crimson-fill);
+    border-color: rgb(var(--color-crimson-rgb) / 0.22);
   }
 
   /* Live status dot with pulse */
@@ -595,24 +578,28 @@ input, select, textarea {
      ========================================================== */
 
   /* Small uppercase label. The signature "market" label treatment.
-     Uses text-secondary (#6b7280 = 4.8:1 on white) so it passes AA. */
+     Uses --color-text-secondary (--color-ink-secondary, 7.09:1 paper /
+     7.59:1 card, measured) so it passes AA with margin to spare. */
   .eyebrow {
     font-size: 0.6875rem;
     line-height: 1;
-    font-weight: 700;
+    /* 600, not 700 — Plus Jakarta Sans is loaded at 400/500/600 only. */
+    font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--color-text-secondary);
   }
   .eyebrow-accent { color: var(--color-accent-hover); }
 
-  /* Page-level display headings. Fluid, tight, display face. */
+  /* Page-level display headings. Fluid, tight, display face. Archivo Black
+     ships ONE weight (400 — "Black" is the weight, there is no bolder cut),
+     so font-weight is 400 here, not a faked-up 700. */
   .display-1 {
     font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
     font-size: clamp(2rem, 1.4rem + 2.6vw, 3.25rem);
     line-height: 1.02;
     letter-spacing: -0.035em;
-    font-weight: 700;
+    font-weight: 400;
     color: var(--color-text);
   }
   .display-2 {
@@ -620,7 +607,7 @@ input, select, textarea {
     font-size: clamp(1.625rem, 1.3rem + 1.4vw, 2.25rem);
     line-height: 1.08;
     letter-spacing: -0.03em;
-    font-weight: 700;
+    font-weight: 400;
     color: var(--color-text);
   }
   .display-3 {
@@ -628,24 +615,31 @@ input, select, textarea {
     font-size: clamp(1.25rem, 1.1rem + 0.7vw, 1.5rem);
     line-height: 1.15;
     letter-spacing: -0.02em;
-    font-weight: 650;
+    font-weight: 400;
     color: var(--color-text);
   }
-  /* The market question itself — the thing people actually read. */
+  /* The market question itself — the thing people actually read. Per the
+     board layout (DESIGN-SPEC.md), the title is Jakarta, not the display
+     face: Archivo Black is reserved for page titles/wordmark/section
+     headers, "never body copy," and a wager title is body copy that
+     happens to be prominent. */
   .market-title {
-    font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
-    font-weight: 650;
-    letter-spacing: -0.015em;
-    line-height: 1.2;
+    font-family: var(--font-sans), system-ui, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
     color: var(--color-text);
     overflow-wrap: anywhere;
   }
-  /* Big money / percentage figures. */
+  /* Big money / percentage figures — every stake, odds line, percentage
+     and countdown. IBM Plex Mono, tabular figures, per DESIGN-SPEC.md:
+     "Numbers & odds -> IBM Plex Mono." Weight 500 is Plex Mono's heaviest
+     loaded cut (400/500 — see app/layout.tsx). */
   .numeral {
-    font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
+    font-family: var(--font-mono), ui-monospace, 'SFMono-Regular', Menlo, monospace;
     font-variant-numeric: tabular-nums;
-    font-weight: 700;
-    letter-spacing: -0.03em;
+    font-weight: 500;
+    letter-spacing: -0.01em;
     line-height: 1;
   }
   .lede {
@@ -659,53 +653,88 @@ input, select, textarea {
      2. TONE — one semantic colour system, AA-safe
      ------------------------------------------------------------
      Set a tone on a wrapper, then use .pill / .tone-dot /
-     .tone-text / .tone-bar inside it. --tone-ink is always an
-     AA-passing text colour; --tone-solid is the saturated fill
-     used for bars and dots only.
+     .tone-text / .tone-bar inside it.
+       --tone-ink          AA text colour on PAPER/CARD (>=4.5:1, measured)
+       --tone-solid        saturated fill, for bars/dots/light pill fills
+       --tone-solid-strong background for a SOLID pill (.pill-solid) — the
+                           canonical hue where text on it clears 4.5:1,
+                           otherwise the darker -ink twin
+       --tone-on-solid     the text colour for .pill-solid, paired with
+                           --tone-solid-strong (measured on that fill)
      ========================================================== */
   .tone-yes, .tone-win {
-    --tone-ink: #15803d;
+    /* Emerald passes AA as text as-is (5.02:1 paper / 5.37:1 card), and
+       white on Emerald clears 5.37:1, so the solid pill needs no swap. */
+    --tone-ink: var(--color-emerald);
     --tone-solid: var(--color-yes);
-    --tone-fill: rgba(22, 163, 74, 0.09);
-    --tone-line: rgba(22, 163, 74, 0.28);
+    --tone-solid-strong: var(--color-yes);
+    --tone-on-solid: var(--color-on-emerald);
+    --tone-fill: var(--color-emerald-fill);
+    --tone-line: rgb(var(--color-emerald-rgb) / 0.28);
   }
   .tone-no, .tone-loss {
-    --tone-ink: #b91c1c;
+    /* Canonical Crimson fails the 4.5:1 body-text floor (4.09/4.38) — small
+       text uses the darker -ink twin (4.61:1 / 4.93:1). White text on
+       CANONICAL crimson also fails at pill size (4.38:1), so the solid pill
+       swaps to crimson-ink as its background instead (white on it: 4.93:1). */
+    --tone-ink: var(--color-crimson-ink);
     --tone-solid: var(--color-no);
-    --tone-fill: rgba(220, 38, 38, 0.08);
-    --tone-line: rgba(220, 38, 38, 0.26);
+    --tone-solid-strong: var(--color-crimson-ink);
+    --tone-on-solid: var(--color-ink-inverse);
+    --tone-fill: var(--color-crimson-fill);
+    --tone-line: rgb(var(--color-crimson-rgb) / 0.26);
   }
   .tone-pending {
-    --tone-ink: #b45309;
+    /* Pending describes wager STATE, not a money value, so it reuses the
+       already-verified Amber -ink twin rather than a fourth unverified hue.
+       Canonical Amber is far too light for white text (1.99:1), so the
+       solid pill keeps the light Amber fill and uses dark ink on top
+       (8.63:1) instead of swapping the fill. */
+    --tone-ink: var(--color-amber-ink);
     --tone-solid: var(--color-pending);
-    --tone-fill: rgba(217, 119, 6, 0.09);
-    --tone-line: rgba(217, 119, 6, 0.28);
+    --tone-solid-strong: var(--color-pending);
+    --tone-on-solid: var(--color-ink);
+    --tone-fill: var(--color-amber-fill);
+    --tone-line: rgb(var(--color-amber-rgb) / 0.30);
   }
   .tone-info {
-    --tone-ink: #0369a1;
+    /* Same shape as tone-no: canonical Info is too light for white pill
+       text (4.37:1), so the solid pill swaps to info-ink (white: 4.94:1). */
+    --tone-ink: var(--color-info-ink);
     --tone-solid: var(--color-info);
-    --tone-fill: rgba(2, 132, 199, 0.09);
-    --tone-line: rgba(2, 132, 199, 0.26);
+    --tone-solid-strong: var(--color-info-ink);
+    --tone-on-solid: var(--color-ink-inverse);
+    --tone-fill: var(--color-info-fill);
+    --tone-line: rgb(var(--color-info-rgb) / 0.26);
   }
   .tone-accent {
     --tone-ink: var(--color-accent-hover);
     --tone-solid: var(--color-accent);
+    --tone-solid-strong: var(--color-accent);
+    --tone-on-solid: var(--color-on-emerald);
     --tone-fill: var(--color-accent-fill);
     --tone-line: rgb(var(--color-accent-rgb) / 0.30);
   }
-  /* Gold — lifted from the coin in the brand mark. Reserved for
-     money that has been WON. Never use it as a generic accent. */
+  /* Gold — a coin/trophy tone reserved for money that has been WON.
+     Deliberately a separate token from --color-amber (people-only, never
+     money) even though both sit in the same warm-yellow family. */
   .tone-gold {
-    --tone-ink: #92400e;
-    --tone-solid: #d97706;
-    --tone-fill: rgba(245, 158, 11, 0.12);
-    --tone-line: rgba(217, 119, 6, 0.3);
+    --tone-ink: var(--color-gold-ink);
+    --tone-solid: var(--color-gold);
+    --tone-solid-strong: var(--color-gold);
+    --tone-on-solid: var(--color-ink);
+    --tone-fill: var(--color-gold-fill);
+    --tone-line: rgb(var(--color-gold-rgb) / 0.30);
   }
   .tone-neutral {
-    /* Not --color-text-secondary: #6b7280 measures 4.48:1 on this tone's own
-       fill, a hair under AA. #646b78 clears it (4.97:1) at the same weight. */
-    --tone-ink: #646b78;
+    /* Ink-muted (4.64:1 paper / 4.97:1 card, measured) — a warm gray that
+       matches the rest of the palette instead of a cool slate. White on
+       this same gray also clears 4.5:1 (4.97:1), so the solid pill needs
+       no swap. */
+    --tone-ink: var(--color-ink-muted);
     --tone-solid: var(--color-text-muted);
+    --tone-solid-strong: var(--color-text-muted);
+    --tone-on-solid: var(--color-ink-inverse);
     --tone-fill: rgb(var(--surface) / 0.04);
     --tone-line: var(--color-border);
   }
@@ -725,13 +754,16 @@ input, select, textarea {
     background: var(--tone-solid, currentColor);
     flex: none;
   }
-  /* Semantic pill. Composes with .tone-* on itself or an ancestor. */
+  /* Semantic pill. Fully rounded — a pill is a label about state or a
+     person, never a primary action. Composes with .tone-* on itself or an
+     ancestor. */
   .pill {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
     font-size: 0.6875rem;
-    font-weight: 650;
+    /* 600, not 650 — Plus Jakarta Sans is loaded at 400/500/600 only. */
+    font-weight: 600;
     letter-spacing: 0.02em;
     line-height: 1;
     padding: 0.3125rem 0.625rem;
@@ -743,10 +775,11 @@ input, select, textarea {
   }
   .pill-solid {
     border-color: transparent;
-    background: var(--tone-solid, var(--color-accent));
-    /* Every --tone-solid in this palette is a light hue on a dark ground, so a
-       solid pill always takes dark ink. */
-    color: var(--color-text-inverse);
+    /* --tone-solid-strong (not --tone-solid): some tones' canonical fill is
+       too light (Amber) or fails white text at pill size (Crimson, Info) —
+       see the per-tone comments above for the measured numbers. */
+    background: var(--tone-solid-strong, var(--color-accent));
+    color: var(--tone-on-solid, var(--color-text-inverse));
   }
 
   /* ==========================================================
@@ -848,34 +881,19 @@ input, select, textarea {
   }
 
   /* ==========================================================
-     4. MARKET CHROME — the signature element
+     4. MARKET CHROME
+     (.odds-track/.odds-fill removed — the signature element is now
+     components/ConfidenceBar.tsx, the single source everywhere a
+     wager appears.)
      ========================================================== */
-  .odds-track {
-    display: flex;
-    width: 100%;
-    height: 0.625rem;
-    border-radius: var(--radius-pill);
-    overflow: hidden;
-    background: var(--color-surface-sunken);
-    border: 1px solid var(--color-border);
-    isolation: isolate;
-  }
-  .odds-fill {
-    height: 100%;
-    min-width: 0;
-    transition: width var(--duration-slow) var(--ease-out);
-  }
-  .odds-fill-yes { background: var(--color-yes); }
-  .odds-fill-no { background: var(--color-no); }
-  /* Hairline between the two halves so a 100/0 split still reads. */
-  .odds-fill-no { box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.7); }
 
-  /* Stat cell — eyebrow above a numeral. */
+  /* Stat cell — eyebrow above a numeral. Plex Mono, same reasoning as
+     .numeral: this is a number, not a headline. */
   .stat-value {
-    font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
+    font-family: var(--font-mono), ui-monospace, 'SFMono-Regular', Menlo, monospace;
     font-variant-numeric: tabular-nums;
-    font-weight: 700;
-    letter-spacing: -0.03em;
+    font-weight: 500;
+    letter-spacing: -0.01em;
     font-size: var(--text-2xl);
     line-height: 1.1;
     color: var(--color-text);
@@ -896,7 +914,7 @@ input, select, textarea {
       box-shadow var(--duration-fast) var(--ease-out);
   }
   .input::placeholder { color: var(--color-text-muted); }
-  .input:hover { border-color: #9ca3af; }
+  .input:hover { border-color: var(--color-ink-muted); }
   .input:focus {
     outline: none;
     border-color: var(--color-accent);
@@ -912,12 +930,13 @@ input, select, textarea {
   }
   .input-invalid:focus {
     border-color: var(--color-no);
-    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+    box-shadow: 0 0 0 3px rgb(var(--color-crimson-rgb) / 0.18);
   }
   .field-label {
     display: block;
     font-size: 0.6875rem;
-    font-weight: 700;
+    /* 600, not 700 — Plus Jakarta Sans is loaded at 400/500/600 only. */
+    font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--color-text-secondary);
@@ -929,6 +948,7 @@ input, select, textarea {
     color: var(--color-text-secondary);
   }
 
+  /* 8px control radius, not a pill — these are actions, not status labels. */
   .btn-success,
   .btn-danger {
     display: inline-flex;
@@ -938,19 +958,24 @@ input, select, textarea {
     font-weight: 600;
     font-size: var(--text-sm);
     color: var(--color-text-inverse);
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-control);
     padding: 0.5rem 1rem;
     border: 1px solid transparent;
     transition: filter var(--duration-fast) var(--ease-out),
       transform var(--duration-fast) var(--ease-out),
       box-shadow var(--duration-fast) var(--ease-out);
   }
-  .btn-success { background: #15803d; box-shadow: 0 1px 2px rgba(21, 128, 61, 0.3); }
-  .btn-danger  { background: #b91c1c; box-shadow: 0 1px 2px rgba(185, 28, 28, 0.3); }
+  /* Emerald: white text on it measures 5.37:1 (see :root), no swap needed. */
+  .btn-success { background: var(--color-emerald); box-shadow: 0 1px 2px rgb(var(--color-emerald-rgb) / 0.3); }
+  /* Crimson-ink, not canonical Crimson: white on canonical Crimson measures
+     only 4.38:1 at this text size, under the 4.5:1 floor. White on
+     crimson-ink measures 4.93:1. */
+  .btn-danger  { background: var(--color-crimson-ink); box-shadow: 0 1px 2px rgb(var(--color-crimson-rgb) / 0.3); }
   .btn-success:hover, .btn-danger:hover { filter: brightness(1.08); }
   .btn-success:active, .btn-danger:active { transform: scale(0.96); }
   .btn-success:disabled, .btn-danger:disabled { opacity: 0.55; filter: none; transform: none; }
-  /* Quiet bordered variants for destructive/positive row actions. */
+  /* Quiet bordered variants for destructive/positive row actions. Same 8px
+     control radius as every other button. */
   .btn-quiet-danger {
     display: inline-flex;
     align-items: center;
@@ -958,14 +983,14 @@ input, select, textarea {
     gap: 0.375rem;
     font-size: var(--text-xs);
     font-weight: 600;
-    color: #b91c1c;
-    background: rgba(220, 38, 38, 0.06);
-    border: 1px solid rgba(220, 38, 38, 0.22);
-    border-radius: var(--radius-pill);
+    color: var(--color-crimson-ink);
+    background: rgb(var(--color-crimson-rgb) / 0.06);
+    border: 1px solid rgb(var(--color-crimson-rgb) / 0.22);
+    border-radius: var(--radius-control);
     padding: 0.375rem 0.75rem;
     transition: background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
   }
-  .btn-quiet-danger:hover { background: rgba(220, 38, 38, 0.12); }
+  .btn-quiet-danger:hover { background: rgb(var(--color-crimson-rgb) / 0.12); }
   .btn-quiet-danger:active { transform: scale(0.96); }
   .btn-quiet-success {
     display: inline-flex;
@@ -974,14 +999,14 @@ input, select, textarea {
     gap: 0.375rem;
     font-size: var(--text-xs);
     font-weight: 600;
-    color: #15803d;
-    background: rgba(22, 163, 74, 0.07);
-    border: 1px solid rgba(22, 163, 74, 0.24);
-    border-radius: var(--radius-pill);
+    color: var(--color-emerald);
+    background: rgb(var(--color-emerald-rgb) / 0.07);
+    border: 1px solid rgb(var(--color-emerald-rgb) / 0.24);
+    border-radius: var(--radius-control);
     padding: 0.375rem 0.75rem;
     transition: background var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
   }
-  .btn-quiet-success:hover { background: rgba(22, 163, 74, 0.13); }
+  .btn-quiet-success:hover { background: rgb(var(--color-emerald-rgb) / 0.13); }
   .btn-quiet-success:active { transform: scale(0.96); }
 
   /* Micro-interaction for any pressable element that isn't a .btn-*. */
@@ -1017,9 +1042,10 @@ input, select, textarea {
     color: var(--color-accent-hover);
   }
   .empty-state-title {
+    /* Archivo Black ships one weight (400) — see .display-1/2/3. */
     font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
     font-size: var(--text-lg);
-    font-weight: 650;
+    font-weight: 400;
     letter-spacing: -0.015em;
     color: var(--color-text);
   }
@@ -1117,7 +1143,7 @@ input, select, textarea {
   position: relative;
   background:
     radial-gradient(120% 100% at 12% 0%, rgb(var(--color-accent-rgb) / 0.06), transparent 58%),
-    radial-gradient(90% 80% at 92% 8%, rgba(245, 158, 11, 0.06), transparent 62%),
+    radial-gradient(90% 80% at 92% 8%, rgb(var(--color-amber-rgb) / 0.06), transparent 62%),
     linear-gradient(180deg, var(--color-surface-sunken), var(--color-surface));
 }
 .hero-field::after {
@@ -1127,9 +1153,12 @@ input, select, textarea {
   pointer-events: none;
   opacity: 0.5;
   background-image:
-    linear-gradient(to right, rgba(15, 23, 42, 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
+    linear-gradient(to right, rgb(var(--color-text-rgb) / 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--color-text-rgb) / 0.035) 1px, transparent 1px);
   background-size: 56px 56px;
+  /* #000 here is a luminance-mask anchor (full opacity), not a rendered
+     color — CSS masks conventionally use black/white regardless of the
+     palette they reveal. Documented exception to tokens-only. */
   mask-image: radial-gradient(120% 90% at 50% 0%, #000 10%, transparent 72%);
   -webkit-mask-image: radial-gradient(120% 90% at 50% 0%, #000 10%, transparent 72%);
 }

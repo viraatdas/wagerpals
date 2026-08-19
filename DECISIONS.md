@@ -966,3 +966,51 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   EAS will log into Apple, add App Groups to `com.wagerpals.app`, register `com.wagerpals.app.messages`, regenerate both profiles and rebuild. Then `eas submit --platform ios --profile production` (appleId / ascAppId / appleTeamId are already in eas.json).
 - **`eas submit` uploads to App Store Connect; it does not submit for review.** Releasing still means picking the build in ASC and submitting it, and Apple's review takes days — no tool can make review *pass*.
 - **By:** main · 2026-08-18
+## worker: Answered the status question and fixed the real cause
+- **Did:** Answered the status question and fixed the real cause of the iOS build failure. Status: every plan node (identity, payments/escrow, notifications+subject privacy, comments, iMessage extension, brand, web design, iPhone app) is landed and live at revision 81e2b60f on Vercel production; the Rudder DAG showing n4/n6/n7/n8/n9/n10 as planned and 25 worktrees as merge-ready is stale bookkeeping - the workers were orphaned and their work was recovered by hand without the node statuses being written back. Re-verified from the current tree: verify:notifications 14/14, verify:imessage 139/139, verify:comments 10/10, verify:groups-auth 77/77, verify:users-auth 49/49, test:sync-user 39/39, brand:verify 27, tsc --noEmit clean, npm run build succeeds, production smoke / 200, /explore 200, /api/users 401. Then fixed the iOS build: after the owner completed the interactive Apple login (App Groups enabled, group.com.wagerpals.app created, main profile reissued), the build still failed signing the extension target with No profiles for com.wagerpals.app.messages ... Automatic signing is disabled. Cause: on a CNG project EAS learns about app extensions only from extra.eas.build.experimental.ios.appExtensions, which was never declared - so EAS switched the project to manual signing but left WagerPalsMessages on the plugin CODE_SIGN_STYLE=Automatic with no profile. Declared the target in mobile/app.json with entitlements byte-identical to the ones the config plugin writes. Proven by a non-interactive build run: EAS now enumerates BOTH targets (WagerPals / com.wagerpals.app and WagerPalsMessages / com.wagerpals.app.messages) where it previously saw only one. It then stopped at Credentials are not set up. Run this command again in interactive mode, because issuing the extension profile needs an Apple session - one interactive command by the owner.
+- **Interfaces:** mobile/app.json gains expo.extra.eas.build.experimental.ios.appExtensions with targetName WagerPalsMessages, bundleIdentifier com.wagerpals.app.messages, and entitlements com.apple.security.application-groups=[group.com.wagerpals.app] plus keychain-access-groups=[$(AppIdentifierPrefix)com.wagerpals.shared]. These MUST stay identical to buildExtensionEntitlementsObject() in mobile/plugins/imessage-extension/withIMessageExtension.js - a profile missing an entitlement the binary requests fails signing the same way. Commit a69476f1, local only, not pushed. No web or API change.
+- **Delivery:** blocked; release; target=iOS App Store (com.wagerpals.app 1.1.0) via EAS Build + eas submit; revision=a69476f1; verifiedAt=2026-08-18T22:30:00Z; checks=5
+- **By:** worker · 2026-08-18T22:30:21.532Z
+
+
+## main: the iOS build is green — both targets provisioned, the .ipa exists, and the only step left is `eas submit`
+- **What unblocked it.** The interactive Apple login was the missing half. With `expo.extra.eas.build.experimental.ios.appExtensions` declared (commit `a69476f1`), EAS saw both targets and could set them up in one credentials pass: `com.wagerpals.app.messages` was **registered** as a new App ID, App Groups was **enabled** on it, `group.com.wagerpals.app` was **linked**, and a fresh provisioning profile (`FH3DHFQY8P`) was issued for the extension alongside the app's own (`UM3GN5SF38`). Both reuse the existing distribution certificate `ZW6Q5C928C` (serial `3D6F8E4BD02757D80D5D32A99606DF6D`, team `3C4383262W`, expires 2027-04-02).
+- **Result:** build `03453560-265d-4195-baf3-40aaea9108db` **finished**, producing a store-distribution `.ipa` for WagerPals 1.1.0 with the `WagerPalsMessages` iMessage extension included. Push Notifications confirmed set up. Logs: `https://expo.dev/accounts/birud/projects/wagerpals/builds/03453560-265d-4195-baf3-40aaea9108db`
+- **This retires the blocker recorded in the two entries above.** Neither of the two Apple-portal gaps remains: the App Groups capability exists on both App IDs and the `.messages` App ID exists. Nothing in the code needed changing for it — `a69476f1` was the whole fix, and it is now proven by a real signed build rather than by EAS merely enumerating the target.
+- **Still true and still the boundary:** `eas submit --platform ios --profile production` uploads the build to App Store Connect; it does **not** submit for review. Releasing means selecting build 1.1.0 in ASC, submitting it, and waiting on Apple. No tool can make review pass.
+- **Follow-up:** `a69476f1` is committed on local `main` only — `origin/main` is one commit behind. Push before the next build so the EAS `commit` field matches what actually shipped.
+- **By:** main · 2026-08-18
+
+## redesign/board: the sportsbook-vs-friend-chaos redesign (web only)
+- **What:** Full web redesign to the new design spec. One light palette: Paper #FAF7F0 /
+  Ink #1C1B17 / Emerald #0F7A4C / Crimson #D64545 / Amber #F2A93B / Line #E7E2D6, with
+  measured `-ink` twins (crimson/amber fail WCAG as small text; every text token is >=4.5:1
+  on both grounds, verified by script). Dark mode deleted entirely (ThemeScript, ThemeToggle,
+  data-theme). Three type roles: Archivo Black (page titles/wordmark only), IBM Plex Mono
+  400/500 tabular (every number — never bolder than 500, the face isn't loaded above it),
+  Plus Jakarta Sans (voice). Shape language: controls/cards 8–10px; pills ONLY for people
+  and state. The colour rule: a number is emerald or crimson; a person is amber; amber never
+  touches money; gold stays a separate token because gold means won-money.
+- **Interfaces:**
+  - New primitives: components/ConfidenceBar.tsx (THE signature element — use it everywhere
+    a wager appears; empty pool renders an unfilled track + "no stakes yet", never a fake
+    50/50), CountUp, AvatarStack (amber, people-only), StatusPill, OddsLine, EmptySlip
+    (replaces every icon-in-a-circle empty state), lib/odds.ts (pure/isomorphic).
+  - Nav/IA: Board(/) · Live(/all-events) · History(/activity) · Wallet(/wallet, NEW route) ·
+    Friends(/users) · Profile. Groups are Board filter chips; /explore is now public-GROUP
+    discovery (first consumer of GET /api/groups?public=true); Calendar hangs off History;
+    Create is the header button, not a nav item.
+  - components/WalletPanel.tsx is the single wallet UI, mounted at /wallet and inside
+    /profile; the old /profile?wallet=deposit#wallet deep link still works (panel owns the
+    anchor + param read).
+  - Events LIST payload gained optional `bettor_preview` (≤6 recent distinct bettors w/ side)
+    and `latest_comment` (140-char trim) — additive, batched SQL in lib/db.ts, no N+1, no
+    disclosure widening (the anonymous detail branch already exposed more).
+- **Verified:** tsc clean; lint no new warnings; next build green; verify suite 596/596
+  incl. verify:payments 270 and verify:escrow-chips 47 (escrow chip invariant confirmed by
+  diff AND by the DB-backed proof); visual QA via headless screenshots at 1280/390.
+- **Follow-ups:** mobile app still on the old light tokens (explicitly out of scope this
+  pass — mobile/src/theme.ts untouched); GET /api/events is anonymous for list AND detail
+  (pre-existing, not widened here — worth a deliberate decision someday); native confirm()
+  dialogs remain on the group admin page.
+- **By:** redesign orchestrator (Fable) + 7 Sonnet subagents · 2026-08-18

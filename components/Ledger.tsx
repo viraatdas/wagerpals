@@ -6,6 +6,8 @@ import { Bet, EscrowHold, EscrowHoldStatus, Transaction } from '@/lib/types';
 import { formatTimestamp, formatAmount } from '@/lib/utils';
 import ConfirmationModal from './ConfirmationModal';
 import Toast, { ToastType } from './Toast';
+import AvatarStack from './AvatarStack';
+import EmptySlip from './EmptySlip';
 
 interface LedgerProps {
   bets: Bet[];
@@ -55,10 +57,15 @@ function getTransactionLabel(type: string): { label: string; tone: string } {
   return TRANSACTION_LABELS[type] || { label: type.replace(/_/g, ' '), tone: 'tone-neutral' };
 }
 
-const HOLD_CHIPS: Record<EscrowHoldStatus, { label: string; tone: string }> = {
-  held: { label: 'Escrowed', tone: 'tone-pending' },
-  released: { label: 'Settled', tone: 'tone-neutral' },
-  refunded: { label: 'Refunded', tone: 'tone-yes' },
+// Escrow status is money state, not a person, so it stays out of the amber
+// "people" palette — quiet neutral tones, with a small emerald accent only
+// once money is actually back with its owner (refunded). Structured chip
+// shape (rounded-chip, not a full pill) per the redesign's shape language:
+// this describes a state a number is in, not a person or a page-level status.
+const HOLD_CHIPS: Record<EscrowHoldStatus, { label: string; classes: string }> = {
+  held: { label: 'Escrowed', classes: 'border-line bg-card text-ink-muted' },
+  released: { label: 'Settled', classes: 'border-line bg-card text-ink-secondary' },
+  refunded: { label: 'Refunded', classes: 'border-emerald/30 bg-emerald/10 text-emerald' },
 };
 
 /** Chips render on everyone's bets, so the tooltip has to name whose stake it is. */
@@ -167,16 +174,16 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = f
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to delete bet');
+        throw new Error(error.error || "Couldn't delete that bet — try again.");
       }
 
       if (onBetDeleted) {
         onBetDeleted();
       }
-      setToast({ message: 'Bet deleted successfully', type: 'success' });
+      setToast({ message: 'Bet deleted', type: 'success' });
     } catch (error: any) {
       console.error('Failed to delete bet:', error);
-      setToast({ message: `Failed to delete bet: ${error.message}`, type: 'error' });
+      setToast({ message: "Couldn't delete that bet — try again.", type: 'error' });
     } finally {
       setDeletingBets(prev => {
         const newSet = new Set(prev);
@@ -205,9 +212,10 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = f
         isOpen={betToDelete !== null}
         onClose={() => setBetToDelete(null)}
         onConfirm={confirmDeleteBet}
-        title="Delete Bet"
-        message={`Are you sure you want to delete ${betToDelete ? getBetDetails(betToDelete) : 'this bet'}? This action cannot be undone.`}
+        title="Delete bet"
+        message={`Delete ${betToDelete ? getBetDetails(betToDelete) : 'this bet'}? This can't be undone.`}
         confirmText="Delete"
+        loadingText="Deleting…"
         type="danger"
         loading={betToDelete !== null && deletingBets.has(betToDelete)}
       />
@@ -289,20 +297,10 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = f
       )}
 
       {sortedBets.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 6h16M4 12h16M4 18h7" />
-            </svg>
-          </div>
-          <p className="empty-state-title">No bets yet</p>
-          <p className="empty-state-body">
-            The ledger fills in as soon as someone stakes a claim. Pick a side and place the first bet.
-          </p>
-          <a href="#bet-form" className="btn-primary press px-4 py-2 text-sm">
-            Place the first bet
-          </a>
-        </div>
+        <EmptySlip
+          body="Pick a side and place the first bet."
+          action={{ label: 'Place the first bet', href: '#bet-form' }}
+        />
       ) : (
         <div className="card rounded-2xl overflow-hidden">
           <div className="stagger-rows">
@@ -315,31 +313,31 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = f
                 className="flex flex-col gap-1.5 px-4 py-3 border-b border-hairline last:border-b-0 hover:bg-surface-sunken/60 transition-colors"
               >
                 <div className="flex items-center gap-2.5">
-                  <span className={`tone-dot ${toneForSide(bet.side)}`} />
+                  <AvatarStack people={[{ username: bet.username }]} size="sm" className="shrink-0" />
                   <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                    <span className="font-semibold text-foreground truncate max-w-[45%] shrink-0">@{bet.username}</span>
+                    <span className="font-sans font-semibold text-foreground truncate max-w-[45%] shrink-0">@{bet.username}</span>
                     <span className="text-muted shrink-0 text-xs">on</span>
-                    <span className="text-muted truncate min-w-0 flex-1">{bet.side}</span>
+                    <span className={`truncate min-w-0 flex-1 ${toneForSide(bet.side)} tone-text`}>{bet.side}</span>
                   </div>
                   {bet.is_late && <span className="pill tone-pending shrink-0">Late</span>}
                   {holdChip && holdStatus && (
                     <span
-                      className={`pill ${holdChip.tone} shrink-0`}
+                      className={`inline-flex items-center rounded-chip border px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide shrink-0 ${holdChip.classes}`}
                       title={holdChipTitle(holdStatus, bet.user_id === currentUserId, bet.username)}
                     >
                       {holdChip.label}
                     </span>
                   )}
-                  <span className="numeral text-foreground text-base shrink-0">
+                  <span className={`font-mono text-base font-medium tabular-nums shrink-0 ${toneForSide(bet.side)} tone-text`}>
                     {paymentType !== 'cash' && isPublic ? `${bet.amount.toFixed(2)} pts` : `$${bet.amount.toFixed(2)}`}
                   </span>
                 </div>
-                <div className="flex items-center justify-between gap-2 pl-[1.1875rem]">
+                <div className="flex items-center justify-between gap-2 pl-[2.125rem]">
                   <span className="text-xs text-muted italic truncate min-w-0">
                     {bet.note ? `"${bet.note}"` : ''}
                   </span>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-muted tabular-nums">
+                    <span className="text-xs text-muted font-mono">
                       {formatTimestamp(bet.timestamp)}
                     </span>
                     {paymentType !== 'cash' && (
@@ -349,7 +347,7 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = f
                         className="btn-quiet-danger press disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Delete bet"
                       >
-                        {deletingBets.has(bet.id) ? 'Deleting...' : 'Delete'}
+                        {deletingBets.has(bet.id) ? 'Deleting…' : 'Delete'}
                       </button>
                     )}
                   </div>

@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import ConfidenceBar from '@/components/ConfidenceBar';
+import EmptySlip from '@/components/EmptySlip';
 
 // Server component (not 'use client') so we can produce real per-invite
 // OpenGraph metadata. This page is what a visitor lands on when they tap an
@@ -284,30 +286,21 @@ export default async function InvitePage({
     : 'tone-info';
 
   const hasBothCounts = typeof invite.sideACount === 'number' && typeof invite.sideBCount === 'number';
-  const totalCount = hasBothCounts ? (invite.sideACount as number) + (invite.sideBCount as number) : 0;
-  const sideAPct = hasBothCounts && totalCount > 0 ? Math.round(((invite.sideACount as number) / totalCount) * 100) : 50;
 
   return (
     <div className="page-shell-narrow mobile-page animate-rise">
       {/* Header */}
       <div className="text-center mb-8">
         <h1 className="display-2 mb-1">WagerPals</h1>
-        <p className="lede mx-auto">You&apos;ve been invited to a wager!</p>
+        <p className="lede mx-auto">You&apos;ve been invited to a wager.</p>
       </div>
 
       {isEmptyInvite ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <span className="text-2xl" aria-hidden="true">🎟️</span>
-          </div>
-          <p className="empty-state-title">Nothing to invite to yet</p>
-          <p className="empty-state-body">
-            This link isn&apos;t tied to a wager. Start one with your group, then share that link instead.
-          </p>
-          <Link href="/create" className="btn-primary press mt-2">
-            Create an event
-          </Link>
-        </div>
+        <EmptySlip
+          headline="Nothing to invite to yet"
+          body="This link isn't tied to a wager. Start one with your group, then share that link instead."
+          action={{ label: 'Create an event', href: '/create' }}
+        />
       ) : (
         <>
           {/* Wager Card */}
@@ -342,10 +335,12 @@ export default async function InvitePage({
             </div>
 
             {hasBothCounts && (
-              <div className="odds-track mb-4">
-                <div className="odds-fill odds-fill-yes" style={{ width: `${sideAPct}%` }} />
-                <div className="odds-fill odds-fill-no" style={{ width: `${100 - sideAPct}%` }} />
-              </div>
+              <ConfidenceBar
+                className="mb-4"
+                sideA={{ label: invite.sideA, total: invite.sideATotal ?? invite.sideACount ?? 0 }}
+                sideB={{ label: invite.sideB, total: invite.sideBTotal ?? invite.sideBCount ?? 0 }}
+                size="compact"
+              />
             )}
 
             <p className="text-center text-sm text-muted">

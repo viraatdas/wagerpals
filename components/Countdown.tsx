@@ -62,13 +62,13 @@ function Countdown({ endTime, variant = 'inline' }: CountdownProps) {
     return (
       <span className={`pill ${isEnded ? 'tone-pending' : isUrgent ? 'tone-pending' : 'tone-yes'} ${isUrgent ? 'animate-urgent' : ''}`}>
         <span className="tone-dot" />
-        <span className="tabular-nums">{timeLeft}</span>
+        <span className="font-mono">{timeLeft}</span>
       </span>
     );
   }
 
   return (
-    <span className={`tabular-nums ${toneClass}`}>{timeLeft}</span>
+    <span className={`font-mono ${toneClass}`}>{timeLeft}</span>
   );
 }
 

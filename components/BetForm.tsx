@@ -106,7 +106,7 @@ export default function BetForm({
         } catch {
           // ignore parse failure
         }
-        const message = errorBody?.error || 'Failed to place bet. Please try again.';
+        const message = errorBody?.error || "Couldn't place that bet — try again.";
         setError({ message, code: errorBody?.code, shortfall: errorBody?.shortfall });
         if (errorBody?.code === 'INSUFFICIENT_FUNDS' && typeof errorBody?.balance === 'number') {
           setFetchedBalance(errorBody.balance);
@@ -125,7 +125,7 @@ export default function BetForm({
       }
     } catch (err) {
       console.error('Failed to place bet:', err);
-      setError({ message: 'Failed to place bet. Please try again.' });
+      setError({ message: "Couldn't place that bet — try again." });
     } finally {
       setLoading(false);
     }
@@ -134,7 +134,7 @@ export default function BetForm({
   const currencyLabel = isCash ? '$' : isPublic ? 'pts' : '$';
 
   const submitLabel = loading
-    ? 'Placing...'
+    ? 'Placing bet…'
     : isCash
     ? effectiveStake > 0
       ? `Place $${effectiveStake.toFixed(2)} Bet`
@@ -168,7 +168,7 @@ export default function BetForm({
                     clearError();
                   }}
                   aria-pressed={selected}
-                  className={`press relative px-4 py-4 rounded-xl font-semibold text-left break-words border-2 transition-colors ${
+                  className={`press relative px-4 py-4 rounded-control font-semibold text-left break-words border-2 transition-colors ${
                     selected
                       ? `${tone} tone-surface`
                       : 'border-hairline bg-surface text-foreground hover:bg-surface-elevated hover:border-hairline-strong'
@@ -176,7 +176,7 @@ export default function BetForm({
                 >
                   <span className="flex items-center justify-between gap-2">
                     <span className={`flex items-center gap-2 min-w-0 ${selected ? 'tone-text' : ''}`}>
-                      <span className="tone-dot" style={!selected ? { background: '#d1d5db' } : undefined} />
+                      <span className={`tone-dot ${tone}`} />
                       <span className="truncate">{side}</span>
                     </span>
                     {selected && (
@@ -245,7 +245,7 @@ export default function BetForm({
             />
             {isCash && (
               <p className="field-hint mt-2">
-                Your stake is held in escrow until the event resolves.
+                We hold your stake in escrow until the event resolves.
               </p>
             )}
           </div>
@@ -261,7 +261,7 @@ export default function BetForm({
             onChange={(e) => setNote(e.target.value)}
             rows={2}
             className="input resize-none"
-            placeholder="Your prediction or reasoning..."
+            placeholder="Your prediction or reasoning…"
           />
         </div>
 

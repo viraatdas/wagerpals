@@ -7,6 +7,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
 import Toast, { ToastType } from '@/components/Toast';
+import ConfidenceBar from '@/components/ConfidenceBar';
 
 // Small checkmark used to mark a "selected" choice — selection is never
 // conveyed by colour alone (a heavier border always accompanies it).
@@ -145,7 +146,7 @@ function CreateEventForm() {
     e.preventDefault();
     setAttempted(true);
     if (!title || sides.some((s) => !s.trim()) || !endDate || !endTime || !user || !selectedGroupId) {
-      setToast({ message: 'Please fill in all fields and select a group', type: 'warning' });
+      setToast({ message: 'Fill in every field and pick a group.', type: 'warning' });
       return;
     }
 
@@ -188,7 +189,7 @@ function CreateEventForm() {
       if (!response.ok) {
         const errorData = await response.json();
         console.error('Failed to create event:', errorData);
-        setToast({ message: errorData.error || 'Failed to create event. Please try again.', type: 'error' });
+        setToast({ message: errorData.error || "Couldn't create the event — try again.", type: 'error' });
         return;
       }
 
@@ -198,11 +199,11 @@ function CreateEventForm() {
         router.push(`/events/${event.id}`);
       } else {
         console.error('No event ID returned:', event);
-        setToast({ message: 'Event created but could not navigate to it.', type: 'error' });
+        setToast({ message: 'Event created — open it from your groups.', type: 'error' });
       }
     } catch (error) {
       console.error('Failed to create event:', error);
-      setToast({ message: 'Failed to create event', type: 'error' });
+      setToast({ message: "Couldn't create the event — try again.", type: 'error' });
     } finally {
       setLoading(false);
     }
@@ -278,7 +279,7 @@ function CreateEventForm() {
                     </div>
                   </div>
                 ) : (
-                  <span className="text-muted">Choose a group...</span>
+                  <span className="text-muted">Choose a group…</span>
                 )}
                 <svg
                   className={`w-5 h-5 text-muted-2 transition-transform flex-shrink-0 ${dropdownOpen ? 'rotate-180' : ''}`}
@@ -340,7 +341,7 @@ function CreateEventForm() {
 
             {/* Optional subject picker */}
             {selectedGroupId && membersError && (
-              <div className="tone-pending tone-surface border rounded-2xl p-4 mt-5">
+              <div className="tone-pending tone-surface border rounded-panel p-4 mt-5">
                 <p className="field-label mb-1">Who is this bet about? (optional)</p>
                 <p className="tone-text text-sm">
                   Couldn&apos;t load this group&apos;s members right now, so this bet won&apos;t be tied to anyone in particular.
@@ -374,11 +375,11 @@ function CreateEventForm() {
                     <button
                       type="button"
                       role="switch"
-                      aria-pressed={notifySubject}
+                      aria-checked={notifySubject}
                       aria-label="Let them know about this bet"
                       onClick={() => setNotifySubject(!notifySubject)}
                       className={`press relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${
-                        notifySubject ? 'bg-brand-2' : 'bg-surface-elevated'
+                        notifySubject ? 'bg-emerald' : 'bg-surface-elevated'
                       }`}
                     >
                       <span
@@ -431,7 +432,7 @@ function CreateEventForm() {
               <span className="eyebrow">The two sides</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="tone-yes tone-surface border rounded-2xl p-4">
+              <div className="tone-yes tone-surface border rounded-card p-4">
                 <label htmlFor="side-0" className="field-label flex items-center gap-2">
                   <span className="tone-dot" aria-hidden="true" />
                   Side A
@@ -446,7 +447,7 @@ function CreateEventForm() {
                   required
                 />
               </div>
-              <div className="tone-no tone-surface border rounded-2xl p-4">
+              <div className="tone-no tone-surface border rounded-card p-4">
                 <label htmlFor="side-1" className="field-label flex items-center gap-2">
                   <span className="tone-dot" aria-hidden="true" />
                   Side B
@@ -468,7 +469,7 @@ function CreateEventForm() {
                 {sides.slice(2).map((side, i) => {
                   const index = i + 2;
                   return (
-                    <div key={index} className="tone-neutral tone-surface border rounded-2xl p-4 flex gap-3 items-end">
+                    <div key={index} className="tone-neutral tone-surface border rounded-card p-4 flex gap-3 items-end">
                       <div className="flex-1">
                         <label htmlFor={`side-${index}`} className="field-label">Option {index + 1}</label>
                         <input
@@ -503,30 +504,25 @@ function CreateEventForm() {
               <button
                 type="button"
                 onClick={addSide}
-                className="press mt-3 text-sm text-brand-2 hover:text-foreground font-medium border border-brand-2/30 rounded-xl px-4 py-2.5 hover:bg-brand-2/10 transition-all"
+                className="press mt-3 text-sm text-emerald hover:text-foreground font-medium border border-emerald/30 rounded-control px-4 py-2.5 hover:bg-emerald/10 transition-all"
               >
                 + Add another option
               </button>
             )}
 
-            {/* Compact live preview, built purely from form state above */}
+            {/* Compact live preview, built purely from form state above — the
+                same signature ConfidenceBar every other wager surface uses,
+                resting at an even split since no bets exist yet. */}
             <div className="panel p-5 mt-5">
               <p className="eyebrow mb-3">Preview</p>
               <p className="market-title text-lg mb-4">
                 {title.trim() || 'Your question will appear here'}
               </p>
-              <div className="odds-track mb-2">
-                <div className="odds-fill odds-fill-yes" style={{ width: '50%' }} />
-                <div className="odds-fill odds-fill-no" style={{ width: '50%' }} />
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="tone-yes tone-text text-xs font-semibold truncate">
-                  {sides[0]?.trim() || 'Side A'}
-                </span>
-                <span className="tone-no tone-text text-xs font-semibold truncate text-right">
-                  {sides[1]?.trim() || 'Side B'}
-                </span>
-              </div>
+              <ConfidenceBar
+                sideA={{ label: sides[0]?.trim() || 'Side A', total: 1 }}
+                sideB={{ label: sides[1]?.trim() || 'Side B', total: 1 }}
+                size="compact"
+              />
             </div>
           </div>
 
@@ -584,7 +580,7 @@ function CreateEventForm() {
                 type="button"
                 onClick={() => setPaymentType('none')}
                 aria-pressed={paymentType === 'none'}
-                className={`press text-left rounded-2xl p-4 transition-all ${
+                className={`press text-left rounded-control p-4 transition-all ${
                   paymentType === 'none'
                     ? 'tone-accent tone-surface border-2'
                     : 'border border-hairline bg-surface text-foreground hover:bg-surface-elevated'
@@ -600,7 +596,7 @@ function CreateEventForm() {
                 type="button"
                 onClick={() => setPaymentType('cash')}
                 aria-pressed={paymentType === 'cash'}
-                className={`press text-left rounded-2xl p-4 transition-all ${
+                className={`press text-left rounded-control p-4 transition-all ${
                   paymentType === 'cash'
                     ? 'tone-accent tone-surface border-2'
                     : 'border border-hairline bg-surface text-foreground hover:bg-surface-elevated'
@@ -623,7 +619,7 @@ function CreateEventForm() {
                       type="button"
                       onClick={() => setStakeMode(mode)}
                       aria-pressed={stakeMode === mode}
-                      className={`press inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-full transition-all ${
+                      className={`press inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-control transition-all ${
                         stakeMode === mode
                           ? 'tone-accent tone-surface border-2'
                           : 'border border-hairline bg-surface text-foreground hover:bg-surface-elevated'
@@ -639,7 +635,7 @@ function CreateEventForm() {
                   <div>
                     <label htmlFor="stake" className="field-label">Stake per player</label>
                     <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted pointer-events-none">$</span>
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-muted pointer-events-none">$</span>
                       <input
                         type="number"
                         id="stake"
@@ -649,7 +645,7 @@ function CreateEventForm() {
                         step="0.01"
                         inputMode="decimal"
                         placeholder="10.00"
-                        className={`input pl-8 ${stakeAmountInvalid ? 'input-invalid' : ''}`}
+                        className={`input font-mono pl-8 ${stakeAmountInvalid ? 'input-invalid' : ''}`}
                       />
                     </div>
                     {stakeAmountInvalid ? (
@@ -667,7 +663,7 @@ function CreateEventForm() {
                 )}
 
                 <p className="field-hint">
-                  Stakes are held in escrow until you resolve the event. Maximum $500 per bet.
+                  We hold stakes in escrow until you resolve the event. Maximum $500 per bet.
                 </p>
               </div>
             )}

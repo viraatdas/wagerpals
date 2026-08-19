@@ -1,7 +1,6 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: "class",
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -60,10 +59,37 @@ const config: Config = {
         loss: "rgb(var(--color-loss-rgb) / <alpha-value>)",
         pending: "rgb(var(--color-pending-rgb) / <alpha-value>)",
         info: "rgb(var(--color-info-rgb) / <alpha-value>)",
+
+        // ====================================================
+        // Canonical "Board" palette (see DESIGN-SPEC.md + the
+        // Tailwind key contract). Data -> emerald/crimson.
+        // People -> amber. Amber NEVER touches a money value.
+        // Every hex is measured for contrast — see app/globals.css
+        // :root for the numbers.
+        // ====================================================
+        paper: "var(--color-paper)",
+        card: "var(--color-card)",
+        emerald: "rgb(var(--color-emerald-rgb) / <alpha-value>)",
+        crimson: "rgb(var(--color-crimson-rgb) / <alpha-value>)",
+        "crimson-ink": "var(--color-crimson-ink)",
+        amber: "rgb(var(--color-amber-rgb) / <alpha-value>)",
+        "amber-ink": "var(--color-amber-ink)",
+        line: "var(--color-line)",
+        "on-emerald": "var(--color-on-emerald)",
+        // Not in the contract but measured the same way, for the
+        // pre-existing "won money" / neutral-informational tones.
+        gold: "rgb(var(--color-gold-rgb) / <alpha-value>)",
+        "gold-ink": "var(--color-gold-ink)",
+        "info-ink": "var(--color-info-ink)",
       },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
         display: ["var(--font-display)", "var(--font-sans)", "system-ui", "sans-serif"],
+        // Every number on the board — stakes, odds, %, countdowns. Tabular
+        // figures are baked into the .font-mono rule in app/globals.css
+        // (font-variant-numeric doesn't have a Tailwind fontFamily hook),
+        // so anything using this utility gets tabular-nums for free.
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       fontSize: {
         xs: ["var(--text-xs)", { lineHeight: "var(--leading-xs)" }],
@@ -136,6 +162,8 @@ const config: Config = {
         base: "var(--duration-base)",
         slow: "var(--duration-slow)",
         slower: "var(--duration-slower)",
+        // The confidence bar fill — the signature element. duration-bar.
+        bar: "var(--duration-bar)",
       },
       transitionTimingFunction: {
         "out-expo": "var(--ease-out)",

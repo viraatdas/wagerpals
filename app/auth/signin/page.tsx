@@ -38,7 +38,7 @@ function SignInContent() {
   const handleMagicLinkSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
-      setError('Please enter your email');
+      setError('Enter your email to continue.');
       return;
     }
     
@@ -49,7 +49,7 @@ function SignInContent() {
       await app.sendMagicLinkEmail(email);
       setMagicLinkSent(true);
     } catch (err) {
-      setError('Failed to send magic link. Please try again.');
+      setError("Couldn't send the link — try again.");
       console.error('Magic link error:', err);
     } finally {
       setIsLoading(false);
@@ -59,11 +59,11 @@ function SignInContent() {
   const handlePasskeySignIn = async () => {
     setIsLoading(true);
     setError('');
-    
+
     try {
       await app.signInWithPasskey();
     } catch (err) {
-      setError('Passkey sign-in failed. Please try another method.');
+      setError("Passkey didn't work — try email instead.");
       console.error('Passkey error:', err);
     } finally {
       setIsLoading(false);
@@ -76,11 +76,9 @@ function SignInContent() {
         <div className="w-full max-w-md animate-rise">
           <div className="hero-field card-focal overflow-hidden p-8">
             <div className="relative text-center">
-              <div className="empty-state-icon mx-auto mb-5">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-              </div>
+              <svg className="mx-auto mb-5 h-8 w-8 text-ink-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
               <h2 className="display-2 mb-2">Check your email</h2>
               <p className="text-muted mb-1 break-words">
                 We sent a magic link to <span className="font-medium text-foreground">{email}</span>
@@ -114,7 +112,7 @@ function SignInContent() {
             </div>
             <div className="mb-8 text-center">
               <h1 className="display-2 mb-2">Welcome back</h1>
-              <p className="lede mx-auto">Polymarket for friends — put your money where your mouth is.</p>
+              <p className="lede mx-auto">Bet on anything with friends. Real stakes, real fun.</p>
             </div>
 
             {error && (
@@ -142,7 +140,7 @@ function SignInContent() {
                 disabled={isLoading || !email}
                 className="btn-primary w-full mt-3 px-6 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isLoading ? 'Sending…' : 'Continue with Email'}
+                {isLoading ? 'Sending…' : 'Email me a link'}
               </button>
             </form>
 
@@ -171,6 +169,8 @@ function SignInContent() {
               disabled={isLoading}
               className="btn-glass w-full flex items-center justify-center gap-3 px-6 py-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
+              {/* Google's fixed brand colors for the "G" mark — a documented
+                  raw-hex exception (see CLAUDE.md §8, tokens-only styling). */}
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
@@ -206,7 +206,7 @@ export default function SignInPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-muted">Loading...</div>
+        <div className="text-muted">Loading…</div>
       </div>
     }>
       <SignInContent />

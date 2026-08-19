@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser } from '@stackframe/stack';
@@ -11,6 +11,12 @@ import CommentThread from '@/components/CommentThread';
 import ResolutionBanner from '@/components/ResolutionBanner';
 import ConfirmationModal from '@/components/ConfirmationModal';
 import Toast, { ToastType } from '@/components/Toast';
+import StatusPill from '@/components/StatusPill';
+import OddsLine from '@/components/OddsLine';
+import ConfidenceBar from '@/components/ConfidenceBar';
+import CountUp from '@/components/CountUp';
+import { AvatarPerson } from '@/components/AvatarStack';
+import { splitPercent } from '@/lib/odds';
 import { EscrowHoldStatus, EventWithStats, NetResult } from '@/lib/types';
 import { calculateNetResults } from '@/lib/utils';
 
@@ -34,9 +40,22 @@ type ConfirmationModalConfig = {
   title: string;
   message: string;
   confirmText: string;
+  loadingText: string;
   type: 'danger' | 'warning' | 'success';
   onConfirm: () => void;
 };
+
+/** Unique bettors on one side, in first-appearance order, for the ConfidenceBar's avatar clusters. */
+function sideAvatars(bets: EventWithStats['bets'], side: string): AvatarPerson[] {
+  const seen = new Set<string>();
+  const people: AvatarPerson[] = [];
+  for (const bet of bets) {
+    if (bet.side !== side || seen.has(bet.user_id)) continue;
+    seen.add(bet.user_id);
+    people.push({ username: bet.username });
+  }
+  return people;
+}
 
 export default function EventPage() {
   const params = useParams();
@@ -55,6 +74,7 @@ export default function EventPage() {
     title: '',
     message: '',
     confirmText: '',
+    loadingText: '',
     type: 'danger',
     onConfirm: () => {},
   });
@@ -109,9 +129,10 @@ export default function EventPage() {
 
     setConfirmationModal({
       isOpen: true,
-      title: 'Resolve Event',
-      message: `Are you sure you want to resolve this event as "${winningSide}"? This will calculate and update all user balances.`,
+      title: 'Resolve event',
+      message: `Resolve this as "${winningSide}"? This settles every bet in the market.`,
       confirmText: 'Resolve',
+      loadingText: 'Resolving…',
       type: 'success',
       onConfirm: () => confirmResolve(winningSide),
     });
@@ -136,7 +157,7 @@ export default function EventPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setToast({ message: data.error || 'Failed to resolve event', type: 'error' });
+        setToast({ message: data.error || "Couldn't resolve the event — try again.", type: 'error' });
         return;
       }
 
@@ -144,7 +165,7 @@ export default function EventPage() {
       fetchEvent();
     } catch (error) {
       console.error('Failed to resolve event:', error);
-      setToast({ message: 'Failed to resolve event', type: 'error' });
+      setToast({ message: "Couldn't resolve the event — try again.", type: 'error' });
     } finally {
       setResolving(false);
     }
@@ -155,9 +176,10 @@ export default function EventPage() {
 
     setConfirmationModal({
       isOpen: true,
-      title: 'Unresolve Event',
-      message: 'Are you sure you want to unresolve this event? This will reverse all balance changes.',
+      title: 'Unresolve event',
+      message: 'Unresolve this event? This reverses every payout.',
       confirmText: 'Unresolve',
+      loadingText: 'Unresolving…',
       type: 'warning',
       onConfirm: confirmUnresolve,
     });
@@ -178,14 +200,15 @@ export default function EventPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setToast({ message: data.error || 'Failed to unresolve event', type: 'error' });
+        setToast({ message: data.error || "Couldn't unresolve the event — try again.", type: 'error' });
         return;
       }
 
+      setToast({ message: 'Event unresolved', type: 'success' });
       fetchEvent();
     } catch (error) {
       console.error('Failed to unresolve event:', error);
-      setToast({ message: 'Failed to unresolve event', type: 'error' });
+      setToast({ message: "Couldn't unresolve the event — try again.", type: 'error' });
     } finally {
       setResolving(false);
     }
@@ -196,9 +219,10 @@ export default function EventPage() {
 
     setConfirmationModal({
       isOpen: true,
-      title: 'Cancel Event',
+      title: 'Cancel event',
       message: 'This refunds every escrowed stake to the players who placed them. The event cannot be un-cancelled.',
       confirmText: 'Cancel & Refund',
+      loadingText: 'Cancelling…',
       type: 'warning',
       onConfirm: confirmCancel,
     });
@@ -222,7 +246,7 @@ export default function EventPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setToast({ message: data.error || 'Failed to cancel event', type: 'error' });
+        setToast({ message: data.error || "Couldn't cancel the event — try again.", type: 'error' });
         return;
       }
 
@@ -230,7 +254,7 @@ export default function EventPage() {
       fetchEvent();
     } catch (error) {
       console.error('Failed to cancel event:', error);
-      setToast({ message: 'Failed to cancel event', type: 'error' });
+      setToast({ message: "Couldn't cancel the event — try again.", type: 'error' });
     } finally {
       setResolving(false);
     }
@@ -241,9 +265,10 @@ export default function EventPage() {
 
     setConfirmationModal({
       isOpen: true,
-      title: 'Delete Event',
-      message: `Are you sure you want to delete "${event.title}"? This action cannot be undone and will remove all associated bets.`,
+      title: 'Delete event',
+      message: `Delete "${event.title}"? This removes every bet on it — permanently.`,
       confirmText: 'Delete',
+      loadingText: 'Deleting…',
       type: 'danger',
       onConfirm: confirmDelete,
     });
@@ -264,40 +289,33 @@ export default function EventPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setToast({ message: data.error || 'Failed to delete event', type: 'error' });
+        setToast({ message: data.error || "Couldn't delete the event — try again.", type: 'error' });
         return;
       }
 
       router.push('/');
     } catch (error) {
       console.error('Failed to delete event:', error);
-      setToast({ message: 'Failed to delete event', type: 'error' });
+      setToast({ message: "Couldn't delete the event — try again.", type: 'error' });
     } finally {
       setDeleting(false);
     }
   };
 
   // Presentational-only: the odds split, derived from data already in scope.
-  // Held across renders so the split bar has a "previous" value to animate
-  // from when a bet lands and the percentages shift.
   const sideAStats = event ? event.side_stats[event.side_a] : undefined;
   const sideBStats = event ? event.side_stats[event.side_b] : undefined;
   const poolTotal = (sideAStats?.total ?? 0) + (sideBStats?.total ?? 0);
-  const pctA = poolTotal > 0 ? Math.round(((sideAStats?.total ?? 0) / poolTotal) * 100) : 50;
-  const pctB = 100 - pctA;
+  const { pctA, pctB } = splitPercent(sideAStats?.total ?? 0, sideBStats?.total ?? 0);
 
-  const prevPctARef = useRef<number | null>(null);
-  const [oddsFlash, setOddsFlash] = useState(false);
-  useEffect(() => {
-    if (!event) return;
-    if (prevPctARef.current !== null && prevPctARef.current !== pctA) {
-      setOddsFlash(true);
-      const timer = setTimeout(() => setOddsFlash(false), 900);
-      prevPctARef.current = pctA;
-      return () => clearTimeout(timer);
-    }
-    prevPctARef.current = pctA;
-  }, [pctA, event]);
+  const sideAAvatars = useMemo(
+    () => (event ? sideAvatars(event.bets, event.side_a) : []),
+    [event]
+  );
+  const sideBAvatars = useMemo(
+    () => (event ? sideAvatars(event.bets, event.side_b) : []),
+    [event]
+  );
 
   if (!user) {
     return null; // Will redirect to signin
@@ -353,7 +371,7 @@ export default function EventPage() {
             </svg>
           </div>
           <p className="empty-state-title">Event not found</p>
-          <p className="empty-state-body">This market may have been deleted, or the link might be wrong. Head back and find another one.</p>
+          <p className="empty-state-body">This market is gone, or the link&apos;s wrong.</p>
           <Link href="/" className="btn-primary mt-2">
             Back to events
           </Link>
@@ -379,6 +397,7 @@ export default function EventPage() {
         title={confirmationModal.title}
         message={confirmationModal.message}
         confirmText={confirmationModal.confirmText}
+        loadingText={confirmationModal.loadingText}
         type={confirmationModal.type}
         loading={deleting || resolving}
       />
@@ -414,22 +433,18 @@ export default function EventPage() {
 
           <div className="flex flex-wrap items-center gap-2 mb-6">
             {isCancelled ? (
-              <span className="tone-pending pill">
-                <span className="tone-dot" /> Cancelled
-              </span>
+              <StatusPill status="cancelled" />
             ) : event.status === 'resolved' ? (
-              <span className="tone-neutral pill">
-                <span className="tone-dot" /> Resolved
-              </span>
+              <StatusPill status="settled" />
             ) : isEnded ? (
-              <span className="tone-pending pill">
-                <span className="tone-dot" /> Ended — awaiting resolution
-              </span>
+              <StatusPill status="ended" label="Ended — awaiting resolution" />
             ) : (
-              <span className={`tone-yes pill ${isUrgent ? 'animate-urgent' : ''}`}>
-                <span className="tone-dot" />
-                <Countdown endTime={event.end_time} />
-              </span>
+              <>
+                <StatusPill status="live" />
+                <span className={`font-mono text-sm text-ink-secondary ${isUrgent ? 'animate-urgent' : ''}`}>
+                  <Countdown endTime={event.end_time} />
+                </span>
+              </>
             )}
 
             {paidResolver && (
@@ -438,11 +453,11 @@ export default function EventPage() {
               </span>
             )}
 
-            {isCash && <span className="tone-info pill">💵 Real money</span>}
+            {isCash && <span className="tone-info pill">Real money</span>}
 
             {isCash && (
               typeof event.stake_amount === 'number' && event.stake_amount > 0 ? (
-                <span className="tone-neutral pill">Stake ${event.stake_amount.toFixed(2)}</span>
+                <span className="tone-neutral pill font-mono">Stake ${event.stake_amount.toFixed(2)}</span>
               ) : (
                 <span className="tone-neutral pill">Open stakes</span>
               )
@@ -451,45 +466,48 @@ export default function EventPage() {
 
           {isCash && (event.escrow_total ?? 0) > 0 && (
             <p className="field-hint mb-6">
-              <span className="tone-pending tone-text font-semibold numeral">
+              <span className="tone-pending tone-text font-medium font-mono">
                 ${(event.escrow_total ?? 0).toFixed(2)}
               </span>{' '}
               held in escrow across all players.
             </p>
           )}
 
-          {/* Odds read — side names as eyebrows, percentages as the hero numerals */}
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div className="min-w-0">
-              <div className="eyebrow tone-yes tone-text truncate mb-1">{event.side_a}</div>
-              <div className={`numeral text-2xl sm:text-3xl tone-yes tone-text ${oddsFlash ? 'animate-flash' : ''}`}>
-                {pctA}%
-              </div>
-            </div>
-            <div className="min-w-0 text-right">
-              <div className="eyebrow tone-no tone-text truncate mb-1">{event.side_b}</div>
-              <div className={`numeral text-2xl sm:text-3xl tone-no tone-text ${oddsFlash ? 'animate-flash' : ''}`}>
-                {pctB}%
-              </div>
-            </div>
-          </div>
-          <div className="odds-track mb-6">
-            <div className="odds-fill odds-fill-yes" style={{ width: `${pctA}%` }} />
-            <div className="odds-fill odds-fill-no" style={{ width: `${pctB}%` }} />
+          {/* Signature element, full size: mono ratio + staked total, then the
+              confidence split with per-side avatar clusters where the money is. */}
+          <div className="mb-6 space-y-4">
+            <OddsLine
+              sideA={{ label: event.side_a, total: sideAStats?.total ?? 0 }}
+              sideB={{ label: event.side_b, total: sideBStats?.total ?? 0 }}
+              stakeAmount={poolTotal}
+              paymentType={isCash ? 'cash' : 'none'}
+              size="large"
+            />
+            <ConfidenceBar
+              sideA={{ label: event.side_a, total: sideAStats?.total ?? 0, avatars: sideAAvatars }}
+              sideB={{ label: event.side_b, total: sideBStats?.total ?? 0, avatars: sideBAvatars }}
+              size="large"
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-3 sm:gap-6 pt-5 border-t border-[var(--color-border)]">
             <div className="min-w-0">
               <div className="eyebrow mb-1">Pool</div>
-              <div className="stat-value truncate">${poolTotal.toFixed(2)}</div>
+              <div className="stat-value truncate">
+                <CountUp value={poolTotal} formatter="currency" />
+              </div>
             </div>
             <div className="min-w-0">
               <div className="eyebrow mb-1">Players</div>
-              <div className="stat-value truncate">{event.total_participants}</div>
+              <div className="stat-value truncate">
+                <CountUp value={event.total_participants} formatter="plain" />
+              </div>
             </div>
             <div className="min-w-0">
               <div className="eyebrow mb-1">Bets</div>
-              <div className="stat-value truncate">{event.total_bets}</div>
+              <div className="stat-value truncate">
+                <CountUp value={event.total_bets} formatter="plain" />
+              </div>
             </div>
           </div>
         </div>
@@ -498,7 +516,7 @@ export default function EventPage() {
           <div className="tone-pending tone-surface border rounded-xl p-4 mb-6 flex items-center gap-3">
             <span className="tone-dot shrink-0" />
             <p className="tone-text text-sm font-medium">
-              This event was cancelled — every stake was refunded.
+              This event&apos;s cancelled — every stake is back in its owner&apos;s wallet.
             </p>
           </div>
         )}
@@ -520,7 +538,7 @@ export default function EventPage() {
 
         {event.status === 'active' && paidResolver && paidResolver.user_id !== user.id && (
           <div className="tone-info tone-surface border rounded-xl p-4 mb-6 text-sm tone-text">
-            @{paidResolver.username || 'The chosen resolver'} is responsible for resolving this paid event.
+            @{paidResolver.username || 'The chosen resolver'} resolves this one.
           </div>
         )}
 
@@ -569,7 +587,7 @@ export default function EventPage() {
             return (
               <div key={side} className={`card card-interactive rail-top ${tone} p-5`}>
                 <h3 className="tone-text font-semibold break-words leading-snug mb-2">{side}</h3>
-                <div className="numeral text-3xl sm:text-4xl tone-text">{pct}%</div>
+                <div className="font-mono text-3xl sm:text-4xl font-medium tabular-nums tone-text">{pct}%</div>
                 <div className="mt-4 pt-3 border-t border-[var(--color-border)] flex items-center justify-between gap-2 text-sm">
                   <span className="eyebrow">{stats.count} {stats.count === 1 ? 'bet' : 'bets'}</span>
                   <span className="stat-value text-lg">${stats.total.toFixed(2)}</span>
@@ -595,7 +613,9 @@ export default function EventPage() {
           </div>
         )}
 
-        <div className="mb-8">
+        {/* The human zone: banter, reactions, the ledger of who's in — looser
+            spacing than the sportsbook header above. */}
+        <div className="mb-10">
           <div className="section-head mb-4">
             <span className="eyebrow">
               Comments{commentCount > 0 ? ` (${commentCount})` : ''}

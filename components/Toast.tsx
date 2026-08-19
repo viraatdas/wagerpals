@@ -74,12 +74,12 @@ export default function Toast({
       <div
         role={isError ? 'alert' : 'status'}
         aria-live={isError ? 'assertive' : 'polite'}
-        className={`${tone} card rail animate-sheet pointer-events-auto flex w-full max-w-md items-start gap-3 p-4 pl-5`}
+        className={`${tone} rail animate-sheet pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-control border border-line bg-card p-4 pl-5 shadow-elev-2`}
       >
-        <div className="tone-surface tone-text flex h-8 w-8 flex-none items-center justify-center rounded-full border">
+        <div className="tone-surface tone-text flex h-8 w-8 flex-none items-center justify-center rounded-pill border">
           {ICON_BY_TYPE[type]}
         </div>
-        <p className="flex-1 pt-0.5 text-sm text-foreground">{message}</p>
+        <p className="flex-1 pt-0.5 font-sans text-sm text-foreground">{message}</p>
         <button
           onClick={onClose}
           className="press flex-none text-muted-2 hover:text-foreground transition-colors"

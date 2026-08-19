@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
 import { EventWithStats } from '@/lib/types';
+import EmptySlip from '@/components/EmptySlip';
 
 export const dynamic = 'force-dynamic';
 
@@ -159,28 +160,19 @@ export default function CalendarPage() {
           href="/"
           className="press mb-3 inline-flex items-center gap-1 text-sm font-medium text-muted transition-colors hover:text-foreground"
         >
-          ← Back to Groups
+          ← Back to board
         </Link>
         <p className="eyebrow mb-2">Schedule</p>
-        <h1 className="display-1 mb-2">Event Calendar</h1>
+        <h1 className="display-1 mb-2">Event calendar</h1>
         <p className="lede">Betting deadlines across all your groups.</p>
       </div>
 
       {events.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <p className="empty-state-title">No events yet</p>
-          <p className="empty-state-body">
-            Events you create or join will show up on this calendar by their betting deadline.
-          </p>
-          <Link href="/create" className="btn-primary">
-            Create Event
-          </Link>
-        </div>
+        <EmptySlip
+          headline="Nothing on the calendar."
+          body="Events land here by their betting deadline."
+          action={{ label: 'Create event', href: '/create' }}
+        />
       ) : (
         <>
           <div className="card p-3 sm:p-6">
@@ -265,7 +257,7 @@ export default function CalendarPage() {
                       />
                     )}
                     <span
-                      className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums sm:h-6 sm:w-6 sm:text-xs ${
+                      className={`inline-flex h-5 w-5 items-center justify-center rounded-full font-mono text-[11px] font-medium sm:h-6 sm:w-6 sm:text-xs ${
                         isToday
                           ? 'bg-[var(--color-accent)] text-ink-inverse'
                           : inMonth
@@ -344,7 +336,7 @@ export default function CalendarPage() {
               <span className="eyebrow">{selectedLabel}</span>
             </div>
             {selectedEvents.length === 0 ? (
-              <p className="text-sm text-muted">No events on this day.</p>
+              <p className="text-sm text-muted">Nothing on this day.</p>
             ) : (
               <div className="space-y-2.5">
                 {selectedEvents.map((event) => {

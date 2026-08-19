@@ -9,6 +9,8 @@ import { useUser } from '@stackframe/stack';
 import { useRouter } from 'next/navigation';
 import { ActivityItem } from '@/lib/types';
 import { formatTimestamp } from '@/lib/utils';
+import AvatarStack from '@/components/AvatarStack';
+import EmptySlip from '@/components/EmptySlip';
 
 type ActivityTone = 'tone-accent' | 'tone-yes' | 'tone-info' | 'tone-neutral';
 
@@ -106,24 +108,25 @@ function activityLine(activity: ActivityItem): { primary: ReactNode; secondary?:
 function ActivityRow({ activity }: { activity: ActivityItem }) {
   const tone = toneForActivity(activity.type);
   const { primary, secondary } = activityLine(activity);
+  const actor = { username: activity.username || 'Unknown' };
 
   return (
     <Link
       href={`/events/${activity.event_id}`}
       className={`${tone} press flex items-start gap-3 border-b border-[var(--color-border)] px-3 py-3 transition-colors last:border-b-0 hover:bg-[var(--color-surface-sunken)] sm:px-4`}
     >
-      <span className="tone-dot mt-2 flex-none" aria-hidden="true" />
+      <AvatarStack people={[actor]} size="sm" className="mt-0.5 flex-none" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm leading-snug text-foreground break-words">{primary}</p>
+        <p className="font-sans text-sm leading-snug text-foreground break-words">{primary}</p>
         {secondary && (
-          <p className="mt-0.5 truncate text-xs italic text-muted">&ldquo;{secondary}&rdquo;</p>
+          <p className="mt-0.5 truncate font-sans text-xs italic text-muted">&ldquo;{secondary}&rdquo;</p>
         )}
       </div>
       <div className="flex flex-none flex-col items-end gap-0.5 pl-1 text-right">
         {activity.type === 'bet' && typeof activity.amount === 'number' && (
           <span className="numeral tone-text text-sm">${activity.amount.toFixed(2)}</span>
         )}
-        <span className="whitespace-nowrap text-xs text-muted">{formatTimestamp(activity.timestamp)}</span>
+        <span className="whitespace-nowrap font-mono text-xs text-muted">{formatTimestamp(activity.timestamp)}</span>
       </div>
     </Link>
   );
@@ -207,27 +210,26 @@ export default function ActivityPage() {
 
   return (
     <div className="page-shell-narrow mobile-page animate-rise">
-      <p className="eyebrow mb-2">Ledger</p>
-      <h1 className="display-1 mb-2">Activity Feed</h1>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="eyebrow">Ledger</p>
+        <Link
+          href="/calendar"
+          className="press font-sans text-xs font-medium text-ink-muted transition-colors hover:text-ink"
+        >
+          View calendar →
+        </Link>
+      </div>
+      <h1 className="display-1 mb-2">History</h1>
       <p className="lede mb-8">
         Recent events, bets, and resolutions from your groups.
       </p>
 
       {activities.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          <p className="empty-state-title">No activity yet</p>
-          <p className="empty-state-body">
-            Bets, new events, and resolutions from your groups will show up here as they happen.
-          </p>
-          <Link href="/create" className="btn-primary">
-            Create an event
-          </Link>
-        </div>
+        <EmptySlip
+          headline="Nothing's happened yet."
+          body="Bets, comments, and resolutions land here as they happen."
+          action={{ label: 'Create an event', href: '/create' }}
+        />
       ) : (
         <div className="space-y-6">
           {groups.map((group) => (

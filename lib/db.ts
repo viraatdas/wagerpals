@@ -434,7 +434,7 @@ export const db = {
               e.end_time DESC
           `;
 
-      return result.rows.map(row => {
+      const events: any[] = result.rows.map(row => {
         const event: any = {
           id: row.id,
           title: row.title,
@@ -466,6 +466,75 @@ export const db = {
 
         return event;
       });
+
+      // Batched (not N+1) enrichment: bettor_preview + latest_comment for every
+      // event returned above, fetched in two queries keyed off the full id list
+      // rather than one query per event — same pattern as
+      // commentReactions.getByComments / notificationPreferences bulk lookups
+      // elsewhere in this file (ANY(...::text[]) + a single GROUP/PARTITION).
+      const eventIds = events.map(e => e.id);
+      if (eventIds.length > 0) {
+        const [bettorPreviewResult, latestCommentResult] = await Promise.all([
+          // DISTINCT ON (event_id, user_id) collapses each bettor to their most
+          // recent bet in the event (so a user who bet more than once shows up
+          // once, with their latest side); the outer ROW_NUMBER() then caps each
+          // event to its 6 most-recently-active distinct bettors.
+          sql`
+            WITH distinct_bettors AS (
+              SELECT DISTINCT ON (b.event_id, b.user_id)
+                b.event_id, b.user_id, b.username, b.side, b.timestamp, u.avatar_url
+              FROM bets b
+              LEFT JOIN users u ON u.id = b.user_id
+              WHERE b.event_id = ANY(${eventIds as any}::text[])
+              ORDER BY b.event_id, b.user_id, b.timestamp DESC
+            ),
+            ranked AS (
+              SELECT *, ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY timestamp DESC) AS rn
+              FROM distinct_bettors
+            )
+            SELECT event_id, username, side, avatar_url
+            FROM ranked
+            WHERE rn <= 6
+            ORDER BY event_id, rn
+          `,
+          // DISTINCT ON (event_id) picks the single most recent top-level
+          // (non-reply, non-deleted) comment per event in one pass.
+          sql`
+            SELECT DISTINCT ON (event_id) event_id, username, content
+            FROM comments
+            WHERE event_id = ANY(${eventIds as any}::text[])
+              AND deleted_at IS NULL
+              AND parent_id IS NULL
+            ORDER BY event_id, timestamp DESC
+          `,
+        ]);
+
+        const previewByEvent = new Map<string, { username: string; avatar_url?: string; side: string }[]>();
+        for (const row of bettorPreviewResult.rows) {
+          const list = previewByEvent.get(row.event_id) || [];
+          list.push({ username: row.username, avatar_url: row.avatar_url || undefined, side: row.side });
+          previewByEvent.set(row.event_id, list);
+        }
+
+        const MAX_COMMENT_PREVIEW_LENGTH = 140;
+        const commentByEvent = new Map<string, { username: string; content: string }>();
+        for (const row of latestCommentResult.rows) {
+          const content: string = row.content || '';
+          const trimmed = content.length > MAX_COMMENT_PREVIEW_LENGTH
+            ? `${content.slice(0, MAX_COMMENT_PREVIEW_LENGTH).trimEnd()}…`
+            : content;
+          commentByEvent.set(row.event_id, { username: row.username, content: trimmed });
+        }
+
+        for (const event of events) {
+          const preview = previewByEvent.get(event.id);
+          if (preview && preview.length > 0) event.bettor_preview = preview;
+          const comment = commentByEvent.get(event.id);
+          if (comment) event.latest_comment = comment;
+        }
+      }
+
+      return events;
     },
   },
 

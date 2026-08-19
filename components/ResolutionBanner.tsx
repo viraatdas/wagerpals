@@ -19,9 +19,9 @@ export default function ResolutionBanner({ event, netResults, isPublic = false }
     <div className="card-focal tone-win rail p-6 mb-6 animate-reveal">
       <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
         <div>
-          <span className="eyebrow tone-text tone-win">Event resolved</span>
+          <span className="eyebrow tone-text tone-win">Settled</span>
           <p className="display-3 mt-1">
-            <span className="numeral tone-text">{event.resolution.winning_side}</span> won
+            <span className="font-mono tabular-nums tone-text">{event.resolution.winning_side}</span> won
           </p>
         </div>
         <span className="pill pill-solid tone-win shrink-0">Final</span>
