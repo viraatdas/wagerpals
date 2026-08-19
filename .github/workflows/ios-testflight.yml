@@ -1,0 +1,67 @@
+# The iOS release train: every push to main that changes the mobile app cuts
+# an EAS production build and auto-submits it to App Store Connect /
+# TestFlight. Internal testers (automatic distribution) get it as soon as
+# Apple processes it; external testers when TestFlight beta review clears.
+#
+# Auth: the EXPO_TOKEN repo secret (an Expo access token for the birud
+# account). EAS runs prebuild remotely, which is where the iMessage
+# extension's config plugin (mobile/plugins/imessage-extension) is applied —
+# no local ios/ directory is needed or committed.
+#
+# Releasing to the App Store proper is still deliberate: eas submit uploads
+# the binary, but attaching it to a version and filing App Review stays a
+# human/agent decision (see AGENTS.md §4).
+name: ios-testflight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/ios-testflight.yml"
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install web deps
+        run: npm ci
+      - name: Install mobile deps
+        run: npm ci --prefix mobile
+      - name: Typecheck web
+        run: npx tsc --noEmit
+      - name: Typecheck mobile
+        run: npx tsc --noEmit -p mobile
+      - name: Verify (no-DB suite)
+        run: |
+          npm run verify:comments
+          npm run verify:notifications
+          npm run verify:imessage
+          npm run verify:groups-auth
+          npm run verify:users-auth
+
+  build:
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Install mobile deps
+        run: npm ci --prefix mobile
+      - name: EAS build + auto-submit to TestFlight
+        working-directory: mobile
+        run: eas build --platform ios --profile production --non-interactive --no-wait --auto-submit
