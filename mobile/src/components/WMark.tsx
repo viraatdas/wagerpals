@@ -132,7 +132,10 @@ export default WMark;
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
+    // Bottom-aligned, not centered: the mark (0.68x the digit size) sits on
+    // the same line as the digits' bottoms — mono digits have no descenders,
+    // so flex-end reads as baseline. Mirrors components/WMark.tsx (web).
+    alignItems: 'flex-end',
   },
   text: {
     fontFamily: font.monoMedium,

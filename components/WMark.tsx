@@ -28,11 +28,13 @@ export function WMark({ className }: WMarkProps) {
       viewBox="0 0 100 100"
       aria-hidden="true"
       focusable="false"
-      // Deliberately SMALLER than the digits (0.68em) and baseline-hugging —
-      // the mark reads as a compact currency prefix beside the number, the
-      // way a ticker sets "$", never as a letter-sized glyph competing with
-      // the amount. (Owner: "smaller and inline.")
-      className={`inline-block h-[0.68em] w-[0.68em] shrink-0 self-center ${className ?? ''}`}
+      // Deliberately SMALLER than the digits (0.68em), and BOTTOM-ALIGNED:
+      // in the parent's items-baseline flex row an SVG's baseline is its
+      // bottom edge, so with no self-alignment override the mark sits on the
+      // same line the digits sit on — a compact ticker-style prefix, never a
+      // letter-sized glyph floating mid-height. (Owner: "smaller, inline,
+      // lined with the bottom.")
+      className={`inline-block h-[0.68em] w-[0.68em] shrink-0 ${className ?? ''}`}
     >
       <path
         d="M8 22 L28 78 L50 40 L72 78 L92 22"
