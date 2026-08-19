@@ -2,7 +2,7 @@
 // signing in, so it needs to feel confident and explain *why* a username is
 // needed (not just demand one): it's how friends find you and how bets get
 // attributed to you on the ledger.
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,23 +13,31 @@ import { validateUsername } from '../utils/helpers';
 import { ApiError, toApiError } from '../utils/errors';
 import * as haptics from '../utils/haptics';
 import { Button, Field, FormScreen } from '../components';
-import { colors, gradients, radius, spacing, tokens } from '../theme';
+import { colors, font, gradients, radius, spacing, tokens } from '../theme';
 
 interface UsernameSetupScreenProps {
   onUsernameSet?: () => void;
 }
 
+// Same verb chain as EditUsernameScreen: "Save" -> "Saving…" -> "Username
+// saved." — the confirmation lingers briefly before handing off to the rest
+// of onboarding.
+const CONFIRMATION_LINGER_MS = 550;
+
 export default function UsernameSetupScreen({ onUsernameSet }: UsernameSetupScreenProps) {
   const { user } = useAuth();
   const [username, setUsername] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const [error, setError] = useState('');
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const trimmed = username.trim();
   const validation = validateUsername(trimmed);
   const liveError = trimmed.length > 0 && !validation.valid ? validation.error || 'Invalid username' : '';
   const displayError = error || liveError;
-  const canSave = !isSaving && trimmed.length > 0 && validation.valid;
+  const canSave = !isSaving && !isSaved && trimmed.length > 0 && validation.valid;
 
   const handleChangeText = (text: string) => {
     // Usernames are lowercase alphanumeric+underscore only — strip anything
@@ -57,9 +65,12 @@ export default function UsernameSetupScreen({ onUsernameSet }: UsernameSetupScre
       // users back in this screen since RootNavigator gates on it).
       await apiService.setUsername(trimmed);
       haptics.success();
-      if (onUsernameSet) {
-        onUsernameSet();
-      }
+      if (!mountedRef.current) return;
+      setIsSaved(true);
+      setTimeout(() => {
+        if (mountedRef.current) onUsernameSet?.();
+      }, CONFIRMATION_LINGER_MS);
+      return;
     } catch (err) {
       const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/users');
       if (apiErr.status === 400 && /taken/i.test(apiErr.userMessage)) {
@@ -67,7 +78,7 @@ export default function UsernameSetupScreen({ onUsernameSet }: UsernameSetupScre
       } else if (apiErr.status !== null && apiErr.status >= 500) {
         // Audit finding A6: username uniqueness is a TOCTOU race that can
         // surface as a raw 500 under concurrent requests for the same name.
-        setError('Something went wrong claiming that username. Please try again.');
+        setError("That username didn't save — try again.");
       } else {
         setError(apiErr.userMessage);
       }
@@ -82,11 +93,11 @@ export default function UsernameSetupScreen({ onUsernameSet }: UsernameSetupScre
         keyboardOffset={0}
         footer={
           <Button
-            title="Continue"
+            title={isSaved ? 'Saved' : isSaving ? 'Saving…' : 'Save'}
             onPress={handleSubmit}
             loading={isSaving}
             disabled={!canSave}
-            icon="arrow-forward"
+            icon={isSaved ? 'checkmark' : 'arrow-forward'}
             iconPosition="right"
             fullWidth
             haptic="none"
@@ -122,8 +133,15 @@ export default function UsernameSetupScreen({ onUsernameSet }: UsernameSetupScre
           showCount
           returnKeyType="done"
           onSubmitEditing={canSave ? handleSubmit : undefined}
-          editable={!isSaving}
+          editable={!isSaving && !isSaved}
         />
+
+        {isSaved ? (
+          <View style={styles.savedRow}>
+            <Ionicons name="checkmark-circle" size={16} color={tokens.color.win} />
+            <Text style={styles.savedText}>Username saved.</Text>
+          </View>
+        ) : null}
 
         <Text style={styles.footerText}>You can change your username later in settings.</Text>
       </FormScreen>
@@ -151,13 +169,14 @@ const styles = StyleSheet.create({
     ...tokens.shadow.accent,
   },
   title: {
-    fontSize: tokens.fontSize['2xl'],
-    fontWeight: '700',
+    fontFamily: font.display,
+    fontSize: tokens.fontSize.xl,
     color: colors.text,
     marginBottom: spacing.sm,
     textAlign: 'center',
   },
   subtitle: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.base,
     color: colors.textMuted,
     textAlign: 'center',
@@ -165,9 +184,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   footerText: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+  savedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  savedText: {
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.sm,
+    color: tokens.color.win,
   },
 });

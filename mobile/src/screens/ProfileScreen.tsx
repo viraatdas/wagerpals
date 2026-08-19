@@ -13,7 +13,7 @@ import { User, WalletSummary } from '../types';
 import { ApiError, toApiError } from '../utils/errors';
 import { truncate, formatMoney } from '../utils/format';
 import { success, error as hapticError } from '../utils/haptics';
-import { colors, spacing, tokens } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 import {
   Avatar,
   Button,
@@ -153,8 +153,8 @@ export default function ProfileScreen() {
   const handleSignOut = useCallback(() => {
     if (isSigningOut) return;
     Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
+      'Sign out?',
+      "You'll need to sign in again to place bets.",
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -195,7 +195,7 @@ export default function ProfileScreen() {
         body: 'Push notifications are working!',
       });
       success();
-      Alert.alert('Success', 'Test notification sent!');
+      Alert.alert('Sent', 'Push notifications are working.');
     } catch (err) {
       hapticError();
       const message =
@@ -300,7 +300,11 @@ export default function ProfileScreen() {
           </Card>
           <Card style={styles.statCard}>
             <Text style={styles.statLabel} numberOfLines={1}>Win streak</Text>
-            <Text style={styles.streakValue} numberOfLines={1} ellipsizeMode="tail">
+            <Text
+              style={[styles.streakValue, streak > 0 && styles.streakValuePositive]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
               {streak}
             </Text>
           </Card>
@@ -428,13 +432,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   username: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize['2xl'],
-    fontWeight: '600',
     color: colors.text,
     marginBottom: 4,
     maxWidth: '90%',
   },
   email: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     maxWidth: '90%',
@@ -450,15 +455,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statLabel: {
+    fontFamily: font.sansMedium,
     fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
     marginBottom: spacing.xs,
   },
   streakValue: {
+    fontFamily: font.monoMedium,
     fontSize: tokens.fontSize.base,
-    fontWeight: '600',
     color: colors.text,
     fontVariant: ['tabular-nums'],
+  },
+  streakValuePositive: {
+    color: tokens.color.win,
   },
   walletCard: {
     marginBottom: spacing.xl,
@@ -479,6 +488,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   walletLabel: {
+    fontFamily: font.sansMedium,
     fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
     marginBottom: spacing.xs,
@@ -498,17 +508,19 @@ const styles = StyleSheet.create({
   iconChip: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   staleNotice: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
     textAlign: 'center',
     marginTop: spacing.sm,
   },
   versionText: {
+    fontFamily: font.mono,
     fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
     textAlign: 'center',

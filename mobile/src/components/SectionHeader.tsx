@@ -1,10 +1,11 @@
 // SectionHeader — the label that introduces a group of cards/rows
-// ("Settings", "Recent Activity", ...). One consistent treatment: a bold
-// title at fontSize.lg, plus an optional muted subtitle and a right-aligned
-// text action (e.g. "See all").
+// ("Settings", "Recent Activity", ...). Section headers are one of the
+// sparing Archivo Black uses in DESIGN-SPEC.md's type system (headlines &
+// nav only, never body copy) at fontSize.lg, plus an optional muted
+// subtitle and a right-aligned text action (e.g. "See all").
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { colors, spacing, tokens } from '../theme';
+import { colors, font, spacing, tokens } from '../theme';
 import { tapLight } from '../utils/haptics';
 
 export interface SectionHeaderProps {
@@ -61,11 +62,12 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   title: {
-    fontSize: tokens.fontSize.lg,
-    fontWeight: '600',
+    fontFamily: font.display,
+    fontSize: tokens.fontSize.base,
     color: colors.text,
   },
   subtitle: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     marginTop: 2,
@@ -82,8 +84,8 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   actionText: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.sm,
-    fontWeight: '600',
     color: colors.brand,
   },
 });

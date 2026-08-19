@@ -5,7 +5,7 @@
 import React, { Component, ReactNode } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing, tokens, glass } from '../theme';
+import { colors, font, radius, spacing, tokens, glass } from '../theme';
 import { tapMedium } from '../utils/haptics';
 
 export interface ErrorBoundaryProps {
@@ -93,13 +93,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   title: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.lg,
-    fontWeight: '600',
     color: colors.text,
     marginBottom: spacing.sm,
     textAlign: 'center',
   },
   message: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     textAlign: 'center',
@@ -116,14 +117,14 @@ const styles = StyleSheet.create({
   devText: {
     fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
-    fontFamily: 'Courier',
+    fontFamily: font.mono,
     lineHeight: tokens.lineHeight.sm,
   },
   retryButton: {
     minHeight: 44,
     minWidth: 44,
     paddingHorizontal: spacing.xl,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     backgroundColor: colors.brand,
     alignItems: 'center',
     justifyContent: 'center',
@@ -133,8 +134,8 @@ const styles = StyleSheet.create({
     opacity: 0.85,
   },
   retryText: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.base,
-    fontWeight: '600',
-    color: tokens.color.textInverse,
+    color: tokens.color.onEmerald,
   },
 });

@@ -1,11 +1,17 @@
-// Home screen - Shows user's groups with modern iOS design
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+// Home screen — "The Board" (see DESIGN-SPEC.md / MOBILE-SPEC.md). A live
+// list of wager cards across every group the user is in, not a
+// dashboard-with-nav-tabs. Group navigation (create/join/open a group)
+// stays reachable via the horizontal strip up top — nothing that used to be
+// reachable from this screen has been removed, it's just no longer the
+// entire screen.
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   FlatList,
+  ScrollView,
   ListRenderItemInfo,
   Alert,
   RefreshControl,
@@ -17,50 +23,127 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
-import { Group } from '../types';
+import { Event, Group } from '../types';
 import TextInputModal from '../components/TextInputModal';
 import { EmptyState, ErrorState } from '../components/ScreenState';
 import { SkeletonList } from '../components/Skeleton';
 import { Card } from '../components/Card';
-import { Pill } from '../components/Pill';
-import { tapMedium, success, error as hapticError } from '../utils/haptics';
+import { Pill, PillTone } from '../components/Pill';
+import { Avatar } from '../components/Avatar';
+import { Money } from '../components/Money';
+import { SplitBar } from '../components/ProgressBar';
+import { SectionHeader } from '../components/SectionHeader';
+import { tapMedium, tapLight, success, error as hapticError } from '../utils/haptics';
 import { ApiError, toApiError } from '../utils/errors';
-import { colors, gradients, radius, glow, spacing } from '../theme';
-import { LinearGradient } from 'expo-linear-gradient';
+import { formatCountdown, truncate } from '../utils/format';
+import { colors, font, radius, spacing, tokens } from '../theme';
 
 // Matches the tab bar's own height (see navigation/MainTabNavigator.tsx) —
 // the bar is absolutely positioned so scroll content needs explicit bottom
 // clearance or the last row ends up hidden behind it.
 const TAB_BAR_HEIGHT = Platform.OS === 'ios' ? 88 : 64;
 
-interface GroupRowProps {
-  item: Group;
-  onPress: (item: Group) => void;
+// The list endpoint (GET /api/events) returns the same side_stats/total_bets
+// aggregates as the single-event endpoint, plus (per MOBILE-SPEC.md) optional
+// bettor_preview/latest_comment batched onto the list query — but the shared
+// `Event` type (owned by another agent) only declares the base event
+// columns. Widen locally rather than editing that file, same pattern
+// ExploreScreen already uses.
+type EventBettorPreview = { username: string; avatar_url?: string; side: string };
+type EventLatestComment = { username: string; content: string };
+type WagerCardItem = Event & {
+  side_stats?: Record<string, { count: number; total: number }>;
+  total_bets?: number;
+  total_participants?: number;
+  bettor_preview?: EventBettorPreview[];
+  latest_comment?: EventLatestComment;
+};
+
+function getStatusPill(item: WagerCardItem): { label: string; tone: PillTone } {
+  if (item.status === 'resolved') {
+    return { label: 'Resolved', tone: 'yes' };
+  }
+  const countdown = formatCountdown(item.end_time);
+  if (countdown.isPast) {
+    return { label: 'Ended', tone: 'no' };
+  }
+  return { label: 'Live', tone: 'brand' };
 }
 
-const GroupRow = React.memo(function GroupRow({ item, onPress }: GroupRowProps) {
+interface WagerCardProps {
+  item: WagerCardItem;
+  onPress: (item: WagerCardItem) => void;
+}
+
+// The wager card — web card anatomy, ported: avatars + title + status pill
+// on top (sportsbook-crisp), the confidence bar as the signature element,
+// then a warmer human row (a quoted comment when the payload has one, else
+// a player count) below a hairline divider.
+const WagerCard = React.memo(function WagerCard({ item, onPress }: WagerCardProps) {
+  const statusPill = getStatusPill(item);
+  const sideAStats = item.side_stats?.[item.side_a] ?? { count: 0, total: 0 };
+  const sideBStats = item.side_stats?.[item.side_b] ?? { count: 0, total: 0 };
+  const potTotal = sideAStats.total + sideBStats.total;
+  const previewBettors = item.bettor_preview?.slice(0, 3) ?? [];
+  const playerCount = item.total_participants ?? 0;
+
   return (
-    <Card onPress={() => onPress(item)} style={styles.groupCard}>
-      <View style={styles.groupCardInner}>
-        <View style={styles.groupIconContainer}>
-          <Ionicons name="people" size={24} color={colors.brand2} />
-        </View>
-        <View style={styles.groupInfo}>
-          <View style={styles.groupHeader}>
-            <Text style={styles.groupName} numberOfLines={1} ellipsizeMode="tail">
-              {item.name}
-            </Text>
-            {item.is_admin && <Pill label="Admin" tone="brand" size="sm" />}
+    <Card onPress={() => onPress(item)} style={styles.wagerCard}>
+      <View style={styles.topRow}>
+        {previewBettors.length > 0 ? (
+          <View style={styles.avatarCluster}>
+            {previewBettors.map((b, i) => (
+              <Avatar
+                key={`${b.username}-${i}`}
+                username={b.username}
+                size="sm"
+                // Overlap only (no border override) — Avatar's own Amber
+                // ring must stay intact, never overridden by a later style.
+                style={i > 0 ? styles.avatarClusterOverlap : undefined}
+              />
+            ))}
           </View>
-          <View style={styles.groupMeta}>
-            <Text style={styles.groupCode} numberOfLines={1}>{item.id}</Text>
-            <Text style={styles.groupDot}>•</Text>
-            <Text style={styles.memberCount} numberOfLines={1}>
-              {item.member_count ?? 0} member{item.member_count === 1 ? '' : 's'}
-            </Text>
-          </View>
+        ) : null}
+        <Text style={styles.wagerTitle} numberOfLines={2} ellipsizeMode="tail">
+          {item.title}
+        </Text>
+        <Pill label={statusPill.label} tone={statusPill.tone} size="sm" />
+      </View>
+
+      <View style={styles.oddsRow}>
+        <View style={styles.oddsLineWrap}>
+          <Text style={styles.oddsNumber} numberOfLines={1}>
+            <Text style={styles.oddsNumberA}>{sideAStats.count}</Text>
+            <Text style={styles.oddsColon}> : </Text>
+            <Text style={styles.oddsNumberB}>{sideBStats.count}</Text>
+          </Text>
         </View>
-        <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+        <View style={styles.stakedWrap}>
+          <Money amount={potTotal} size="md" tone="neutral" />
+          <Text style={styles.stakedLabel}>staked</Text>
+        </View>
+      </View>
+
+      <SplitBar
+        aValue={sideAStats.total}
+        bValue={sideBStats.total}
+        aLabel={truncate(item.side_a, 18)}
+        bLabel={truncate(item.side_b, 18)}
+      />
+
+      <View style={styles.divider} />
+
+      <View style={styles.humanRow}>
+        {item.latest_comment ? (
+          <Text style={styles.humanRowText} numberOfLines={1} ellipsizeMode="tail">
+            <Text style={styles.humanRowQuote}>&ldquo;{truncate(item.latest_comment.content, 72)}&rdquo;</Text>
+            <Text style={styles.humanRowAuthor}> — {truncate(item.latest_comment.username, 20)}</Text>
+          </Text>
+        ) : (
+          <Text style={styles.humanRowText} numberOfLines={1}>
+            {playerCount} player{playerCount === 1 ? '' : 's'}
+          </Text>
+        )}
       </View>
     </Card>
   );
@@ -70,6 +153,7 @@ export default function HomeScreen() {
   const navigation = useNavigation<any>();
   const { user, isLoading: authLoading } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
+  const [wagers, setWagers] = useState<WagerCardItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<ApiError | null>(null);
@@ -87,11 +171,8 @@ export default function HomeScreen() {
   // load, so we only ever show the full-screen skeleton once.
   const hasLoadedRef = useRef(false);
 
-  const loadGroups = useCallback(async (opts?: { silent?: boolean }) => {
+  const loadBoard = useCallback(async (opts?: { silent?: boolean }) => {
     if (!user) {
-      // Audit finding D8: the old code `return`ed here BEFORE the try block,
-      // so isLoading/isRefreshing were never cleared and the screen spun
-      // forever for a signed-out (or still-resolving) user. Clear both here.
       if (mountedRef.current) {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -104,9 +185,24 @@ export default function HomeScreen() {
     }
 
     try {
-      const data = await apiService.getGroups(user.id);
+      const userGroups = await apiService.getGroups(user.id);
       if (!mountedRef.current) return;
-      setGroups(data);
+      setGroups(userGroups);
+
+      // The board aggregates every group's events client-side (there's no
+      // single "my groups' wagers" endpoint) — one group's events failing to
+      // load shouldn't blank the whole board, so each leg degrades to an
+      // empty list on its own rather than rejecting the Promise.all.
+      const eventLists = await Promise.all(
+        userGroups.map((g) =>
+          apiService.getEvents(g.id).catch((err) => {
+            console.warn(`[Board] events for group ${g.id} failed to load:`, err);
+            return [] as Event[];
+          })
+        )
+      );
+      if (!mountedRef.current) return;
+      setWagers(eventLists.flat() as WagerCardItem[]);
       setLoadError(null);
     } catch (err) {
       if (!mountedRef.current) return;
@@ -118,27 +214,24 @@ export default function HomeScreen() {
     }
   }, [user]);
 
-  // Refetch on every focus (correct UX for a group list — membership/counts
-  // can change from another screen), but keep it cheap: getGroups() opts
-  // into the api layer's 15s SWR cache, so a rapid refocus is served from
-  // cache instantly instead of firing a redundant network call. We only show
-  // the loading skeleton for the very first load; later focuses refresh
-  // silently so the list doesn't flash back to a skeleton every tab switch.
+  // Refetch on every focus — membership, new wagers and bet totals can all
+  // change from another screen. getGroups()/getEvents() both opt into the
+  // api layer's SWR cache, so a rapid refocus is served from cache instead
+  // of firing redundant network calls. We only show the loading skeleton for
+  // the very first load; later focuses refresh silently.
   useFocusEffect(
     useCallback(() => {
       if (authLoading) return;
-      loadGroups({ silent: hasLoadedRef.current });
+      loadBoard({ silent: hasLoadedRef.current });
       hasLoadedRef.current = true;
-    }, [authLoading, loadGroups])
+    }, [authLoading, loadBoard])
   );
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
-    // Without this the SWR cache answers the refetch from memory and the
-    // pull gesture silently returns the same data. See invalidateForRefresh.
-    apiService.invalidateForRefresh('/api/groups');
-    loadGroups({ silent: true });
-  }, [loadGroups]);
+    apiService.invalidateForRefresh('/api/groups', '/api/events');
+    loadBoard({ silent: true });
+  }, [loadBoard]);
 
   const handleCreateGroup = useCallback(async (groupName: string) => {
     if (!user) return;
@@ -162,24 +255,128 @@ export default function HomeScreen() {
     try {
       await apiService.joinGroup(groupCode.toUpperCase(), user.id);
       success();
-      Alert.alert('Success', 'Join request submitted! Waiting for admin approval.');
-      loadGroups({ silent: true });
+      Alert.alert('Request sent', 'Join request submitted — waiting for admin approval.');
+      loadBoard({ silent: true });
     } catch (err) {
       hapticError();
       const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups');
       Alert.alert('Error', apiErr.userMessage);
     }
-  }, [user, loadGroups]);
+  }, [user, loadBoard]);
 
   const handleGroupPress = useCallback((item: Group) => {
     navigation.navigate('GroupDetail' as never, { groupId: item.id } as never);
   }, [navigation]);
 
-  const renderGroupItem = useCallback(({ item }: ListRenderItemInfo<Group>) => (
-    <GroupRow item={item} onPress={handleGroupPress} />
-  ), [handleGroupPress]);
+  const handleWagerPress = useCallback((item: WagerCardItem) => {
+    navigation.navigate('EventDetail' as never, { eventId: item.id } as never);
+  }, [navigation]);
 
-  const keyExtractor = useCallback((item: Group) => item.id, []);
+  const handleStartFirstWager = useCallback(() => {
+    if (groups.length === 1) {
+      navigation.navigate('CreateEvent' as never, { groupId: groups[0].id } as never);
+    }
+  }, [groups, navigation]);
+
+  // Active wagers first (most urgent — soonest to end — leads the board),
+  // then resolved ones (most recently decided first).
+  const sortedWagers = useMemo(() => {
+    const active = wagers
+      .filter((w) => w.status === 'active')
+      .sort((a, b) => a.end_time - b.end_time);
+    const resolved = wagers
+      .filter((w) => w.status !== 'active')
+      .sort((a, b) => (b.resolution?.resolved_at ?? b.end_time) - (a.resolution?.resolved_at ?? a.end_time));
+    return [...active, ...resolved];
+  }, [wagers]);
+
+  const renderWagerCard = useCallback(({ item }: ListRenderItemInfo<WagerCardItem>) => (
+    <WagerCard item={item} onPress={handleWagerPress} />
+  ), [handleWagerPress]);
+
+  const keyExtractor = useCallback((item: WagerCardItem) => item.id, []);
+
+  const listHeaderComponent = (
+    <View>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.welcomeText}>Welcome back</Text>
+          <Text style={styles.titleText}>
+            <Text style={styles.titleWordmark}>Wager</Text>
+            <Text style={[styles.titleWordmark, styles.titleWordmarkAccent]}>Pals</Text>
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => navigation.navigate('Profile' as never)}
+          style={styles.profileButton}
+          accessibilityRole="button"
+          accessibilityLabel="Profile"
+        >
+          <View style={styles.profileAvatar}>
+            <Ionicons name="person" size={20} color={colors.brand2} />
+          </View>
+        </Pressable>
+      </View>
+
+      {/* Group affordances — open a group, create one, or join one with a
+          code. This is everything the old full-screen groups list did,
+          just compacted into a strip so the board can lead above the fold. */}
+      {user ? (
+        <View style={styles.groupStripSection}>
+          <SectionHeader title="Your groups" />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.groupStrip}
+          >
+            {groups.map((g) => (
+              <Pressable
+                key={g.id}
+                onPress={() => handleGroupPress(g)}
+                style={styles.groupChip}
+                accessibilityRole="button"
+                accessibilityLabel={`${g.name}, ${g.member_count ?? 0} members`}
+              >
+                <Avatar username={g.name} size="md" />
+                <Text style={styles.groupChipLabel} numberOfLines={1}>
+                  {g.name}
+                </Text>
+              </Pressable>
+            ))}
+            <Pressable
+              onPress={() => { tapMedium(); setShowCreateModal(true); }}
+              style={styles.groupChip}
+              accessibilityRole="button"
+              accessibilityLabel="Create a group"
+            >
+              <View style={styles.groupChipActionCircle}>
+                <Ionicons name="add" size={20} color={colors.brand} />
+              </View>
+              <Text style={styles.groupChipLabel} numberOfLines={1}>New</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { tapLight(); setShowJoinModal(true); }}
+              style={styles.groupChip}
+              accessibilityRole="button"
+              accessibilityLabel="Join a group with a code"
+            >
+              <View style={styles.groupChipActionCircle}>
+                <Ionicons name="enter-outline" size={20} color={colors.brand} />
+              </View>
+              <Text style={styles.groupChipLabel} numberOfLines={1}>Join</Text>
+            </Pressable>
+          </ScrollView>
+        </View>
+      ) : null}
+
+      {!isLoading && !loadError && groups.length > 0 ? (
+        <View style={styles.boardHeaderRow}>
+          <SectionHeader title="Live wagers" />
+        </View>
+      ) : null}
+    </View>
+  );
 
   const listEmptyComponent = () => {
     if (!user) {
@@ -187,7 +384,7 @@ export default function HomeScreen() {
         <EmptyState
           icon="log-in-outline"
           title="Sign in required"
-          message="Sign in to see the groups you're a part of."
+          message="Sign in to see the wagers your groups are running."
           style={styles.stateFill}
         />
       );
@@ -199,18 +396,32 @@ export default function HomeScreen() {
       return (
         <ErrorState
           message={loadError.userMessage}
-          onRetry={() => loadGroups()}
+          onRetry={() => loadBoard()}
           style={styles.stateFill}
         />
       );
     }
+    if (groups.length === 0) {
+      return (
+        <EmptyState
+          icon="people-outline"
+          title="No groups yet"
+          message="Create a group or join one with a code to get started."
+          actionLabel="Create a group"
+          onAction={() => { tapMedium(); setShowCreateModal(true); }}
+          style={styles.stateFill}
+        />
+      );
+    }
+    // The blank-betting-slip idiom (DESIGN-SPEC.md) — same card shape as a
+    // real wager, dashed border, ghosted odds, product voice.
     return (
       <EmptyState
-        icon="people-outline"
-        title="No groups yet"
-        message="Create a group or join one with a code to get started"
-        actionLabel="Create a group"
-        onAction={() => { tapMedium(); setShowCreateModal(true); }}
+        icon="cash-outline"
+        title="No action yet"
+        message="Start the first bet."
+        actionLabel={groups.length === 1 ? 'Start a wager' : undefined}
+        onAction={groups.length === 1 ? handleStartFirstWager : undefined}
         style={styles.stateFill}
       />
     );
@@ -220,87 +431,29 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.welcomeText}>Welcome back</Text>
-          <Text style={styles.titleText}>
-            <Text style={styles.titleNormal}>Wager</Text>
-            <Text style={styles.titleBold}>Pals</Text>
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Profile' as never)}
-          style={styles.profileButton}
-          activeOpacity={0.7}
-        >
-          <View style={styles.profileAvatar}>
-            <Ionicons name="person" size={20} color={colors.brand2} />
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      {/* Action Cards */}
-      <View style={styles.actionCards}>
-        <TouchableOpacity
-          style={styles.actionCardWrap}
-          onPress={() => { tapMedium(); setShowCreateModal(true); }}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={gradients.brand}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.actionCard}
-          >
-            <View style={styles.actionIconContainer}>
-              <Ionicons name="add" size={28} color={colors.white} />
-            </View>
-            <Text style={styles.actionTitle}>Create Group</Text>
-            <Text style={styles.actionSubtitle}>Start a new betting group</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionCard, styles.actionCardAlt]}
-          onPress={() => { tapMedium(); setShowJoinModal(true); }}
-          activeOpacity={0.8}
-        >
-          <View style={[styles.actionIconContainer, styles.actionIconAlt]}>
-            <Ionicons name="enter-outline" size={24} color={colors.brand2} />
-          </View>
-          <Text style={[styles.actionTitle, styles.actionTitleAlt]}>Join Group</Text>
-          <Text style={[styles.actionSubtitle, styles.actionSubtitleAlt]}>Enter a group code</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Groups List */}
-      <View style={styles.groupsSection}>
-        <Text style={styles.sectionTitle}>Your Groups</Text>
-
-        <FlatList
-          data={groups}
-          renderItem={renderGroupItem}
-          keyExtractor={keyExtractor}
-          contentContainerStyle={[
-            styles.groupsList,
-            { flexGrow: 1, paddingBottom: TAB_BAR_HEIGHT + insets.bottom + spacing.xl },
-          ]}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={listEmptyComponent}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.brand2}
-            />
-          }
-          initialNumToRender={8}
-          windowSize={7}
-          maxToRenderPerBatch={8}
-          removeClippedSubviews
-        />
-      </View>
+      <FlatList
+        data={sortedWagers}
+        renderItem={renderWagerCard}
+        keyExtractor={keyExtractor}
+        ListHeaderComponent={listHeaderComponent}
+        contentContainerStyle={[
+          styles.listContent,
+          { flexGrow: 1, paddingBottom: TAB_BAR_HEIGHT + insets.bottom + spacing.xl },
+        ]}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={listEmptyComponent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.brand2}
+          />
+        }
+        initialNumToRender={6}
+        windowSize={7}
+        maxToRenderPerBatch={6}
+        removeClippedSubviews
+      />
 
       {/* Modals */}
       <TextInputModal
@@ -332,167 +485,169 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 20,
-  },
-  welcomeText: {
-    fontSize: 14,
-    color: colors.textMuted,
-    fontWeight: '400',
-    marginBottom: 2,
-  },
-  titleText: {
-    fontSize: 28,
-  },
-  titleNormal: {
-    fontWeight: '300',
-    color: colors.text,
-  },
-  titleBold: {
-    fontWeight: '700',
-    color: colors.brand2,
-  },
-  profileButton: {
-    padding: 4,
-  },
-  profileAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.brandFill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionCards: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    gap: 12,
-    marginBottom: 24,
-  },
-  actionCardWrap: {
-    flex: 1,
-    borderRadius: radius.lg,
-    ...glow(colors.brand2, 0.45),
-  },
-  actionCard: {
-    flex: 1,
-    borderRadius: radius.lg,
-    padding: 16,
-    minHeight: 44,
-  },
-  actionCardAlt: {
-    backgroundColor: colors.surfaceGlass,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: 16,
-    minHeight: 44,
-  },
-  actionIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: colors.brand3,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  actionIconAlt: {
-    backgroundColor: colors.brandFill,
-  },
-  actionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.white,
-    marginBottom: 4,
-  },
-  actionSubtitle: {
-    fontSize: 12,
-    color: colors.white,
-    opacity: 0.85,
-  },
-  actionTitleAlt: {
-    color: colors.text,
-  },
-  actionSubtitleAlt: {
-    color: colors.textMuted,
-    opacity: 1,
-  },
-  groupsSection: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 16,
-  },
-  groupsList: {
-    paddingBottom: 20,
+  listContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
   },
   stateFill: {
     flex: 1,
   },
-  groupCard: {
-    marginBottom: 12,
-  },
-  groupCardInner: {
+
+  // Header
+  header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
   },
-  groupIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+  welcomeText: {
+    fontFamily: font.sans,
+    fontSize: tokens.fontSize.sm,
+    color: colors.textMuted,
+    marginBottom: 2,
+  },
+  titleText: {
+    fontSize: tokens.fontSize['2xl'],
+  },
+  // Archivo Black only, per DESIGN-SPEC.md's type system — no bold/light
+  // variants of a display font, so "Pals" is set apart with color instead.
+  titleWordmark: {
+    fontFamily: font.display,
+    color: colors.text,
+  },
+  titleWordmarkAccent: {
+    color: tokens.color.emerald,
+  },
+  profileButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandFill,
+    borderWidth: 1,
+    borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
+  },
+
+  // Group strip
+  groupStripSection: {
+    marginBottom: spacing.lg,
+  },
+  groupStrip: {
+    gap: spacing.lg,
+    paddingRight: spacing.md,
+  },
+  groupChip: {
+    alignItems: 'center',
+    width: 64,
+  },
+  groupChipActionCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupChipLabel: {
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.xs,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+
+  boardHeaderRow: {
+    marginBottom: spacing.xs,
+  },
+
+  // Wager card
+  wagerCard: {
+    marginBottom: spacing.md,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  avatarCluster: {
+    flexDirection: 'row',
     flexShrink: 0,
   },
-  groupInfo: {
+  avatarClusterOverlap: {
+    marginLeft: -12,
+  },
+  wagerTitle: {
     flex: 1,
     minWidth: 0,
-  },
-  groupHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-    gap: 8,
-  },
-  groupName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.base,
     color: colors.text,
-    flexShrink: 1,
-    minWidth: 0,
+    lineHeight: tokens.lineHeight.base,
   },
-  groupMeta: {
+  oddsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
   },
-  groupCode: {
-    fontSize: 13,
-    color: colors.textFaint,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  oddsLineWrap: {
     flexShrink: 1,
   },
-  groupDot: {
-    fontSize: 13,
-    color: colors.textFaint,
-    marginHorizontal: 6,
+  oddsNumber: {
+    fontFamily: font.monoMedium,
+    fontSize: tokens.fontSize['3xl'],
   },
-  memberCount: {
-    fontSize: 13,
+  oddsNumberA: {
+    color: tokens.color.emerald,
+  },
+  oddsColon: {
     color: colors.textFaint,
-    flexShrink: 0,
+  },
+  oddsNumberB: {
+    color: tokens.color.crimson,
+  },
+  stakedWrap: {
+    alignItems: 'flex-end',
+  },
+  stakedLabel: {
+    fontFamily: font.sans,
+    fontSize: tokens.fontSize.xs,
+    color: colors.textFaint,
+    marginTop: 2,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  humanRow: {
+    minHeight: 20,
+  },
+  humanRowText: {
+    fontFamily: font.sans,
+    fontSize: tokens.fontSize.sm,
+    color: colors.textMuted,
+  },
+  humanRowQuote: {
+    fontFamily: font.sans,
+    fontStyle: 'italic',
+    color: colors.text,
+  },
+  humanRowAuthor: {
+    fontFamily: font.sansMedium,
+    color: tokens.color.amberInk,
   },
 });

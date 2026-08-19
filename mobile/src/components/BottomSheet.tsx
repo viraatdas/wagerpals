@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, easingBezier, radius, spacing, tokens } from '../theme';
+import { colors, easingBezier, font, radius, spacing, tokens } from '../theme';
 
 export interface BottomSheetProps {
   visible: boolean;
@@ -165,8 +165,8 @@ const styles = StyleSheet.create({
     flex: 1,
     flexShrink: 1,
     minWidth: 0,
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.lg,
-    fontWeight: '700',
     color: colors.text,
   },
   closeButton: {

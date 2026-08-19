@@ -1,14 +1,20 @@
 // Edit username screen
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
 import { validateUsername } from '../utils/helpers';
 import { ApiError, toApiError } from '../utils/errors';
 import * as haptics from '../utils/haptics';
 import { Button, Field, FormScreen, LoadingState } from '../components';
-import { colors, spacing, tokens } from '../theme';
+import { colors, font, spacing, tokens } from '../theme';
+
+// The confirmation lingers just long enough to read before navigating back —
+// same verb chain as UsernameSetupScreen: "Save" -> "Saving…" -> "Username
+// saved."
+const CONFIRMATION_LINGER_MS = 550;
 
 export default function EditUsernameScreen() {
   const navigation = useNavigation<any>();
@@ -17,8 +23,11 @@ export default function EditUsernameScreen() {
   const [currentUsername, setCurrentUsername] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   useEffect(() => {
     loadCurrentUsername();
@@ -53,7 +62,7 @@ export default function EditUsernameScreen() {
   const validation = validateUsername(trimmed);
   const liveError = trimmed.length > 0 && !isUnchanged && !validation.valid ? validation.error || 'Invalid username' : '';
   const displayError = error || liveError;
-  const canSave = !isSaving && !isLoading && trimmed.length > 0 && !isUnchanged && validation.valid;
+  const canSave = !isSaving && !isSaved && !isLoading && trimmed.length > 0 && !isUnchanged && validation.valid;
 
   const handleSubmit = async () => {
     if (isUnchanged) {
@@ -79,7 +88,12 @@ export default function EditUsernameScreen() {
       // loop.
       await apiService.setUsername(trimmed);
       haptics.success();
-      navigation.goBack();
+      if (!mountedRef.current) return;
+      setIsSaved(true);
+      setTimeout(() => {
+        if (mountedRef.current) navigation.goBack();
+      }, CONFIRMATION_LINGER_MS);
+      return;
     } catch (err) {
       const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/users');
       if (apiErr.status === 400 && /taken/i.test(apiErr.userMessage)) {
@@ -89,7 +103,7 @@ export default function EditUsernameScreen() {
         // surface as a raw 500 under concurrent requests for the same name.
         // Don't show the raw error — a generic "try again" is honest and
         // actionable without implying the app is broken.
-        setError('Something went wrong saving that username. Please try again.');
+        setError("That username didn't save — try again.");
       } else {
         setError(apiErr.userMessage);
       }
@@ -110,7 +124,7 @@ export default function EditUsernameScreen() {
     <FormScreen
       footer={
         <Button
-          title="Save changes"
+          title={isSaved ? 'Saved' : isSaving ? 'Saving…' : 'Save'}
           onPress={handleSubmit}
           loading={isSaving}
           disabled={!canSave}
@@ -135,8 +149,14 @@ export default function EditUsernameScreen() {
         showCount
         returnKeyType="done"
         onSubmitEditing={canSave ? handleSubmit : undefined}
-        editable={!isSaving}
+        editable={!isSaving && !isSaved}
       />
+      {isSaved ? (
+        <View style={styles.savedRow}>
+          <Ionicons name="checkmark-circle" size={16} color={tokens.color.win} />
+          <Text style={styles.savedText}>Username saved.</Text>
+        </View>
+      ) : null}
     </FormScreen>
   );
 }
@@ -149,8 +169,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   loadErrorText: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.rose,
     marginBottom: spacing.md,
+  },
+  savedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  savedText: {
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.sm,
+    color: tokens.color.win,
   },
 });

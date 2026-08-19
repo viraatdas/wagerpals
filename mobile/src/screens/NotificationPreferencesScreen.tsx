@@ -27,7 +27,7 @@ import { Button, Card, ErrorState, SectionHeader, Skeleton, Toggle } from '../co
 import apiService from '../services/api';
 import * as haptics from '../utils/haptics';
 import { ApiError, toApiError } from '../utils/errors';
-import { colors, radius, spacing, tokens } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 import type { NotificationCategories, NotificationCategory, NotificationPreferences } from '../types';
 
 type OsPermission = 'granted' | 'denied' | 'undetermined' | null;
@@ -156,10 +156,13 @@ export default function NotificationPreferencesScreen() {
       setSaveError(null);
       const stillPending = pendingPatchRef.current;
       setPrefs(Object.keys(stillPending).length ? applyPatch(updated, stillPending) : updated);
-    } catch (err) {
+    } catch {
       if (!mountedRef.current) return;
-      const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/push/preferences');
-      setSaveError(apiErr.userMessage);
+      // Per DESIGN-SPEC copy voice: a stable, actionable line rather than
+      // relaying whatever the server's ApiError.userMessage says for this
+      // one flow — the user just flipped a switch, so "couldn't save that,
+      // try again" is exactly what they need to know.
+      setSaveError("Couldn't save that — try again.");
       haptics.error();
       // Roll back to the last server-confirmed state, but re-apply anything
       // the user changed *after* this failed patch was sent — those edits
@@ -311,7 +314,7 @@ function SkeletonSection({ rows }: { rows: number }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.bg2,
+    backgroundColor: colors.bg,
   },
   content: {
     padding: spacing.lg,
@@ -344,12 +347,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   bannerTitle: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.sm,
-    fontWeight: '700',
     color: colors.text,
     marginBottom: spacing.xs / 2,
   },
   bannerMessage: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
     lineHeight: tokens.lineHeight.sm,
@@ -380,10 +384,12 @@ const styles = StyleSheet.create({
   },
   errorText: {
     flexShrink: 1,
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.xs,
     color: colors.rose,
   },
   syncingText: {
+    fontFamily: font.sansMedium,
     fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
   },

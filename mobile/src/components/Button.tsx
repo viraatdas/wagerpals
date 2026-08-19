@@ -1,11 +1,13 @@
 // Button — the one tappable-rectangle primitive every screen should reach
 // for instead of rolling its own TouchableOpacity + LinearGradient combo.
 // Four variants map onto the semantic tokens in theme.ts so "danger" always
-// means the same red everywhere, etc.
+// means the same red everywhere, etc. Structured control per DESIGN-SPEC:
+// 8px radius, never a full pill — pill shape is reserved for
+// avatars/reaction chips/status pills, not primary actions.
 import React, { useMemo } from 'react';
 import { Pressable, Text, View, ActivityIndicator, StyleSheet, StyleProp, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing, tokens } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 import * as haptics from '../utils/haptics';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -122,8 +124,9 @@ const VARIANT_STYLES: Record<
   { container: ViewStyle; text: string; textDisabled?: string }
 > = {
   primary: {
+    // Solid Emerald fill, white ("on-emerald") label — the primary CTA.
     container: { backgroundColor: colors.brand, ...tokens.shadow.accent },
-    text: tokens.color.textInverse,
+    text: tokens.color.onEmerald,
   },
   secondary: {
     container: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
@@ -134,14 +137,16 @@ const VARIANT_STYLES: Record<
     text: colors.brand,
   },
   danger: {
-    container: { backgroundColor: colors.roseFill, borderWidth: 1, borderColor: colors.rose },
+    // Crimson fill wash + crimson-ink label (text-safe twin — `colors.rose`).
+    container: { backgroundColor: colors.roseFill, borderWidth: 1, borderColor: tokens.color.crimson },
     text: colors.rose,
   },
 };
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: radius.pill,
+    // Structured control, not a pill — see DESIGN-SPEC.md shape language.
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -170,7 +175,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   label: {
-    fontWeight: '600',
+    fontFamily: font.sansSemiBold,
     flexShrink: 1,
   },
   iconLeft: {

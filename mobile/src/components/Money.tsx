@@ -1,10 +1,13 @@
 // Money — renders a currency amount with consistent formatting and
-// win/loss coloring. Columns of these line up thanks to tabular-nums.
+// win/loss coloring. Every number on the board is IBM Plex Mono (never
+// above weight 500 — see MOBILE-SPEC.md); Plex Mono is monospaced so
+// columns of these line up without needing font-variant-numeric. Emerald
+// for positive, crimson-ink for negative — amber never touches money.
 //
 // TODO(lead): switch to utils/format.formatMoney once available
 import React from 'react';
 import { Text, StyleSheet, StyleProp, TextStyle } from 'react-native';
-import { colors, tokens } from '../theme';
+import { colors, font, tokens } from '../theme';
 
 export type MoneySize = 'sm' | 'md' | 'lg';
 export type MoneyTone = 'auto' | 'neutral';
@@ -55,7 +58,7 @@ export default Money;
 
 const styles = StyleSheet.create({
   text: {
-    fontWeight: '600',
+    fontFamily: font.monoMedium,
     fontVariant: ['tabular-nums'],
   },
 });

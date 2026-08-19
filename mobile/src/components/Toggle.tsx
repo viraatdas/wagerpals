@@ -4,7 +4,7 @@
 // the notification-preferences screen.
 import React from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import { colors, spacing, tokens } from '../theme';
+import { colors, font, spacing, tokens } from '../theme';
 import { tapLight } from '../utils/haptics';
 
 export interface ToggleProps {
@@ -83,11 +83,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   label: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.base,
-    fontWeight: '600',
     color: colors.text,
   },
   description: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     marginTop: spacing.xs / 2,

@@ -20,7 +20,7 @@ import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
 import { ApiError, toApiError } from '../utils/errors';
 import { success, error as hapticError } from '../utils/haptics';
-import { colors, radius, spacing, tokens, inputStyle } from '../theme';
+import { colors, font, radius, spacing, tokens, inputStyle } from '../theme';
 import { Button, ErrorState } from '../components';
 
 type JoinFailureKind = 'not_found' | 'already_member' | 'already_pending' | 'generic';
@@ -47,9 +47,16 @@ export default function JoinGroupScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [joinError, setJoinError] = useState<ApiError | null>(null);
   const [prefilledFromDeepLink, setPrefilledFromDeepLink] = useState(false);
+  // Warm invite framing — the invite-preview shape (name, member_count) that
+  // GET /api/groups?id= already returns to an authenticated non-member (see
+  // CLAUDE.md §8 "Group membership is the read boundary": "the join page can
+  // tell them where they stand"). Best-effort and display-only: it never
+  // gates or replaces the real join call/error handling below.
+  const [preview, setPreview] = useState<{ name: string; memberCount: number } | null>(null);
 
   const lastFailedCodeRef = useRef<string | null>(null);
   const submitWrapperRef = useRef<View>(null);
+  const previewRequestIdRef = useRef(0);
 
   // A deep-linked groupId (wagerpals://groups/join/123456) prefills the
   // code. route.params doesn't change again for this screen's lifetime, so
@@ -78,6 +85,30 @@ export default function JoinGroupScreen() {
     }, 400);
     return () => clearTimeout(timer);
   }, [prefilledFromDeepLink]);
+
+  // Fetch the warm invite preview whenever a full 6-digit code is present.
+  // Best-effort: a 404 (bad code) or any other failure just leaves `preview`
+  // null — the code input's own error state (from the real join attempt)
+  // is what actually tells the user something's wrong.
+  useEffect(() => {
+    if (code.length !== 6) {
+      setPreview(null);
+      return;
+    }
+    const requestId = ++previewRequestIdRef.current;
+    apiService
+      .getGroup(code)
+      .then((group) => {
+        if (previewRequestIdRef.current !== requestId) return;
+        if (group?.name) {
+          setPreview({ name: group.name, memberCount: group.member_count ?? 0 });
+        }
+      })
+      .catch(() => {
+        if (previewRequestIdRef.current !== requestId) return;
+        setPreview(null);
+      });
+  }, [code]);
 
   const runJoin = useCallback(
     async (codeOverride?: string) => {
@@ -189,6 +220,19 @@ export default function JoinGroupScreen() {
             accessibilityLabel="6-digit group code"
           />
 
+          {preview && !errorPresentation ? (
+            <View style={styles.previewCard}>
+              <Text style={styles.previewName} numberOfLines={1} ellipsizeMode="tail">
+                {preview.name}
+              </Text>
+              <Text style={styles.previewCount}>
+                {preview.memberCount > 0
+                  ? `${preview.memberCount} friend${preview.memberCount === 1 ? ' is' : 's are'} already wagering here`
+                  : 'Be the first to place a bet here'}
+              </Text>
+            </View>
+          ) : null}
+
           {errorPresentation ? (
             <ErrorState
               compact
@@ -232,18 +276,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    fontSize: tokens.fontSize['3xl'],
-    fontWeight: '600',
+    fontFamily: font.display,
+    fontSize: tokens.fontSize.xl,
     color: colors.text,
     marginBottom: spacing.sm,
   },
   subtitle: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.base,
     color: colors.textMuted,
     marginBottom: spacing.xxl,
   },
   input: {
     ...inputStyle,
+    fontFamily: font.monoMedium,
     height: 60,
     fontSize: tokens.fontSize['2xl'],
     textAlign: 'center',
@@ -254,12 +300,33 @@ const styles = StyleSheet.create({
   inputError: {
     borderColor: colors.rose,
   },
+  previewCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    alignItems: 'center',
+  },
+  previewName: {
+    fontFamily: font.sansSemiBold,
+    fontSize: tokens.fontSize.base,
+    color: colors.text,
+    marginBottom: spacing.xs / 2,
+  },
+  previewCount: {
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.sm,
+    color: colors.brand2,
+  },
   errorBlock: {
     marginBottom: spacing.lg,
     backgroundColor: colors.bg2,
     borderRadius: radius.lg,
   },
   note: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     textAlign: 'center',

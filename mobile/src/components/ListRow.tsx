@@ -5,7 +5,7 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, StyleProp, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, tokens } from '../theme';
+import { colors, font, spacing, tokens } from '../theme';
 import { tapLight } from '../utils/haptics';
 
 export interface ListRowProps {
@@ -102,14 +102,15 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   title: {
+    fontFamily: font.sansMedium,
     fontSize: tokens.fontSize.base,
     color: colors.text,
-    fontWeight: '500',
   },
   destructiveText: {
     color: colors.rose,
   },
   subtitle: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     marginTop: 2,

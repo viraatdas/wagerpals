@@ -3,7 +3,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import type { RouteProp } from '@react-navigation/native';
-import { colors, radius, spacing, tokens } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
@@ -111,7 +111,10 @@ function validateForm(input: {
 // the server's own message (via ApiError.userMessage) for anything we don't
 // have a more specific story for.
 function describeCreateEventError(err: ApiError): string {
-  if (err.status === 403) {
+  // A cash-disabled-for-this-group rejection can also come back as a 403 —
+  // don't let the generic membership copy below swallow it. Fall through to
+  // the server's own (product-voice) message verbatim in that case.
+  if (err.status === 403 && !/cash/i.test(err.message)) {
     return "You're not an active member of that group, so you can't create events there.";
   }
   if (err.status === 400 && /subject/i.test(err.message)) {
@@ -302,6 +305,22 @@ export default function CreateEventFromInviteScreen() {
 
   const subjectUsername = subjectCandidates.find((u) => u.id === subjectUserId)?.username;
 
+  // Group-level cash enablement (a parallel change adds `cash_enabled` to
+  // GET /api/groups; POST /api/events now rejects payment_type: 'cash' for a
+  // group where it's false). The shared Group type doesn't declare the field
+  // yet, so it's read defensively off the raw response — a missing field
+  // (older cached payload, or no group selected yet) is treated as disabled.
+  const cashEnabled = (selectedGroup as any)?.cash_enabled ?? false;
+
+  // Switching to a group without cash enabled falls back to the free/points
+  // path gracefully instead of submitting a request the server will reject.
+  useEffect(() => {
+    if (!cashEnabled && paymentType === 'cash') {
+      setPaymentType('none');
+      setStakeAmount('');
+    }
+  }, [cashEnabled, paymentType]);
+
   const handleStartFromScratch = () => {
     tapLight();
     setShowForm(true);
@@ -464,8 +483,14 @@ export default function CreateEventFromInviteScreen() {
           returnKeyType="next"
         />
 
+        {/* Side A/B are visually pre-bound to Emerald/Crimson from the start
+            — the same convention the bet form, side cards and confidence
+            bar use everywhere else once the wager exists. */}
+        <View style={styles.sideLabelRow}>
+          <View style={[styles.sideDot, { backgroundColor: tokens.color.emerald }]} />
+          <Text style={styles.sideLabelText}>Side A</Text>
+        </View>
         <Field
-          label="Side A"
           value={sideA}
           onChangeText={(t) => {
             setSideA(t);
@@ -479,8 +504,11 @@ export default function CreateEventFromInviteScreen() {
           returnKeyType="next"
         />
 
+        <View style={styles.sideLabelRow}>
+          <View style={[styles.sideDot, { backgroundColor: tokens.color.crimson }]} />
+          <Text style={styles.sideLabelText}>Side B</Text>
+        </View>
         <Field
-          label="Side B"
           value={sideB}
           onChangeText={(t) => {
             setSideB(t);
@@ -560,27 +588,31 @@ export default function CreateEventFromInviteScreen() {
           error={formErrors.endTime}
         />
 
-        <Text style={styles.sectionLabel}>Payment</Text>
-        <SegmentedControl options={PAYMENT_OPTIONS} value={paymentType} onChange={setPaymentType} />
-        {paymentType === 'cash' ? (
-          <View style={styles.stakeWrap}>
-            <AmountInput
-              label="Stake Amount"
-              value={stakeAmount}
-              onChangeText={(v) => {
-                setStakeAmount(v);
-                if (formErrors.stake) setFormErrors((prev) => ({ ...prev, stake: undefined }));
-              }}
-              max={MAX_STAKE_AMOUNT}
-              error={formErrors.stake}
-            />
-            <View style={styles.infoRow}>
-              <Ionicons name="lock-closed-outline" size={14} color={colors.textFaint} />
-              <Text style={styles.infoText}>
-                Each participant's stake is escrowed from their wallet until the event resolves.
-              </Text>
-            </View>
-          </View>
+        {selectedGroup && cashEnabled ? (
+          <>
+            <Text style={styles.sectionLabel}>Payment</Text>
+            <SegmentedControl options={PAYMENT_OPTIONS} value={paymentType} onChange={setPaymentType} />
+            {paymentType === 'cash' ? (
+              <View style={styles.stakeWrap}>
+                <AmountInput
+                  label="Stake Amount"
+                  value={stakeAmount}
+                  onChangeText={(v) => {
+                    setStakeAmount(v);
+                    if (formErrors.stake) setFormErrors((prev) => ({ ...prev, stake: undefined }));
+                  }}
+                  max={MAX_STAKE_AMOUNT}
+                  error={formErrors.stake}
+                />
+                <View style={styles.infoRow}>
+                  <Ionicons name="lock-closed-outline" size={14} color={colors.textFaint} />
+                  <Text style={styles.infoText}>
+                    Each participant's stake is escrowed from their wallet until the event resolves.
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </>
         ) : null}
 
         {selectedGroup ? (
@@ -693,6 +725,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     marginBottom: spacing.sm,
+  },
+  sideLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  sideDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  sideLabelText: {
+    fontFamily: font.sansSemiBold,
+    fontSize: tokens.fontSize.sm,
+    color: colors.textMuted,
   },
 
   // Invalid-invite state

@@ -5,7 +5,7 @@
 // parseable — the caller never has to defend against a malformed string.
 import React from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, radius, spacing, tokens } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 import { tapLight } from '../utils/haptics';
 
 export interface AmountInputProps {
@@ -137,8 +137,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   label: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.sm,
-    fontWeight: '600',
     color: colors.textMuted,
     marginBottom: spacing.sm,
   },
@@ -148,27 +148,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     minHeight: 64,
     paddingHorizontal: spacing.lg,
   },
   inputWrapError: {
-    borderColor: colors.rose,
+    borderColor: tokens.color.crimson,
   },
   inputWrapDisabled: {
     opacity: 0.55,
   },
   prefix: {
+    fontFamily: font.monoMedium,
     fontSize: tokens.fontSize['3xl'],
-    fontWeight: '700',
     color: colors.textMuted,
     marginRight: spacing.xs,
   },
   input: {
     flex: 1,
     minWidth: 0,
+    fontFamily: font.monoMedium,
     fontSize: tokens.fontSize['3xl'],
-    fontWeight: '700',
     color: colors.text,
     fontVariant: ['tabular-nums'],
     paddingVertical: spacing.sm,
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     minWidth: 44,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     backgroundColor: colors.bg2,
     borderWidth: 1,
     borderColor: colors.border,
@@ -195,8 +195,8 @@ const styles = StyleSheet.create({
     borderColor: colors.brand2,
   },
   chipText: {
+    fontFamily: font.monoMedium,
     fontSize: tokens.fontSize.sm,
-    fontWeight: '700',
     color: colors.text,
   },
   footerRow: {
@@ -204,10 +204,12 @@ const styles = StyleSheet.create({
     minHeight: 16,
   },
   errorText: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.xs,
     color: colors.rose,
   },
   availableText: {
+    fontFamily: font.mono,
     fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
   },

@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing, tokens } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 import { selectionTick, tapLight } from '../utils/haptics';
 import { BottomSheet } from './BottomSheet';
 
@@ -181,8 +181,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   label: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.sm,
-    fontWeight: '600',
     color: colors.textMuted,
     marginBottom: spacing.sm,
   },
@@ -208,33 +208,40 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   placeholder: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.base,
     color: colors.textFaint,
   },
   selectedText: {
     flexShrink: 1,
     minWidth: 0,
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.base,
-    fontWeight: '600',
     color: colors.text,
   },
+  // Person picker — Amber, the people accent (DESIGN-SPEC.md color rule),
+  // matching Avatar's ring/tint treatment.
   avatar: {
     width: 28,
     height: 28,
     borderRadius: radius.pill,
-    backgroundColor: colors.brandFill,
+    backgroundColor: tokens.color.amberFill,
+    borderWidth: 1.5,
+    borderColor: tokens.color.amber,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarClear: {
     backgroundColor: colors.bg2,
+    borderColor: colors.border,
   },
   avatarText: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.xs,
-    fontWeight: '700',
-    color: colors.brand2,
+    color: tokens.color.amberInk,
   },
   hint: {
+    fontFamily: font.sans,
     marginTop: spacing.xs,
     fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
@@ -254,6 +261,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     minWidth: 0,
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.base,
     color: colors.text,
     paddingVertical: spacing.sm,
@@ -275,6 +283,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexShrink: 1,
     minWidth: 0,
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.base,
     color: colors.text,
   },
@@ -284,6 +293,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   emptyText: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     textAlign: 'center',

@@ -25,7 +25,7 @@ import { Money } from '../components/Money';
 import { SplitBar } from '../components/ProgressBar';
 import { formatCountdown, formatMoney } from '../utils/format';
 import { ApiError, toApiError } from '../utils/errors';
-import { colors, radius, spacing } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 
 type FilterType = 'all' | 'active' | 'resolved';
 
@@ -183,13 +183,13 @@ export default function ExploreScreen() {
     return (
       <EmptyState
         icon="search-outline"
-        title="No events found"
+        title={search.trim() || filter !== 'all' ? 'No matches' : 'No action yet'}
         message={
           search.trim()
-            ? `No events match "${search.trim()}"`
+            ? `Nothing matches "${search.trim()}".`
             : filter !== 'all'
-            ? `No ${filter} events at the moment`
-            : 'Create an event in one of your groups'
+            ? `No ${filter} events right now.`
+            : 'Create an event in one of your groups to start the first bet.'
         }
         style={styles.stateFill}
       />
@@ -282,13 +282,14 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontFamily: font.display,
+    fontSize: tokens.fontSize.xl,
     color: colors.text,
     marginBottom: 4,
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontFamily: font.sans,
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
   },
   searchContainer: {
@@ -299,7 +300,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 44,
     borderRadius: radius.md,
-    backgroundColor: colors.surfaceGlass,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -308,7 +309,8 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    fontFamily: font.sans,
+    fontSize: tokens.fontSize.sm,
     color: colors.text,
     height: 44,
   },
@@ -324,7 +326,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: radius.pill,
-    backgroundColor: colors.surfaceGlass,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     gap: 6,
@@ -335,25 +337,25 @@ const styles = StyleSheet.create({
     borderColor: colors.brand2,
   },
   filterText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
   },
   filterTextActive: {
     color: colors.brand2,
   },
   filterCount: {
-    backgroundColor: colors.surfaceGlassStrong,
+    backgroundColor: colors.bg2,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 10,
+    borderRadius: radius.pill,
   },
   filterCountActive: {
     backgroundColor: colors.brandFill,
   },
   filterCountText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontFamily: font.monoMedium,
+    fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
   },
   filterCountTextActive: {
@@ -369,8 +371,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   eventTitle: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontFamily: font.sansSemiBold,
+    fontSize: tokens.fontSize.lg,
     color: colors.text,
     lineHeight: 22,
     marginBottom: 10,
@@ -390,7 +392,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   potLabel: {
-    fontSize: 13,
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
   },
 });

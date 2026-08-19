@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, easingBezier, inputStyle, radius, spacing, tokens } from '../theme';
+import { colors, easingBezier, font, inputStyle, radius, spacing, tokens } from '../theme';
 
 export interface FieldProps {
   label?: string;
@@ -149,8 +149,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   label: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.sm,
-    fontWeight: '600',
     color: colors.textMuted,
     marginBottom: spacing.sm,
   },
@@ -179,6 +179,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     minWidth: 0,
+    fontFamily: font.sans,
     fontSize: inputStyle.fontSize,
     color: inputStyle.color,
     paddingVertical: spacing.sm,
@@ -208,14 +209,17 @@ const styles = StyleSheet.create({
   },
   errorText: {
     flexShrink: 1,
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.xs,
     color: colors.rose,
   },
   hintText: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
   },
   countText: {
+    fontFamily: font.mono,
     fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
     marginLeft: spacing.sm,

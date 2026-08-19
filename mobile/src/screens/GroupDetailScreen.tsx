@@ -25,7 +25,7 @@ import { Event, EventWithStats, Group, GroupMember, WalletSummary } from '../typ
 import { ApiError, toApiError } from '../utils/errors';
 import { formatCountdown } from '../utils/format';
 import { tapLight } from '../utils/haptics';
-import { colors, gradients, radius, spacing, tokens, glow } from '../theme';
+import { colors, font, gradients, radius, spacing, tokens, glow } from '../theme';
 import {
   Button,
   Card,
@@ -362,7 +362,9 @@ export default function GroupDetailScreen() {
               </Pressable>
 
               <View style={styles.metaRow}>
-                <Text style={styles.memberCount}>{members.length} members</Text>
+                <Text style={styles.memberCount}>
+                  <Text style={styles.memberCountNumber}>{members.length}</Text> members
+                </Text>
                 {isPaidGroup && group?.resolver?.username ? (
                   <>
                     <Text style={styles.dot}>•</Text>
@@ -412,7 +414,7 @@ export default function GroupDetailScreen() {
           events.length === 0 ? (
             <EmptyState
               icon="calendar-outline"
-              title="No events yet"
+              title="No action yet"
               message="Create the first event to get this group betting."
               actionLabel="Create the first bet"
               onAction={handleCreateEvent}
@@ -465,18 +467,20 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   pendingTitle: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.xl,
-    fontWeight: '600',
     color: colors.text,
     marginBottom: spacing.sm,
   },
   pendingText: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.base,
     color: colors.textMuted,
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
   pendingSubtext: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textFaint,
     textAlign: 'center',
@@ -491,8 +495,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   groupName: {
-    fontSize: tokens.fontSize['2xl'],
-    fontWeight: '700',
+    fontFamily: font.display,
+    fontSize: tokens.fontSize.xl,
     color: colors.text,
     marginBottom: spacing.sm,
   },
@@ -506,6 +510,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   groupCode: {
+    fontFamily: font.monoMedium,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     fontVariant: ['tabular-nums'],
@@ -514,13 +519,14 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
   },
   copyLabel: {
+    fontFamily: font.sansMedium,
     fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
     marginLeft: spacing.xs,
   },
   copyLabelDone: {
+    fontFamily: font.sansSemiBold,
     color: colors.mint,
-    fontWeight: '600',
   },
   metaRow: {
     flexDirection: 'row',
@@ -529,9 +535,14 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   memberCount: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     flexShrink: 1,
+  },
+  memberCountNumber: {
+    fontFamily: font.monoMedium,
+    color: colors.text,
   },
   dot: {
     marginHorizontal: spacing.sm,
@@ -552,7 +563,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     marginTop: spacing.lg,
     padding: spacing.lg,
-    backgroundColor: colors.surfaceGlass,
+    backgroundColor: colors.surface,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -568,12 +579,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   walletLabel: {
+    fontFamily: font.sansMedium,
     fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
     marginBottom: spacing.xs,
   },
+  // Structured control — 8px radius, not a full pill (DESIGN-SPEC shape
+  // language: pills are for people/state, never primary actions).
   depositButtonWrap: {
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     ...glow(colors.brand),
   },
   depositButton: {
@@ -582,11 +596,11 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 44,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
   },
   depositButtonText: {
+    fontFamily: font.sansSemiBold,
     color: colors.white,
-    fontWeight: '600',
   },
   actionsRow: {
     flexDirection: 'row',
@@ -600,16 +614,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 44,
     paddingHorizontal: spacing.lg,
-    backgroundColor: colors.surfaceGlass,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     gap: spacing.xs,
   },
   actionButtonText: {
+    fontFamily: font.sansSemiBold,
     color: colors.brand,
     fontSize: tokens.fontSize.sm,
-    fontWeight: '600',
   },
   sectionHeaderWrap: {
     paddingHorizontal: spacing.lg,
@@ -628,8 +642,8 @@ const styles = StyleSheet.create({
   },
   eventTitle: {
     flex: 1,
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.base,
-    fontWeight: '600',
     color: colors.text,
   },
   eventFooterRow: {

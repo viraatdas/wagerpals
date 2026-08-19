@@ -1,11 +1,11 @@
-// Avatar — circular initials badge. The background color is derived
-// deterministically from the username (a stable hash into a fixed palette
-// of theme tokens) so the same person always gets the same color across
-// screens/sessions without us persisting anything.
+// Avatar — the "human" primitive. Every avatar carries an Amber ring (the
+// people accent — never used for money) around an Amber-tinted fill, with a
+// single-letter initial. No per-person hue palette anymore: Amber is THE
+// avatar color, consistently, everywhere — see DESIGN-SPEC.md's color rule
+// ("if it describes a person, it is Amber").
 import React from 'react';
 import { View, Text, StyleSheet, StyleProp, ViewStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { colors, tokens } from '../theme';
+import { font, tokens } from '../theme';
 
 export type AvatarSize = 'sm' | 'md' | 'lg';
 
@@ -15,61 +15,41 @@ export interface AvatarProps {
   style?: StyleProp<ViewStyle>;
 }
 
-// Fixed palette of theme tokens only — no ad-hoc hex here.
-const PALETTE = [colors.brand, colors.mint, colors.violet, colors.cyan, colors.amber, colors.rose] as const;
-
 const SIZE_PX: Record<AvatarSize, number> = { sm: 28, md: 40, lg: 56 };
 const SIZE_FONT: Record<AvatarSize, number> = { sm: tokens.fontSize.xs, md: tokens.fontSize.sm, lg: tokens.fontSize.lg };
+const SIZE_RING: Record<AvatarSize, number> = { sm: 1.5, md: 2, lg: 2 };
 
-function hashString(input: string): number {
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    hash = (hash << 5) - hash + input.charCodeAt(i);
-    hash |= 0; // force 32-bit int
-  }
-  return Math.abs(hash);
-}
-
-function getInitials(username: string): string {
-  const trimmed = username.trim();
-  if (!trimmed) return '';
-  // Split on whitespace so "Jane Doe" -> "JD"; a single token username
-  // (the common case here, e.g. "@jane_doe") -> first two chars.
-  const parts = trimmed.split(/\s+/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-  return trimmed.slice(0, 2).toUpperCase();
+/** Single-letter initial — the fallback glyph is always one character,
+ * whether or not a real username is available ("?" when there isn't one),
+ * so every avatar reads the same shape at a glance. */
+function getInitial(username?: string | null): string {
+  const trimmed = username?.trim();
+  return trimmed ? trimmed.charAt(0).toUpperCase() : '?';
 }
 
 export const Avatar = React.memo(function Avatar({ username, size = 'md', style }: AvatarProps) {
   const px = SIZE_PX[size];
   const hasName = !!username && username.trim().length > 0;
-
-  if (!hasName) {
-    return (
-      <View
-        style={[
-          styles.base,
-          { width: px, height: px, borderRadius: px / 2, backgroundColor: colors.bg2 },
-          style,
-        ]}
-      >
-        <Ionicons name="person" size={px * 0.5} color={colors.textFaint} />
-      </View>
-    );
-  }
-
-  const bg = PALETTE[hashString(username!.trim().toLowerCase()) % PALETTE.length];
-  const initials = getInitials(username!);
+  const initial = getInitial(username);
 
   return (
     <View
-      style={[styles.base, { width: px, height: px, borderRadius: px / 2, backgroundColor: bg }, style]}
-      accessibilityLabel={`${username} avatar`}
+      style={[
+        styles.base,
+        {
+          width: px,
+          height: px,
+          borderRadius: px / 2,
+          backgroundColor: tokens.color.amberFill,
+          borderWidth: SIZE_RING[size],
+          borderColor: tokens.color.amber,
+        },
+        style,
+      ]}
+      accessibilityLabel={hasName ? `${username} avatar` : 'Avatar'}
     >
       <Text style={[styles.initials, { fontSize: SIZE_FONT[size] }]} numberOfLines={1}>
-        {initials}
+        {initial}
       </Text>
     </View>
   );
@@ -84,7 +64,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   initials: {
-    color: tokens.color.textInverse,
-    fontWeight: '700',
+    color: tokens.color.amberInk,
+    fontFamily: font.sansSemiBold,
   },
 });

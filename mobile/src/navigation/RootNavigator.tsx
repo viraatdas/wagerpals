@@ -6,7 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Linking from 'expo-linking';
 
 import { RootStackParamList } from '../types/navigation';
-import { colors } from '../theme';
+import { colors, font } from '../theme';
 import authService from '../services/auth';
 import apiService from '../services/api';
 import { AuthUser } from '../types';
@@ -169,7 +169,9 @@ export default function RootNavigator() {
         screenOptions={{
           headerShown: false,
           headerStyle: { backgroundColor: colors.bg },
-          headerTitleStyle: { color: colors.text },
+          // Header titles are Jakarta semibold — Archivo Black is reserved
+          // for screens that render their own big title (DESIGN-SPEC.md).
+          headerTitleStyle: { color: colors.text, fontFamily: font.sansSemiBold },
           contentStyle: { backgroundColor: colors.bg2 },
           animation: 'slide_from_right',
         }}

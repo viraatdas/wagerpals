@@ -31,7 +31,7 @@ import {
   set,
   startOfDay,
 } from 'date-fns';
-import { colors, easingBezier, radius, spacing, tokens } from '../theme';
+import { colors, easingBezier, font, radius, spacing, tokens } from '../theme';
 import { selectionTick, tapLight } from '../utils/haptics';
 
 export interface DateTimeFieldProps {
@@ -359,8 +359,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   label: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.sm,
-    fontWeight: '600',
     color: colors.textMuted,
     marginBottom: spacing.sm,
   },
@@ -386,12 +386,12 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     minWidth: 0,
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.base,
-    fontWeight: '600',
     color: colors.text,
   },
   rowTextPlaceholder: {
-    fontWeight: '400',
+    fontFamily: font.sans,
     color: colors.textFaint,
   },
   errorRow: {
@@ -399,6 +399,7 @@ const styles = StyleSheet.create({
     minHeight: 16,
   },
   errorText: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.xs,
     color: colors.rose,
   },
@@ -417,7 +418,7 @@ const styles = StyleSheet.create({
   chip: {
     minHeight: 44,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.border,
@@ -432,8 +433,8 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   chipText: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.sm,
-    fontWeight: '600',
     color: colors.text,
   },
   chipTextDisabled: {
@@ -465,14 +466,14 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   dayCardWeekday: {
+    fontFamily: font.monoMedium,
     fontSize: tokens.fontSize.xs,
-    fontWeight: '600',
     color: colors.textMuted,
     textTransform: 'uppercase',
   },
   dayCardNumber: {
+    fontFamily: font.monoMedium,
     fontSize: tokens.fontSize.lg,
-    fontWeight: '700',
     color: colors.text,
   },
   dayCardTextSelected: {
@@ -505,12 +506,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   wheelItemText: {
+    fontFamily: font.mono,
     fontSize: tokens.fontSize.lg,
     color: colors.textFaint,
     fontVariant: ['tabular-nums'],
   },
   wheelItemTextSelected: {
+    fontFamily: font.monoMedium,
     color: colors.text,
-    fontWeight: '700',
   },
 });

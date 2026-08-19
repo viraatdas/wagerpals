@@ -20,7 +20,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRoute, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import type { RouteProp } from '@react-navigation/native';
-import { colors, radius, spacing, tokens } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
@@ -79,12 +79,36 @@ function useCountdown(endTime: number | undefined) {
 }
 
 // The escrow chip, mirroring components/Ledger.tsx's HOLD_CHIPS so web and
-// mobile never disagree about what a stake is doing.
-const HOLD_PILLS: Record<EscrowHoldStatus, { label: string; tone: PillTone }> = {
-  held: { label: 'Escrowed', tone: 'pending' },
-  released: { label: 'Settled', tone: 'neutral' },
-  refunded: { label: 'Refunded', tone: 'yes' },
+// mobile never disagree about what a stake is doing. Data source, gating and
+// labels are the invariant (CLAUDE.md §8) — only the LOOK below is styled to
+// match: escrow status is money STATE, not a person, so — like the web
+// version — it stays out of the amber "people" palette and out of the fully
+// round Pill shape (reserved for people/status), using the structured 8px
+// chip radius instead. Quiet neutral tones for held/released; a small
+// emerald tint only once the money is actually back with its owner.
+const HOLD_PILLS: Record<EscrowHoldStatus, { label: string }> = {
+  held: { label: 'Escrowed' },
+  released: { label: 'Settled' },
+  refunded: { label: 'Refunded' },
 };
+
+const HOLD_CHIP_TONE: Record<EscrowHoldStatus, { bg: string; border: string; fg: string }> = {
+  held: { bg: colors.surface, border: colors.border, fg: colors.textFaint },
+  released: { bg: colors.surface, border: colors.border, fg: colors.textMuted },
+  refunded: { bg: tokens.color.emeraldFill, border: tokens.color.emerald, fg: tokens.color.emerald },
+};
+
+function EscrowChip({ status, accessibilityLabel }: { status: EscrowHoldStatus; accessibilityLabel: string }) {
+  const tone = HOLD_CHIP_TONE[status];
+  return (
+    <View
+      accessibilityLabel={accessibilityLabel}
+      style={[styles.escrowChip, { backgroundColor: tone.bg, borderColor: tone.border }]}
+    >
+      <Text style={[styles.escrowChipText, { color: tone.fg }]}>{HOLD_PILLS[status].label}</Text>
+    </View>
+  );
+}
 
 /** Chips render on everyone's bets, so the label has to name whose stake it is. */
 function holdPillLabel(status: EscrowHoldStatus, isOwnBet: boolean, username: string): string {
@@ -101,6 +125,7 @@ function holdPillLabel(status: EscrowHoldStatus, isOwnBet: boolean, username: st
 
 function BetRow({
   bet,
+  sideAName,
   holdStatus,
   isOwnBet,
   canDelete,
@@ -108,6 +133,8 @@ function BetRow({
   onDelete,
 }: {
   bet: Bet;
+  /** event.side_a — which side this bet's amount should read Emerald vs Crimson. */
+  sideAName: string;
   /**
    * Live escrow status of THIS bet, from the event payload's `escrow_by_bet`.
    * Undefined for free events and for any bet with no hold. Deliberately not
@@ -120,7 +147,10 @@ function BetRow({
   isDeleting: boolean;
   onDelete: (bet: Bet) => void;
 }) {
-  const holdPill = holdStatus ? HOLD_PILLS[holdStatus] : null;
+  // A stake is a number, not a person — Emerald for side A, Crimson-ink (the
+  // text-safe twin) for side B, same convention as the bet-form segmented
+  // control and the confidence bar.
+  const stakeColor = bet.side === sideAName ? tokens.color.emerald : tokens.color.crimsonInk;
   return (
     <View style={styles.rowItem}>
       <Avatar username={bet.username} size="sm" />
@@ -128,7 +158,7 @@ function BetRow({
         <Text style={styles.rowText} numberOfLines={3}>
           <Text style={styles.rowBold}>{truncate(bet.username, 20)}</Text>
           {' bet '}
-          <Money amount={bet.amount} size="sm" tone="neutral" />
+          <Money amount={bet.amount} size="sm" tone="neutral" style={{ color: stakeColor }} />
           {' on '}
           <Text style={styles.rowSide}>{truncate(bet.side, 24)}</Text>
         </Text>
@@ -139,10 +169,8 @@ function BetRow({
         ) : null}
         <View style={styles.rowMetaRow}>
           {bet.is_late ? <Pill label="Late" tone="pending" size="sm" /> : null}
-          {holdPill && holdStatus ? (
-            <View accessibilityLabel={holdPillLabel(holdStatus, isOwnBet, bet.username)}>
-              <Pill label={holdPill.label} tone={holdPill.tone} size="sm" />
-            </View>
+          {holdStatus ? (
+            <EscrowChip status={holdStatus} accessibilityLabel={holdPillLabel(holdStatus, isOwnBet, bet.username)} />
           ) : null}
           <Text style={styles.rowTime}>{formatRelativeTime(bet.timestamp)}</Text>
         </View>
@@ -760,7 +788,7 @@ export default function EventDetailScreen() {
               <Text style={styles.sideName} numberOfLines={2}>
                 {truncate(event.side_a, 24)}
               </Text>
-              <Money amount={sideAStats.total} tone="neutral" size="lg" />
+              <Money amount={sideAStats.total} tone="neutral" size="lg" style={styles.sideAMoney} />
               <Text style={styles.sideCount}>
                 {sideAStats.count} bet{sideAStats.count === 1 ? '' : 's'}
               </Text>
@@ -771,19 +799,23 @@ export default function EventDetailScreen() {
               <Text style={styles.sideName} numberOfLines={2}>
                 {truncate(event.side_b, 24)}
               </Text>
-              <Money amount={sideBStats.total} tone="neutral" size="lg" />
+              <Money amount={sideBStats.total} tone="neutral" size="lg" style={styles.sideBMoney} />
               <Text style={styles.sideCount}>
                 {sideBStats.count} bet{sideBStats.count === 1 ? '' : 's'}
               </Text>
               {winningSide === event.side_b ? <Pill label="Winner" tone="yes" icon="trophy" size="sm" /> : null}
             </Card>
           </View>
+          {/* The confidence bar — WagerPals' signature element. Full-size
+              treatment here (14px vs the 8px card version) since this is the
+              detail view; per-side context comes from aLabel/bLabel. */}
           <View style={styles.splitBarWrap}>
             <SplitBar
               aValue={sideAStats.total}
               bValue={sideBStats.total}
               aLabel={truncate(event.side_a, 16)}
               bLabel={truncate(event.side_b, 16)}
+              height={14}
             />
           </View>
 
@@ -892,6 +924,7 @@ export default function EventDetailScreen() {
                 <BetRow
                   key={bet.id}
                   bet={bet}
+                  sideAName={event.side_a}
                   // Every player's chip, not just the viewer's — see
                   // scripts/verify-escrow-chips.ts.
                   holdStatus={event.escrow_by_bet?.[bet.id]}
@@ -948,9 +981,9 @@ export default function EventDetailScreen() {
               ]}
             >
               {isPostingComment ? (
-                <ActivityIndicator color={colors.white} size="small" />
+                <ActivityIndicator color={tokens.color.amberInk} size="small" />
               ) : (
-                <Ionicons name="send" size={18} color={colors.white} />
+                <Ionicons name="send" size={18} color={tokens.color.amberInk} />
               )}
             </Pressable>
           </View>
@@ -1168,6 +1201,15 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
   },
+  // A stake is a number, not a person — Emerald for side A, Crimson for
+  // side B, the same convention the bet-form SegmentedControl and the
+  // confidence bar already use.
+  sideAMoney: {
+    color: tokens.color.emerald,
+  },
+  sideBMoney: {
+    color: tokens.color.crimson,
+  },
   sideCount: {
     fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
@@ -1284,6 +1326,21 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
   },
+  // Escrow status chip — structured 8px radius (NOT the fully-rounded Pill
+  // shape), matching components/Ledger.tsx's HOLD_CHIPS exactly: this
+  // describes a state a number is in, not a person or a page-level status.
+  escrowChip: {
+    borderRadius: tokens.radius.chip,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  escrowChipText: {
+    fontFamily: font.monoMedium,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   rowDeleteButton: {
     minWidth: 44,
     minHeight: 44,
@@ -1303,7 +1360,10 @@ const styles = StyleSheet.create({
     lineHeight: tokens.lineHeight.sm,
   },
 
-  // Comment composer footer
+  // Comment composer footer — the "human" zone (DESIGN-SPEC's friend-chaos
+  // half): warm Amber accent on the send affordance, same accent the Avatar
+  // ring already carries through this section, instead of the money-toned
+  // Emerald used everywhere else in this screen.
   commentFooter: {
     backgroundColor: colors.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -1335,8 +1395,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.brand,
-    ...tokens.shadow.accent,
+    // Amber fill + amber-ink icon — matches Avatar's ring/fill pairing so
+    // the "post a comment" action reads as part of the human zone, not a
+    // money action (which would be Emerald).
+    backgroundColor: tokens.color.amberFill,
+    borderWidth: 1,
+    borderColor: tokens.color.amber,
   },
   commentSendButtonDisabled: {
     opacity: 0.45,

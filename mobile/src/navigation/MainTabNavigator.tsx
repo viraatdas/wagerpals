@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 
-import { colors, spacing, tokens } from '../theme';
+import { colors, font, spacing, tokens } from '../theme';
 
 // Exported so screens can pad their scroll content past the absolutely
 // positioned bar instead of each one hardcoding its own copy of these
@@ -42,8 +42,8 @@ export default function MainTabNavigator() {
         tabBarInactiveTintColor: colors.textFaint,
         tabBarShowLabel: true,
         tabBarLabelStyle: {
+          fontFamily: font.sansMedium,
           fontSize: 11,
-          fontWeight: '500',
           marginTop: -2,
         },
         // On iOS the bar is transparent and sits on top of a real blur layer
@@ -81,18 +81,20 @@ export default function MainTabNavigator() {
         },
       }}
     >
-      <Tab.Screen 
-        name="Home" 
+      <Tab.Screen
+        name="Home"
         component={HomeScreen}
-        options={{ 
-          title: 'Groups',
+        options={{
+          // "The Board" — see DESIGN-SPEC.md nav copy (Board / Live /
+          // History / Wallet / Friends / Profile, not admin nouns).
+          title: 'Board',
         }}
       />
-      <Tab.Screen 
-        name="Activity" 
+      <Tab.Screen
+        name="Activity"
         component={ActivityScreen}
-        options={{ 
-          title: 'Activity',
+        options={{
+          title: 'History',
         }}
       />
       <Tab.Screen 

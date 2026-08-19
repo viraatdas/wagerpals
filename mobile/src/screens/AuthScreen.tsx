@@ -22,7 +22,7 @@ import authService from '../services/auth';
 import { ApiError, toApiError } from '../utils/errors';
 import * as haptics from '../utils/haptics';
 import { Button, FormScreen } from '../components';
-import { colors, gradients, radius, spacing, tokens } from '../theme';
+import { colors, font, gradients, radius, spacing, tokens } from '../theme';
 
 type Step = 'email' | 'code';
 type Busy = null | 'sendCode' | 'verify' | 'google' | 'resend';
@@ -209,7 +209,7 @@ export default function AuthScreen() {
             <Text style={styles.titleWager}>Wager</Text>
             <Text style={styles.titlePals}>Pals</Text>
           </Text>
-          <Text style={styles.subtitle}>Polymarket for friends</Text>
+          <Text style={styles.subtitle}>Bet on anything with friends. Real stakes, real fun.</Text>
         </View>
 
         {/* Auth Card */}
@@ -342,44 +342,48 @@ const styles = StyleSheet.create({
   logoContainer: {
     width: 72,
     height: 72,
-    borderRadius: 20,
+    borderRadius: radius.xl,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.lg,
     ...tokens.shadow.accent,
   },
   title: {
-    fontSize: 36,
+    fontSize: tokens.fontSize['3xl'],
     marginBottom: spacing.sm,
   },
   titleWager: {
-    fontWeight: '300',
+    fontFamily: font.display,
     color: colors.text,
   },
   titlePals: {
-    fontWeight: '700',
+    fontFamily: font.display,
     color: colors.brand2,
   },
   subtitle: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.base,
     color: colors.textMuted,
-    fontWeight: '400',
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg,
   },
   card: {
-    backgroundColor: colors.surfaceGlass,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.xl,
     padding: spacing.xl,
+    ...tokens.shadow.elev2,
   },
   cardTitle: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize['2xl'],
-    fontWeight: '600',
     color: colors.text,
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
   cardSubtitle: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     textAlign: 'center',
@@ -394,7 +398,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: 56,
     backgroundColor: colors.white,
-    borderRadius: 14,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.lg,
@@ -407,6 +411,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.base,
     color: colors.text,
   },
@@ -418,6 +423,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     flexShrink: 1,
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.xs,
     color: colors.rose,
   },
@@ -427,11 +433,11 @@ const styles = StyleSheet.create({
   codeInput: {
     height: 64,
     backgroundColor: colors.white,
-    borderRadius: 14,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    fontSize: 32,
-    fontWeight: '600',
+    fontFamily: font.monoMedium,
+    fontSize: tokens.fontSize['3xl'],
     color: colors.text,
     textAlign: 'center',
     letterSpacing: 12,
@@ -449,8 +455,8 @@ const styles = StyleSheet.create({
   dividerText: {
     marginHorizontal: spacing.lg,
     color: colors.textFaint,
+    fontFamily: font.sansMedium,
     fontSize: tokens.fontSize.sm,
-    fontWeight: '500',
   },
   codeActions: {
     flexDirection: 'row',
@@ -459,6 +465,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   termsText: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
     textAlign: 'center',
@@ -467,7 +474,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   termsLink: {
+    fontFamily: font.sansMedium,
     color: colors.brand2,
-    fontWeight: '500',
   },
 });

@@ -14,7 +14,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, gradients, radius, glow, inputStyle } from '../theme';
+import { colors, font, gradients, radius, glow, inputStyle } from '../theme';
 
 interface TextInputModalProps {
   visible: boolean;
@@ -196,13 +196,14 @@ const styles = StyleSheet.create({
     ...glow(colors.brand3, 0.25),
   },
   title: {
+    fontFamily: font.sansSemiBold,
     fontSize: 20,
-    fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   message: {
+    fontFamily: font.sans,
     fontSize: 14,
     color: colors.textMuted,
     marginBottom: 20,
@@ -211,6 +212,7 @@ const styles = StyleSheet.create({
   },
   input: {
     ...inputStyle,
+    fontFamily: font.sans,
     height: 52,
     marginBottom: 20,
   },
@@ -221,7 +223,7 @@ const styles = StyleSheet.create({
   button: {
     flex: 1,
     height: 48,
-    borderRadius: radius.pill,
+    borderRadius: radius.md,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -234,8 +236,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   cancelButtonText: {
+    fontFamily: font.sansMedium,
     fontSize: 16,
-    fontWeight: '500',
     color: colors.textMuted,
   },
   submitButton: {
@@ -245,8 +247,8 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   submitButtonText: {
+    fontFamily: font.sansSemiBold,
     fontSize: 16,
-    fontWeight: '600',
     color: colors.white,
   },
 });

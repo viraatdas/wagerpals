@@ -24,7 +24,7 @@ import { Avatar } from '../components/Avatar';
 import { formatRelativeTime, formatMoney } from '../utils/format';
 import { ApiError, toApiError } from '../utils/errors';
 import { tapLight } from '../utils/haptics';
-import { colors, radius, spacing } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 
 const TAB_BAR_HEIGHT = Platform.OS === 'ios' ? 88 : 64;
 const PAGE_SIZE = 20;
@@ -79,6 +79,44 @@ interface ActivityRowProps {
   onPress: (item: ActivityItem) => void;
 }
 
+/** Renders the sentence as structured runs so the number reads in mono,
+ * per DESIGN-SPEC's "actor avatar amber, action in sans, amounts in mono"
+ * split — a bet's stake is a neutral figure (not yet won or lost), so it
+ * stays ink-colored mono rather than emerald/crimson; a resolved event's
+ * winning side reads emerald since it names the outcome that won. */
+function SentenceRuns({ item }: { item: ActivityItem }) {
+  const who = item.username || 'Someone';
+  if (item.type === 'bet') {
+    return (
+      <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
+        <Text style={styles.sentenceActor}>{who}</Text>
+        <Text> bet </Text>
+        <Text style={styles.sentenceAmount}>{formatMoney(item.amount ?? 0)}</Text>
+        <Text> on {item.side ?? 'a side'}</Text>
+      </Text>
+    );
+  }
+  if (item.type === 'resolution') {
+    return (
+      <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
+        {item.winning_side ? (
+          <>
+            <Text style={styles.sentenceWin}>{item.winning_side}</Text>
+            <Text> won — event resolved</Text>
+          </>
+        ) : (
+          <Text>Event resolved</Text>
+        )}
+      </Text>
+    );
+  }
+  return (
+    <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
+      {getSentence(item)}
+    </Text>
+  );
+}
+
 const ActivityRow = React.memo(function ActivityRow({ item, onPress }: ActivityRowProps) {
   const icon = getActivityIcon(item.type);
   const detail = getDetail(item);
@@ -98,9 +136,7 @@ const ActivityRow = React.memo(function ActivityRow({ item, onPress }: ActivityR
         <View style={styles.activityContent}>
           <View style={styles.sentenceRow}>
             <Ionicons name={icon.name} size={13} color={icon.color} style={styles.sentenceIcon} />
-            <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
-              {getSentence(item)}
-            </Text>
+            <SentenceRuns item={item} />
           </View>
           {detail ? (
             <Text style={styles.detail} numberOfLines={2} ellipsizeMode="tail">
@@ -240,7 +276,7 @@ export default function ActivityScreen() {
         <EmptyState
           icon="log-in-outline"
           title="Sign in required"
-          message="Sign in to see activity from your groups."
+          message="Sign in to see history from your groups."
           style={styles.stateFill}
         />
       );
@@ -260,8 +296,8 @@ export default function ActivityScreen() {
     return (
       <EmptyState
         icon="pulse-outline"
-        title="No activity yet"
-        message="Activity from your groups will appear here"
+        title="No action yet"
+        message="Bets, comments and resolutions from your groups land here."
         style={styles.stateFill}
       />
     );
@@ -282,7 +318,7 @@ export default function ActivityScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Activity</Text>
+        <Text style={styles.headerTitle}>History</Text>
         <Text style={styles.headerSubtitle}>Recent updates from your groups</Text>
       </View>
 
@@ -326,13 +362,14 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontFamily: font.display,
+    fontSize: tokens.fontSize.xl,
     color: colors.text,
     marginBottom: 4,
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontFamily: font.sans,
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
   },
   list: {
@@ -350,7 +387,7 @@ const styles = StyleSheet.create({
   },
   activityCard: {
     flexDirection: 'row',
-    backgroundColor: colors.surfaceGlass,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.lg,
@@ -374,14 +411,26 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   sentence: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.sm,
     color: colors.text,
     flexShrink: 1,
     minWidth: 0,
   },
+  sentenceActor: {
+    fontFamily: font.sansSemiBold,
+  },
+  sentenceAmount: {
+    fontFamily: font.monoMedium,
+    color: colors.text,
+  },
+  sentenceWin: {
+    fontFamily: font.monoMedium,
+    color: tokens.color.win,
+  },
   detail: {
-    fontSize: 14,
+    fontFamily: font.sans,
+    fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     lineHeight: 20,
     marginBottom: 6,
@@ -392,26 +441,28 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   eventTitle: {
-    fontSize: 12,
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.xs,
     color: colors.brand2,
-    fontWeight: '500',
     flexShrink: 1,
     minWidth: 0,
   },
   metaDot: {
-    fontSize: 12,
+    fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
     marginHorizontal: 6,
     flexShrink: 0,
   },
   groupName: {
-    fontSize: 12,
+    fontFamily: font.sans,
+    fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
     flexShrink: 1,
     minWidth: 0,
   },
   activityTime: {
-    fontSize: 12,
+    fontFamily: font.mono,
+    fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
   },
   footerLoading: {

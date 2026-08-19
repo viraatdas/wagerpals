@@ -60,12 +60,17 @@ const MAX_TRANSACTION_AMOUNT = 500;
 const QUICK_DEPOSIT_AMOUNTS = [25, 50, 100, 250];
 const QUICK_WITHDRAW_AMOUNTS = [25, 50, 100];
 
-type TxIconTone = 'yes' | 'no' | 'pending' | 'info' | 'neutral';
+// Escrow/pending money states stay out of the amber "people" palette — see
+// components/Ledger.tsx's HOLD_CHIPS comment and the escrow chip on
+// EventDetailScreen: amber never touches a money value. "gold" is the one
+// color that's exclusively won-money (winnings/payout), deliberately
+// distinct from amber so it never gets confused with the people accent.
+type TxIconTone = 'yes' | 'no' | 'gold' | 'info' | 'neutral';
 
 const TX_TONE_COLOR: Record<TxIconTone, { bg: string; fg: string }> = {
   yes: { bg: colors.mintFill, fg: colors.mint },
   no: { bg: colors.roseFill, fg: colors.rose },
-  pending: { bg: colors.amberFill, fg: colors.amber },
+  gold: { bg: tokens.color.goldFill, fg: tokens.color.gold },
   info: { bg: colors.cyanFill, fg: colors.cyan },
   neutral: { bg: colors.bg2, fg: colors.textFaint },
 };
@@ -73,13 +78,13 @@ const TX_TONE_COLOR: Record<TxIconTone, { bg: string; fg: string }> = {
 const TX_ICON: Record<Transaction['type'], { name: keyof typeof Ionicons.glyphMap; tone: TxIconTone }> = {
   deposit: { name: 'arrow-down-circle-outline', tone: 'yes' },
   withdrawal: { name: 'arrow-up-circle-outline', tone: 'no' },
-  bet_placed: { name: 'lock-closed-outline', tone: 'pending' },
-  escrow_hold: { name: 'lock-closed-outline', tone: 'pending' },
+  bet_placed: { name: 'lock-closed-outline', tone: 'info' },
+  escrow_hold: { name: 'lock-closed-outline', tone: 'info' },
   bet_refund: { name: 'return-up-back-outline', tone: 'info' },
   escrow_release: { name: 'return-up-back-outline', tone: 'info' },
   refund: { name: 'return-up-back-outline', tone: 'info' },
-  winnings: { name: 'trophy-outline', tone: 'yes' },
-  payout: { name: 'trophy-outline', tone: 'yes' },
+  winnings: { name: 'trophy-outline', tone: 'gold' },
+  payout: { name: 'trophy-outline', tone: 'gold' },
 };
 
 // Mirrors components/Ledger.tsx's TRANSACTION_LABELS on the web so the same
@@ -112,6 +117,9 @@ const TransactionRow = React.memo(function TransactionRow({ item }: { item: Tran
   const icon = TX_ICON[item.type] ?? { name: 'ellipse-outline' as const, tone: 'neutral' as const };
   const toneColor = TX_TONE_COLOR[icon.tone];
   const label = getTxLabel(item);
+  // Won money reads Gold, not the usual Emerald-for-positive — gold is
+  // reserved for money that's actually been WON (see MOBILE-SPEC.md).
+  const isWonMoney = item.type === 'winnings' || item.type === 'payout';
   // created_at is optional on the type — a transaction missing it (should
   // never happen server-side, but nothing here should crash if it does)
   // just omits the relative-time line instead of rendering "Invalid Date".
@@ -135,15 +143,24 @@ const TransactionRow = React.memo(function TransactionRow({ item }: { item: Tran
               </Text>
             ) : null}
             {item.status !== 'completed' ? (
+              // A transaction still in flight is a money STATE, not a
+              // person — quiet neutral (info), never amber. Only a genuine
+              // failure gets the crimson "no" tone.
               <Pill
                 label={item.status === 'pending' ? 'Pending' : 'Failed'}
-                tone={item.status === 'pending' ? 'pending' : 'no'}
+                tone={item.status === 'pending' ? 'info' : 'no'}
                 size="sm"
               />
             ) : null}
           </View>
         </View>
-        <Money amount={safeAmount(item.amount)} tone="auto" signed size="md" style={styles.txAmount} />
+        <Money
+          amount={safeAmount(item.amount)}
+          tone={isWonMoney ? 'neutral' : 'auto'}
+          signed
+          size="md"
+          style={[styles.txAmount, isWonMoney && styles.goldAmount]}
+        />
       </View>
     </Card>
   );
@@ -423,9 +440,11 @@ export default function WalletScreen() {
     <View>
       <Card elevated style={styles.heroCard}>
         <Text style={styles.heroLabel}>Available balance</Text>
-        <Money amount={available} tone="neutral" size="lg" style={styles.heroAmount} />
+        <Money amount={available} tone="auto" size="lg" style={styles.heroAmount} />
         <View style={styles.escrowRow}>
-          <Pill label={`${formatMoney(escrowed)} escrowed`} tone="pending" icon="lock-closed-outline" />
+          {/* Escrow is money STATE, not a person — quiet info tone, same as
+              the "Escrow $X" badge on EventDetailScreen, never amber. */}
+          <Pill label={`${formatMoney(escrowed)} escrowed`} tone="info" icon="lock-closed-outline" />
         </View>
         <Text style={styles.escrowExplainer}>
           Escrowed funds are held for bets on events that haven&apos;t settled yet. They&apos;re yours — you just
@@ -649,6 +668,9 @@ const styles = StyleSheet.create({
   txAmount: {
     marginLeft: spacing.md,
     flexShrink: 0,
+  },
+  goldAmount: {
+    color: tokens.color.gold,
   },
   depositNotice: {
     flexDirection: 'row',

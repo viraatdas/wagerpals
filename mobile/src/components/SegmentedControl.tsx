@@ -4,7 +4,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing, tokens } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 import { selectionTick } from '../utils/haptics';
 
 export interface SegmentedOption<T extends string> {
@@ -158,10 +158,10 @@ const styles = StyleSheet.create({
   },
   segmentIcon: {},
   segmentLabel: {
+    fontFamily: font.sansMedium,
     fontSize: tokens.fontSize.sm,
-    fontWeight: '600',
   },
   segmentLabelSelected: {
-    fontWeight: '700',
+    fontFamily: font.sansSemiBold,
   },
 });

@@ -1,11 +1,14 @@
 // Pill — small status/label chip ("Resolved", "Escrow held", "Late",
-// "Quiet bet", "Admin", "Pending"...). Each tone pairs a `*Fill` background
-// token with its solid counterpart for text/icon so chips stay legible
-// without ever hardcoding a color.
+// "Quiet bet", "Admin", "Pending"...). Fully rounded per DESIGN-SPEC shape
+// language (pills are reserved for people/state, never primary actions),
+// label set in mono uppercase — the same small-caps ticker treatment as the
+// web status pill. Each tone pairs a `*Fill` background token with its
+// text-safe *Ink counterpart for text/icon so chips stay legible without
+// ever hardcoding a color.
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, spacing, tokens } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 
 export type PillTone = 'neutral' | 'brand' | 'yes' | 'no' | 'pending' | 'info';
 export type PillSize = 'sm' | 'md';
@@ -51,7 +54,7 @@ export const Pill = React.memo(function Pill({ label, tone = 'neutral', icon, si
         numberOfLines={1}
         ellipsizeMode="tail"
       >
-        {label}
+        {label.toUpperCase()}
       </Text>
     </View>
   );
@@ -80,7 +83,8 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   label: {
-    fontWeight: '600',
+    fontFamily: font.monoMedium,
+    letterSpacing: 0.4,
     flexShrink: 1,
   },
 });

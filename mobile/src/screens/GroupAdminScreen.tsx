@@ -11,12 +11,24 @@ import apiService from '../services/api';
 import { Group, GroupMember } from '../types';
 import { ApiError, toApiError } from '../utils/errors';
 import { tapHeavy, tapMedium, success, warning, error as hapticError } from '../utils/haptics';
-import { colors, radius, spacing, tokens } from '../theme';
+import { colors, font, radius, spacing, tokens } from '../theme';
 import { Avatar, Button, Card, EmptyState, ErrorState, Pill, SectionHeader, Skeleton, SkeletonList, Toggle } from '../components';
 
 type GroupData = Group & { members?: GroupMember[]; pending_requests?: GroupMember[] };
 type MemberAction = 'approve' | 'decline' | 'promote' | 'demote' | 'remove';
 type SectionKey = 'pending' | 'admins' | 'members';
+
+// Per-action success copy — each of approve/decline/promote/demote/remove
+// names the actual member and the actual outcome instead of a generic
+// "Action completed."
+const ACTION_CONFIRMATION: Record<MemberAction, (username: string) => string> = {
+  approve: (u) => `${u} is in.`,
+  decline: (u) => `Declined ${u}'s request.`,
+  promote: (u) => `${u} is now an admin.`,
+  demote: (u) => `${u} is no longer an admin.`,
+  remove: (u) => `Removed ${u} from the group.`,
+};
+const CONFIRMATION_VISIBLE_MS = 2200;
 
 interface MemberSection {
   key: SectionKey;
@@ -96,6 +108,18 @@ export default function GroupAdminScreen() {
   const [resolverUpdating, setResolverUpdating] = useState<string | null>(null);
   const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const statusTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showStatus = useCallback((message: string) => {
+    if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current);
+    setStatusMessage(message);
+    statusTimeoutRef.current = setTimeout(() => setStatusMessage(null), CONFIRMATION_VISIBLE_MS);
+  }, []);
+
+  React.useEffect(() => () => {
+    if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current);
+  }, []);
 
   const loadData = useCallback(
     async (opts?: { isRefresh?: boolean }) => {
@@ -173,6 +197,7 @@ export default function GroupAdminScreen() {
       try {
         await apiService.manageGroupMember(action, groupId, user.id, targetUserId);
         success();
+        showStatus(ACTION_CONFIRMATION[action](username));
       } catch (err) {
         setMembers(previousMembers);
         const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups/members');
@@ -186,7 +211,7 @@ export default function GroupAdminScreen() {
         });
       }
     },
-    [groupId, members, rowBusy, user]
+    [groupId, members, rowBusy, user, showStatus]
   );
 
   const handleMemberAction = useCallback(
@@ -389,6 +414,15 @@ export default function GroupAdminScreen() {
         removeClippedSubviews
         ListHeaderComponent={
           <View>
+            {statusMessage ? (
+              <View style={styles.statusBanner}>
+                <Ionicons name="checkmark-circle" size={16} color={tokens.color.win} />
+                <Text style={styles.statusBannerText} numberOfLines={2}>
+                  {statusMessage}
+                </Text>
+              </View>
+            ) : null}
+
             {error && group ? (
               <ErrorState compact title="Couldn't refresh" message={error.userMessage} onRetry={handleRefresh} style={styles.inlineError} />
             ) : null}
@@ -605,6 +639,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg2,
     borderRadius: radius.lg,
   },
+  statusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: tokens.color.yesFill,
+    borderRadius: radius.lg,
+  },
+  statusBannerText: {
+    flex: 1,
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.sm,
+    color: tokens.color.win,
+  },
   section: {
     padding: spacing.lg,
   },
@@ -615,6 +666,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   resolverLabel: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     marginBottom: spacing.sm,
@@ -631,7 +683,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
-    backgroundColor: colors.surfaceGlass,
+    backgroundColor: colors.surface,
     maxWidth: '100%',
   },
   resolverChipSelected: {
@@ -639,12 +691,13 @@ const styles = StyleSheet.create({
     borderColor: colors.mint,
   },
   resolverChipText: {
+    fontFamily: font.sansMedium,
     color: colors.textMuted,
     fontSize: tokens.fontSize.sm,
   },
   resolverChipTextSelected: {
+    fontFamily: font.sansSemiBold,
     color: colors.mint,
-    fontWeight: '600',
   },
   pendingHeaderWrap: {
     flexDirection: 'row',
@@ -658,8 +711,8 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.amberFill,
   },
   pendingHeaderText: {
+    fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.lg,
-    fontWeight: '600',
     color: colors.amber,
   },
   sectionHeaderWrap: {
@@ -682,11 +735,12 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   memberName: {
+    fontFamily: font.sansMedium,
     fontSize: tokens.fontSize.base,
-    fontWeight: '500',
     color: colors.text,
   },
   memberSubtext: {
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
   },
