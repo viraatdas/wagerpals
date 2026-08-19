@@ -25,16 +25,19 @@ export interface WMarkProps {
 export function WMark({ className }: WMarkProps) {
   return (
     <svg
-      viewBox="0 0 100 100"
+      // The viewBox hugs the INK (stroke spans y=14..86): with the old
+      // 0..100 box the glyph had ~14% empty canvas below it, so even a
+      // bottom-aligned svg showed the W floating mid-height next to the
+      // digits. Cropped, the visible ink's bottom IS the svg's bottom IS
+      // the text baseline.
+      viewBox="0 8 100 84"
       aria-hidden="true"
       focusable="false"
-      // Deliberately SMALLER than the digits (0.68em), and BOTTOM-ALIGNED:
+      // Deliberately SMALLER than the digits (0.62em) and bottom-aligned:
       // in the parent's items-baseline flex row an SVG's baseline is its
-      // bottom edge, so with no self-alignment override the mark sits on the
-      // same line the digits sit on — a compact ticker-style prefix, never a
-      // letter-sized glyph floating mid-height. (Owner: "smaller, inline,
-      // lined with the bottom.")
-      className={`inline-block h-[0.68em] w-[0.68em] shrink-0 ${className ?? ''}`}
+      // bottom edge — a compact ticker-style prefix sitting on the digits'
+      // line. (Owner: "shifted lower and slightly smaller.")
+      className={`inline-block h-[0.62em] w-[0.72em] shrink-0 ${className ?? ''}`}
     >
       <path
         d="M8 22 L28 78 L50 40 L72 78 L92 22"

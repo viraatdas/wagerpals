@@ -33,7 +33,10 @@ export const WMark = React.memo(function WMark({ size = tokens.fontSize.base, co
   return (
     <View
       style={[
-        { width: size * 0.86, height: size * 1.2, alignItems: 'center', justifyContent: 'center' },
+        // Box hugs the glyph (no line-height padding below) so flex-end in
+        // WAmount's row puts the visible W on the digits' line, not floating
+        // mid-height. Mirrors the web viewBox crop in components/WMark.tsx.
+        { width: size * 0.86, height: size * 1.04, alignItems: 'center', justifyContent: 'flex-end' },
         style,
       ]}
       accessibilityElementsHidden
@@ -119,7 +122,7 @@ export const WAmount = React.memo(function WAmount({ value, size = 'md', signed 
       {/* The mark is deliberately SMALLER than the digits (0.68×) — a compact
           currency prefix, the way a ticker sets "$", never a letter-sized
           glyph competing with the amount. Mirrors components/WMark.tsx (web). */}
-      <WMark size={fontSize * 0.68} color={color} />
+      <WMark size={fontSize * 0.62} color={color} />
       <Text style={[styles.text, { fontSize, color }]} numberOfLines={1} ellipsizeMode="tail">
         {digits}
       </Text>
