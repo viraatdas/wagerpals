@@ -151,10 +151,13 @@ async function structuralChecks(): Promise<void> {
   await checkTable('comment_mentions', ['id', 'comment_id', 'mentioned_user_id', 'created_at']);
   await checkIndex('idx_comment_mentions_comment_id');
   await checkIndex('idx_comment_mentions_mentioned_user_id');
+
+  console.log('\n12. groups: cash_enabled column');
+  await checkColumn('groups', 'cash_enabled', { notNull: true, hasDefault: true });
 }
 
 async function dataChecks(): Promise<void> {
-  console.log('\n12. data integrity');
+  console.log('\n13. data integrity');
 
   const orphans = await sql`
     SELECT COUNT(*)::int AS c FROM users u
@@ -186,7 +189,7 @@ async function dataChecks(): Promise<void> {
 
 // Exercises the new schema against real writes, then rolls everything back. Nothing is persisted.
 async function functionalChecks(): Promise<void> {
-  console.log('\n13. functional checks (inside a transaction that is always rolled back)');
+  console.log('\n14. functional checks (inside a transaction that is always rolled back)');
 
   const client = createClient();
   await client.connect();
@@ -358,7 +361,7 @@ async function main(): Promise<void> {
   if (results.every((r) => r.ok)) {
     await functionalChecks();
   } else {
-    console.log('\n13. functional checks — skipped, schema is incomplete');
+    console.log('\n14. functional checks — skipped, schema is incomplete');
   }
 
   const failed = results.filter((r) => !r.ok);

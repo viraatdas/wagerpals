@@ -777,6 +777,7 @@ export const db = {
         created_by: row.created_by,
         resolver_user_id: row.resolver_user_id || undefined,
         is_public: row.is_public || false,
+        cash_enabled: row.cash_enabled || false,
         created_at: row.created_at,
       };
     },
@@ -789,6 +790,7 @@ export const db = {
         created_by: row.created_by,
         resolver_user_id: row.resolver_user_id || undefined,
         is_public: row.is_public || false,
+        cash_enabled: row.cash_enabled || false,
         created_at: row.created_at,
       }));
     },
@@ -805,6 +807,7 @@ export const db = {
         created_by: row.created_by,
         resolver_user_id: row.resolver_user_id || undefined,
         is_public: row.is_public || false,
+        cash_enabled: row.cash_enabled || false,
         created_at: row.created_at,
       }));
     },
@@ -822,6 +825,7 @@ export const db = {
         created_by: row.created_by,
         resolver_user_id: row.resolver_user_id || undefined,
         is_public: row.is_public || false,
+        cash_enabled: row.cash_enabled || false,
         created_at: row.created_at,
       }));
     },
@@ -843,6 +847,9 @@ export const db = {
       }
       if (data.is_public !== undefined) {
         await sql`UPDATE groups SET is_public = ${data.is_public} WHERE id = ${id}`;
+      }
+      if (data.cash_enabled !== undefined) {
+        await sql`UPDATE groups SET cash_enabled = ${data.cash_enabled} WHERE id = ${id}`;
       }
       return await db.groups.get(id);
     },

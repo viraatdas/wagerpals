@@ -453,8 +453,8 @@ async function main(): Promise<void> {
         `;
       }
       await sql`
-        INSERT INTO groups (id, name, created_by, resolver_user_id, is_public)
-        VALUES (${groupId}, ${`Verify Payments ${RUN}`}, ${aliceId}, ${aliceId}, false)
+        INSERT INTO groups (id, name, created_by, resolver_user_id, is_public, cash_enabled)
+        VALUES (${groupId}, ${`Verify Payments ${RUN}`}, ${aliceId}, ${aliceId}, false, true)
       `;
       const roles: Array<[string, 'admin' | 'member']> = [
         [aliceId, 'admin'],

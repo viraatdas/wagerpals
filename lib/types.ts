@@ -144,6 +144,7 @@ export interface Group {
   created_by: string;
   resolver_user_id?: string;
   is_public: boolean;
+  cash_enabled: boolean;
   created_at?: string;
 }
 

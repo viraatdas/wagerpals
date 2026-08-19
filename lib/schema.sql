@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS groups (
   created_by TEXT NOT NULL REFERENCES users(id),
   resolver_user_id TEXT REFERENCES users(id),
   is_public BOOLEAN DEFAULT FALSE,
+  cash_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

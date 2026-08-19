@@ -269,7 +269,10 @@ async function migrateComeback(): Promise<void> {
   await step('idx_comment_mentions_comment_id', () => indexExists('idx_comment_mentions_comment_id'), () => sql`CREATE INDEX IF NOT EXISTS idx_comment_mentions_comment_id ON comment_mentions(comment_id)`);
   await step('idx_comment_mentions_mentioned_user_id', () => indexExists('idx_comment_mentions_mentioned_user_id'), () => sql`CREATE INDEX IF NOT EXISTS idx_comment_mentions_mentioned_user_id ON comment_mentions(mentioned_user_id)`);
 
-  console.log('\n17. backfill: notification_preferences for existing users');
+  console.log('\n17. groups: cash_enabled column');
+  await step('groups.cash_enabled', () => columnExists('groups', 'cash_enabled'), () => sql`ALTER TABLE groups ADD COLUMN IF NOT EXISTS cash_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
+
+  console.log('\n18. backfill: notification_preferences for existing users');
   const backfilled = await sql`
     INSERT INTO notification_preferences (user_id)
     SELECT id FROM users

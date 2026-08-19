@@ -90,7 +90,10 @@ export default function GroupAdminPage() {
     }
   };
 
-  const handleGroupSettings = async (settings: { resolver_user_id?: string; is_public?: boolean }) => {
+  const handleGroupSettings = async (
+    settings: { resolver_user_id?: string; is_public?: boolean; cash_enabled?: boolean },
+    successMessage: string = 'Group settings updated'
+  ) => {
     if (!user) return;
 
     setProcessing(true);
@@ -107,7 +110,7 @@ export default function GroupAdminPage() {
       });
 
       if (response.ok) {
-        setToast({ message: 'Group settings updated', type: 'success' });
+        setToast({ message: successMessage, type: 'success' });
         fetchGroup(user.id);
       } else {
         const data = await response.json();
@@ -119,6 +122,11 @@ export default function GroupAdminPage() {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleCashToggle = () => {
+    const next = !group.cash_enabled;
+    handleGroupSettings({ cash_enabled: next }, next ? 'Cash wagers on.' : 'Cash wagers off.');
   };
 
   const handleDeleteGroup = async () => {
@@ -278,6 +286,25 @@ export default function GroupAdminPage() {
                 className="btn-primary press w-full sm:w-auto text-sm disabled:opacity-50"
               >
                 {group.is_public ? 'Enable paid betting' : 'Use free points'}
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3 pt-4 border-t border-hairline sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm text-foreground">
+                  Cash wagers: <span className="font-semibold text-foreground">{group.cash_enabled ? 'On' : 'Off'}</span>
+                </p>
+                <p className="text-sm text-muted">
+                  Members can stake real money from their wallets.
+                </p>
+              </div>
+              <button
+                onClick={handleCashToggle}
+                disabled={processing}
+                aria-pressed={!!group.cash_enabled}
+                className="btn-glass press w-full sm:w-auto text-sm disabled:opacity-50"
+              >
+                {group.cash_enabled ? 'Turn off cash wagers' : 'Turn on cash wagers'}
               </button>
             </div>
 

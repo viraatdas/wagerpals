@@ -27,9 +27,14 @@ export async function GET(request: NextRequest) {
       publicGroups.map(async (group) => {
         const members = await db.groupMembers.getByGroup(group.id);
         const activeMembers = members.filter(m => m.status === 'active');
-        
+
+        // cash_enabled is deliberately left out of this anonymous listing —
+        // it's not needed to browse public groups, and this response should
+        // not grow beyond what it already exposes.
+        const { cash_enabled, ...publicGroupFields } = group;
+
         return {
-          ...group,
+          ...publicGroupFields,
           member_count: activeMembers.length,
           admin_count: activeMembers.filter(m => m.role === 'admin').length,
           is_admin: false,
@@ -181,6 +186,8 @@ export async function POST(request: NextRequest) {
     name: name.trim(),
     created_by,
     is_public: is_public || false,
+    // No group is cash-enabled by default — an admin turns it on later via PATCH.
+    cash_enabled: false,
   };
 
   await db.groups.create(newGroup);
@@ -201,7 +208,7 @@ export async function PATCH(request: NextRequest) {
   if (authResult instanceof NextResponse) return authResult;
 
   const body = await request.json();
-  const { id, resolver_user_id, is_public } = body;
+  const { id, resolver_user_id, is_public, cash_enabled } = body;
 
   if (!id) {
     return NextResponse.json({ error: 'Missing group id' }, { status: 400 });
@@ -219,9 +226,14 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
+  if (cash_enabled !== undefined && typeof cash_enabled !== 'boolean') {
+    return NextResponse.json({ error: 'cash_enabled must be a boolean' }, { status: 400 });
+  }
+
   const group = await db.groups.update(id, {
     resolver_user_id,
     is_public,
+    cash_enabled,
   });
 
   return NextResponse.json(group);

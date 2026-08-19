@@ -112,6 +112,19 @@ function CreateEventForm() {
     };
   }, [selectedGroupId]);
 
+  // The selected group decides whether cash wagers are even an option here —
+  // it's a group-level setting, not a per-event choice. If the group changes
+  // out from under a 'cash' selection (or never allowed it), fall back to
+  // 'none' rather than silently submitting a cash event the server will reject.
+  const selectedGroup = groups.find((g) => g.id === selectedGroupId);
+  const cashAvailable = !!selectedGroup?.cash_enabled;
+
+  useEffect(() => {
+    if (!cashAvailable && paymentType === 'cash') {
+      setPaymentType('none');
+    }
+  }, [cashAvailable, paymentType]);
+
   const fetchGroups = async (uid: string) => {
     try {
       const response = await fetch(`/api/groups?userId=${uid}`);
@@ -570,7 +583,10 @@ function CreateEventForm() {
             )}
           </div>
 
-          {/* Stakes */}
+          {/* Stakes — the cash option only appears when the selected group has
+              cash wagers turned on; otherwise every event in that group is
+              points-only, with no choice to show. */}
+          {cashAvailable && (
           <div>
             <div className="section-head mb-4">
               <span className="eyebrow">Stakes</span>
@@ -668,6 +684,7 @@ function CreateEventForm() {
               </div>
             )}
           </div>
+          )}
 
           <button
             type="submit"
