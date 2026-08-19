@@ -23,6 +23,9 @@ import {
   type SegmentedOption,
 } from '../components';
 import type { UserPickerUser } from '../components/UserPicker';
+import { MentionSuggestions } from '../components/MentionSuggestions';
+import { useMentionAutocomplete } from '../utils/useMentionAutocomplete';
+import type { MentionMember } from '../utils/mentions';
 
 type CreateEventRouteProps = RouteProp<RootStackParamList, 'CreateEvent'>;
 
@@ -198,6 +201,18 @@ export default function CreateEventScreen() {
 
   const subjectUsername = subjectCandidates.find((u) => u.id === subjectUserId)?.username;
 
+  // @mention candidates for the title field — same active-members-minus-self
+  // set as the subject picker above, just kept in MentionMember shape.
+  const mentionMembers: MentionMember[] = useMemo(
+    () =>
+      members
+        .filter((m) => m.status === 'active' && m.user_id !== user?.id)
+        .map((m) => ({ user_id: m.user_id, username: m.username || 'Member', role: m.role })),
+    [members, user?.id]
+  );
+
+  const titleMention = useMentionAutocomplete({ members: mentionMembers, value: title, onChange: setTitle });
+
   // Group-level cash enablement — POST /api/events rejects payment_type:
   // 'cash' for a group where it's false. A missing value (older cached
   // payload) is treated as disabled, never as enabled.
@@ -326,12 +341,17 @@ export default function CreateEventScreen() {
             setTitle(t);
             if (formErrors.title) setFormErrors((prev) => ({ ...prev, title: undefined }));
           }}
+          onSelectionChange={titleMention.onSelectionChange}
+          inputRef={titleMention.inputRef}
           placeholder="Will it rain tomorrow?"
           error={formErrors.title}
           maxLength={MAX_TITLE_LENGTH}
           showCount
           returnKeyType="next"
         />
+        {titleMention.isOpen ? (
+          <MentionSuggestions candidates={titleMention.candidates} onPick={titleMention.acceptMention} />
+        ) : null}
 
         {/* Side A/B are visually pre-bound to Emerald/Crimson from the start
             — the same convention the bet form, side cards and confidence

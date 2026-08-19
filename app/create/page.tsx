@@ -9,6 +9,7 @@ import { useUser } from '@stackframe/stack';
 import Toast, { ToastType } from '@/components/Toast';
 import ConfidenceBar from '@/components/ConfidenceBar';
 import { WMark } from '@/components/WMark';
+import { useMentionAutocomplete, MentionAutocompleteMenu } from '@/components/useMentionAutocomplete';
 
 // Small checkmark used to mark a "selected" choice — selection is never
 // conveyed by colour alone (a heavier border always accompanies it).
@@ -46,6 +47,30 @@ function CreateEventForm() {
   // inline field errors only appear after a real attempt. Does not change
   // what gets validated or how — see handleSubmit, which is unchanged.
   const [attempted, setAttempted] = useState(false);
+
+  // Other active members of the selected group, excluding ourselves —
+  // you can't make a bet "about" yourself. Also doubles as the @mention
+  // candidate list for the title field below.
+  const eligibleSubjects = groupMembers.filter(
+    (member) => member.status === 'active' && member.user_id !== user?.id
+  );
+
+  // @mention autocomplete for the title field, reusing the same shared
+  // machinery CommentForm uses and the same candidate list already fetched
+  // for the "who is this bet about" picker below. Called unconditionally
+  // (before the `if (!user)` early return) so hook order never changes
+  // between renders.
+  const {
+    popupOpen: titleMentionOpen,
+    candidates: titleMentionCandidates,
+    clampedHighlight: titleMentionHighlight,
+    listboxId: titleMentionListboxId,
+    activeOptionId: titleMentionActiveOptionId,
+    inputRef: titleInputRef,
+    updateFromElement: updateTitleMentionState,
+    handleKeyDown: handleTitleMentionKeyDown,
+    acceptMention: acceptTitleMention,
+  } = useMentionAutocomplete<HTMLInputElement>({ members: eligibleSubjects, value: title, onChange: setTitle });
 
   useEffect(() => {
     if (!user) {
@@ -224,12 +249,6 @@ function CreateEventForm() {
   if (!user) {
     return null; // Will redirect to signin
   }
-
-  // Other active members of the selected group, excluding ourselves —
-  // you can't make a bet "about" yourself.
-  const eligibleSubjects = groupMembers.filter(
-    (member) => member.status === 'active' && member.user_id !== user.id
-  );
 
   // Derived, presentation-only validity flags — same rules handleSubmit
   // already enforces, just echoed inline once the user has tried to submit.
@@ -424,19 +443,46 @@ function CreateEventForm() {
               <span className="eyebrow">The question</span>
             </div>
             <label htmlFor="title" className="field-label">Event title</label>
-            <input
-              type="text"
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className={`input text-lg ${attempted && !title.trim() ? 'input-invalid' : ''}`}
-              placeholder="Will it rain tomorrow?"
-              required
-            />
+            <div className="relative">
+              <input
+                type="text"
+                id="title"
+                ref={titleInputRef}
+                value={title}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  updateTitleMentionState(e.target);
+                }}
+                onKeyDown={(e) => {
+                  handleTitleMentionKeyDown(e);
+                }}
+                onKeyUp={(e) => updateTitleMentionState(e.currentTarget)}
+                onClick={(e) => updateTitleMentionState(e.currentTarget)}
+                className={`input text-lg ${attempted && !title.trim() ? 'input-invalid' : ''}`}
+                placeholder="Will it rain tomorrow?"
+                required
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={titleMentionOpen}
+                aria-controls={titleMentionListboxId}
+                aria-activedescendant={titleMentionActiveOptionId}
+              />
+              {titleMentionOpen && (
+                <MentionAutocompleteMenu
+                  listboxId={titleMentionListboxId}
+                  candidates={titleMentionCandidates}
+                  clampedHighlight={titleMentionHighlight}
+                  onPick={acceptTitleMention}
+                />
+              )}
+            </div>
             {attempted && !title.trim() ? (
               <p className="tone-no tone-text field-hint mt-2">Give the market a question.</p>
             ) : (
-              <p className="field-hint mt-2">This is the headline everyone in the group will see.</p>
+              <p className="field-hint mt-2">
+                This is the headline everyone in the group will see.
+                {eligibleSubjects.length > 0 && ' Type @ to tag someone.'}
+              </p>
             )}
           </div>
 

@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MAX_COMMENT_LENGTH, validateCommentContent } from '@/lib/comments';
+import {
+  useMentionAutocomplete,
+  MentionAutocompleteMenu,
+  type MentionMember,
+} from '@/components/useMentionAutocomplete';
 
-export interface MentionMember {
-  user_id: string;
-  username: string;
-  role?: string;
-}
+export type { MentionMember };
 
 export interface CommentFormProps {
   members?: MentionMember[]; // @autocomplete source (active group members)
@@ -29,23 +30,6 @@ export interface CommentFormProps {
   onCancel?: () => void; // when provided, render a Cancel button
 }
 
-// Trailing "@token" at the caret, preceded by start-of-string or a word boundary char.
-const MENTION_TOKEN_RE = /(?:^|[\s([{"',:;\-])@([A-Za-z0-9_]{0,20})$/;
-
-function getMentionCandidates(members: MentionMember[], query: string): MentionMember[] {
-  const q = query.toLowerCase();
-  const byId = new Map<string, MentionMember>();
-  for (const member of members) {
-    if (byId.has(member.user_id)) continue;
-    if (member.username.toLowerCase().startsWith(q)) {
-      byId.set(member.user_id, member);
-    }
-  }
-  return Array.from(byId.values())
-    .sort((a, b) => a.username.localeCompare(b.username))
-    .slice(0, 6);
-}
-
 export default function CommentForm({
   members = [],
   initialContent = '',
@@ -65,49 +49,21 @@ export default function CommentForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [mentionOpen, setMentionOpen] = useState(false);
-  const [mentionQuery, setMentionQuery] = useState('');
-  const [mentionStart, setMentionStart] = useState(0); // index of '@' within content
-  const [highlightIndex, setHighlightIndex] = useState(0);
-  const [caretVersion, setCaretVersion] = useState(0);
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const pendingCaretRef = useRef<number | null>(null);
-  const listboxId = useId();
+  const {
+    popupOpen,
+    candidates,
+    clampedHighlight,
+    listboxId,
+    activeOptionId,
+    inputRef: textareaRef,
+    updateFromElement: updateMentionState,
+    handleKeyDown: handleMentionKeyDown,
+    acceptMention,
+  } = useMentionAutocomplete<HTMLTextAreaElement>({ members, value: content, onChange: setContent });
 
   // Edit forms (non-empty initialContent) are unmounted by the parent after
   // submit, so we only clear our own state when we started out empty.
   const wasInitiallyEmpty = initialContent.trim().length === 0;
-
-  const candidates = mentionOpen ? getMentionCandidates(members, mentionQuery) : [];
-  const popupOpen = mentionOpen && candidates.length > 0;
-  const clampedHighlight = candidates.length > 0 ? Math.min(highlightIndex, candidates.length - 1) : 0;
-  const activeOptionId = popupOpen ? `${listboxId}-option-${clampedHighlight}` : undefined;
-
-  // Reset the highlighted candidate whenever the query text changes.
-  useEffect(() => {
-    setHighlightIndex(0);
-  }, [mentionQuery]);
-
-  // Restore focus + caret position after accepting a mention. Keyed on a
-  // version counter (not the caret value itself) and read from a ref so the
-  // effect never re-fires/cancels itself from its own cleanup; the extra
-  // requestAnimationFrame ensures we run after React has flushed the new
-  // textarea value to the DOM.
-  useEffect(() => {
-    const pos = pendingCaretRef.current;
-    if (pos === null) return;
-    const raf = requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (el) {
-        el.focus();
-        el.setSelectionRange(pos, pos);
-      }
-    });
-    pendingCaretRef.current = null;
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caretVersion]);
 
   // Presentational only: let the textarea grow with its content instead of
   // scrolling internally, up to the browser's natural sizing.
@@ -116,34 +72,7 @@ export default function CommentForm({
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
-  }, [content, compact]);
-
-  function updateMentionState(el: HTMLTextAreaElement) {
-    const caret = el.selectionStart ?? el.value.length;
-    const before = el.value.slice(0, caret);
-    const match = before.match(MENTION_TOKEN_RE);
-    if (match) {
-      const query = match[1].toLowerCase();
-      const atIndex = caret - match[1].length - 1;
-      setMentionOpen(true);
-      setMentionQuery(query);
-      setMentionStart(atIndex);
-    } else {
-      setMentionOpen(false);
-    }
-  }
-
-  function acceptMention(candidate: MentionMember) {
-    const tokenEnd = mentionStart + 1 + mentionQuery.length;
-    const before = content.slice(0, mentionStart);
-    const after = content.slice(tokenEnd);
-    const insertion = `@${candidate.username} `;
-    setContent(`${before}${insertion}${after}`);
-    setMentionOpen(false);
-    setMentionQuery('');
-    pendingCaretRef.current = before.length + insertion.length;
-    setCaretVersion((v) => v + 1);
-  }
+  }, [content, compact, textareaRef]);
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setContent(e.target.value);
@@ -152,28 +81,7 @@ export default function CommentForm({
   }
 
   function handleTextareaKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (popupOpen) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setHighlightIndex((i) => (i + 1) % candidates.length);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setHighlightIndex((i) => (i - 1 + candidates.length) % candidates.length);
-        return;
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault();
-        acceptMention(candidates[clampedHighlight]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        setMentionOpen(false);
-        return;
-      }
-    }
+    if (handleMentionKeyDown(e)) return;
 
     if (e.key === 'Escape') {
       e.preventDefault();
@@ -259,31 +167,12 @@ export default function CommentForm({
         />
 
         {popupOpen && (
-          <div
-            id={listboxId}
-            role="listbox"
-            className="card absolute left-0 right-0 z-20 mt-1 max-h-56 overflow-auto py-1 shadow-elev-3"
-          >
-            {candidates.map((member, i) => (
-              <button
-                key={member.user_id}
-                id={`${listboxId}-option-${i}`}
-                type="button"
-                role="option"
-                aria-selected={i === clampedHighlight}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => acceptMention(member)}
-                className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm transition ${
-                  i === clampedHighlight
-                    ? 'tone-pending tone-text bg-[var(--tone-fill)]'
-                    : 'text-foreground hover:bg-surface-sunken'
-                }`}
-              >
-                <span className="font-medium">@{member.username}</span>
-                {member.role && <span className="text-xs text-muted">{member.role}</span>}
-              </button>
-            ))}
-          </div>
+          <MentionAutocompleteMenu
+            listboxId={listboxId}
+            candidates={candidates}
+            clampedHighlight={clampedHighlight}
+            onPick={acceptMention}
+          />
         )}
       </div>
 

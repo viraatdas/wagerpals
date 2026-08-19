@@ -29,6 +29,7 @@ export interface FieldProps {
   trailingAccessory?: React.ReactNode;
   onFocus?: TextInputProps['onFocus'];
   onBlur?: TextInputProps['onBlur'];
+  onSelectionChange?: TextInputProps['onSelectionChange'];
 }
 
 export function Field({
@@ -53,6 +54,7 @@ export function Field({
   trailingAccessory,
   onFocus,
   onBlur,
+  onSelectionChange,
 }: FieldProps) {
   const [focused, setFocused] = useState(false);
   const focusAnim = useRef(new Animated.Value(0)).current;
@@ -113,6 +115,7 @@ export function Field({
             setFocused(false);
             onBlur?.(e);
           }}
+          onSelectionChange={onSelectionChange}
           accessibilityLabel={label ?? placeholder}
         />
         {trailingAccessory ? <View style={styles.trailing}>{trailingAccessory}</View> : null}
