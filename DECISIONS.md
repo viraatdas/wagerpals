@@ -1032,3 +1032,30 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   Friends' Shenanigans", og.png regenerated in the redesign language. (6) The Legacy group
   (id 000000) renamed to "OG Wagerpals Squad" at the user's request.
 - **By:** orchestrator (Fable) + Sonnet subagents · 2026-08-18
+
+## main: the twelve-rule overhaul and the W currency
+- **What:** (1) Events never expire — status active|resolved only; end_time is a vestigial
+  column (new rows get a far-future placeholder that keeps end_time-DESC as a recency proxy).
+  (2) events.created_by is the sole resolve/cancel/delete authority (backfilled from group
+  creators). (3) Groups are flat: instant joins by code, any member invites, moderation
+  (kick/rename/cash toggle/delete + comment deletion) is creator-only; is_admin now means
+  "is creator". (4) Quiet bets: subject_user_id + notify_subject=false hides an event
+  ENTIRELY from its subject (lists, detail 404, activity, comments/bets side doors, push).
+  (5) The W currency: wallets.wp_balance + currency-tagged transactions/escrow_holds; play
+  bets escrow W through the same idempotent engine as USD; W100 signup grant
+  (signup-grant:<id>) and W10/day faucet at zero (faucet:<id>:<day-bucket>) both lazy and
+  key-deduped; deposits/withdrawals USD-only; escrowed bets undeletable regardless of
+  currency; legacy hold-less play bets settle as bookkeeping only. escrow_by_bet is now
+  computed for every event (the isCash gate would have blinded §8's chips for W).
+  (6) WMark/WAmount glyph (web SVG + RN composite — a W with a vertical stroke; plain-text
+  form "W40" via formatW) demarcates W from $ on every surface; ActivityItem.payment_type
+  labels History rows. (7) Username gate is global (web: ClientProviders UsernameGate;
+  mobile: RootNavigator branch). (8) All groups except OG Wagerpals Squad (000000) were
+  purged at the owner's request — full backup at
+  ~/wagerpals-group-purge-backup-2026-08-19.json.
+- **Gate:** 819 checks green (payments 394, imessage 145, db:verify 83, groups-auth 77,
+  users-auth 49, escrow-chips 47, notifications 14, comments 10, identity), tsc clean both
+  platforms, build green.
+- **Still manual:** App Store review submission for build 9 (user, in ASC); mobile build 10
+  (with redesign + W) held for later per the owner.
+- **By:** orchestrator (Fable) + 5 Sonnet subagents · 2026-08-19
