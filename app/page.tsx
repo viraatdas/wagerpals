@@ -274,6 +274,8 @@ export default function Home() {
 
   const visibleEvents =
     selectedGroupId === 'all' ? events : events.filter((e) => e.group_id === selectedGroupId);
+  const selectedGroup = groups.find((g) => g.id === selectedGroupId) ?? null;
+  const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
 
   const chipClass = (active: boolean) =>
     `shrink-0 whitespace-nowrap rounded-chip px-3 py-1.5 font-sans text-sm font-medium transition-colors duration-fast ${
@@ -472,10 +474,43 @@ export default function Home() {
             </Link>
           </div>
 
+          {/* Group context row — the chips only FILTER; this is the doorway
+              into the group itself (roster, admin, settings), which the old
+              groups dashboard used to provide. Without it /groups/[id] is
+              unreachable from the Board. */}
+          {selectedGroup && (
+            <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-card border border-line bg-card px-4 py-3">
+              <span className="font-sans font-medium text-ink">{selectedGroup.name}</span>
+              <span className="font-mono text-xs text-ink-muted">
+                {selectedGroup.member_count} {selectedGroup.member_count === 1 ? 'member' : 'members'}
+              </span>
+              <span className="ml-auto flex items-center gap-3">
+                <Link
+                  href={`/groups/${selectedGroup.id}`}
+                  className="font-sans text-sm font-medium text-emerald hover:text-emerald/80"
+                >
+                  Open group →
+                </Link>
+                {selectedGroup.is_admin && (
+                  <Link
+                    href={`/groups/${selectedGroup.id}/admin`}
+                    className="font-sans text-sm font-medium text-ink-secondary hover:text-ink"
+                  >
+                    Admin
+                  </Link>
+                )}
+              </span>
+            </div>
+          )}
+
           {visibleEvents.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {visibleEvents.map((event) => (
-                <EventCard key={event.id} event={event} />
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  groupName={selectedGroupId === 'all' ? groupNameById.get(event.group_id) : undefined}
+                />
               ))}
             </div>
           ) : (

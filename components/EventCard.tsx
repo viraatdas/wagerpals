@@ -25,6 +25,10 @@ import CountUp from './CountUp';
 
 interface EventCardProps {
   event: Omit<EventWithStats, 'bets'> & { bets?: Bet[] };
+  /** Which group this wager belongs to — shown as a small muted tag when the
+      surrounding list mixes groups (the Board's "All" view). Plain text, not
+      a link: the whole card is already wrapped in a Link to the event. */
+  groupName?: string;
   className?: string;
 }
 
@@ -76,7 +80,7 @@ function statusFor(event: EventCardProps['event']): StatusPillStatus {
   return 'live';
 }
 
-export default function EventCard({ event, className }: EventCardProps) {
+export default function EventCard({ event, groupName, className }: EventCardProps) {
   const statsA = event.side_stats[event.side_a] || { count: 0, total: 0 };
   const statsB = event.side_stats[event.side_b] || { count: 0, total: 0 };
   const pool = statsA.total + statsB.total;
@@ -126,9 +130,14 @@ export default function EventCard({ event, className }: EventCardProps) {
                 {event.total_participants}
               </span>
             ) : null}
-            <h3 className="min-w-0 line-clamp-2 break-words font-sans text-base font-medium text-ink">
-              {event.title}
-            </h3>
+            <div className="min-w-0">
+              {groupName && (
+                <div className="truncate font-sans text-xs text-ink-muted">{groupName}</div>
+              )}
+              <h3 className="min-w-0 line-clamp-2 break-words font-sans text-base font-medium text-ink">
+                {event.title}
+              </h3>
+            </div>
           </div>
           <StatusPill status={statusFor(event)} className="shrink-0" />
         </div>
