@@ -22,7 +22,8 @@ export async function POST(request: NextRequest) {
   const mismatch = verifyUserMatch(authResult.userId, user_id);
   if (mismatch) return mismatch;
 
-  const event = await db.events.get(event_id);
+  // Viewer-aware: a bet hidden from its subject (R4) is unreachable here too.
+  const event = await db.events.get(event_id, authResult.userId);
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }

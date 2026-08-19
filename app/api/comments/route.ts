@@ -60,7 +60,9 @@ async function loadAuthedEventContext(
   const authResult = await requireAuth(request);
   if (authResult instanceof NextResponse) return authResult;
 
-  const event = await db.events.get(eventId);
+  // Viewer-aware: a bet hidden from its subject (R4) must be unreachable
+  // through its comments too — db.events.get returns null for that viewer.
+  const event = await db.events.get(eventId, authResult.userId);
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
@@ -404,7 +406,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    const event = await db.events.get(comment.event_id);
+    const event = await db.events.get(comment.event_id, userId);
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
@@ -482,12 +484,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Comment not found' }, { status: 404 });
     }
 
-    const event = await db.events.get(comment.event_id);
+    const event = await db.events.get(comment.event_id, userId);
+    // R3 (flat groups): moderation is creator-only — there are no admins.
     const isAuthor = comment.user_id === userId;
-    const isAdmin = event ? await db.groupMembers.isAdmin(event.group_id, userId) : false;
-    if (!isAuthor && !isAdmin) {
+    const group = event ? await db.groups.get(event.group_id) : null;
+    const isGroupCreator = !!group && group.created_by === userId;
+    if (!isAuthor && !isGroupCreator) {
       return NextResponse.json(
-        { error: 'Only the author or a group admin can delete this comment' },
+        { error: 'Only the author or the group creator can delete this comment' },
         { status: 403 }
       );
     }
@@ -544,7 +548,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'This comment was deleted' }, { status: 400 });
     }
 
-    const event = await db.events.get(comment.event_id);
+    const event = await db.events.get(comment.event_id, userId);
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
