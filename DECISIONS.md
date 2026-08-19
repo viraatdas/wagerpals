@@ -1014,3 +1014,21 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   (pre-existing, not widened here — worth a deliberate decision someday); native confirm()
   dialogs remain on the group admin page.
 - **By:** redesign orchestrator (Fable) + 7 Sonnet subagents · 2026-08-18
+
+## main: payments live, the baseUrl auth outage, group-level cash, mobile redesigned
+- **What:** (1) Stripe production is fully wired: secret + publishable keys in Vercel,
+  webhook endpoint we_1U5xuxGVlZGMiMk8zf8t0Q1j → /api/webhooks/stripe with its signing
+  secret, and Apple Pay ACTIVE on www.wagerpals.io (payment_method_domains + the Stripe
+  association file served from public/.well-known/). The Stripe account is shared with
+  exla projects — WagerPals' webhook ignores foreign PaymentIntents via metadata.type;
+  confirm exla's handlers do the same. (2) Root-caused a production auth outage: lib/stack.ts
+  passed NEXT_PUBLIC_APP_URL as StackServerApp baseUrl — but baseUrl is Stack Auth's OWN API
+  server; setting the env var aimed session lookups at wagerpals.io/api/v1/users/me (404) and
+  every authed API 401'd. Never set baseUrl there. (3) groups.cash_enabled (default FALSE)
+  now gates cash wager creation server-side; admin-only toggle; verify-payments' fixture
+  group must stay cash_enabled=true. (4) The mobile app now shares the web's design system
+  (see the mobile commit); iOS build 9 was uploaded to App Store Connect (user-run eas
+  submit) — App Review submission in ASC still manual. (5) Brand: "WagerPals | Bet On Your
+  Friends' Shenanigans", og.png regenerated in the redesign language. (6) The Legacy group
+  (id 000000) renamed to "OG Wagerpals Squad" at the user's request.
+- **By:** orchestrator (Fable) + Sonnet subagents · 2026-08-18
