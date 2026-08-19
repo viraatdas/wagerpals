@@ -5,12 +5,20 @@ import { validateUsername } from '@/lib/utils';
 
 interface UsernameModalProps {
   onSubmit: (username: string) => Promise<void>;
+  /**
+   * Called after the brief "Username saved." confirmation, once the modal
+   * is ready to be dismissed. The caller owns visibility (this component
+   * never hides itself) — see ClientProviders.tsx's UsernameGate, the one
+   * mount point for this modal across every route.
+   */
+  onSaved?: () => void;
 }
 
-export default function UsernameModal({ onSubmit }: UsernameModalProps) {
+export default function UsernameModal({ onSubmit, onSaved }: UsernameModalProps) {
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  // One verb through the whole flow: Save -> Saving… -> Username saved.
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'saved'>('idle');
   const titleId = useId();
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,12 +52,13 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
     if (username.trim()) {
       try {
         setError(null);
-        setSubmitting(true);
+        setStatus('submitting');
         await onSubmit(username.trim());
+        setStatus('saved');
+        window.setTimeout(() => onSaved?.(), 700);
       } catch (error: any) {
+        setStatus('idle');
         setError(error.message || "Couldn't save that username — try again.");
-      } finally {
-        setSubmitting(false);
       }
     }
   };
@@ -110,10 +119,10 @@ export default function UsernameModal({ onSubmit }: UsernameModalProps) {
 
           <button
             type="submit"
-            disabled={!username.trim() || !!error || submitting}
+            disabled={!username.trim() || !!error || status !== 'idle'}
             className="btn-primary w-full py-3 text-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
           >
-            {submitting ? 'Saving…' : 'Save username'}
+            {status === 'saved' ? 'Username saved.' : status === 'submitting' ? 'Saving…' : 'Save'}
           </button>
         </form>
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
+import { currencyForEvent, formatCurrencyAmount } from '@/lib/payments';
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request);
@@ -29,20 +30,23 @@ export async function POST(request: NextRequest) {
   }
 
   // escrow_holds cascade-delete with the event, so deleting an event that
-  // still holds stakes would take the money out of players' wallets with no
-  // way to give it back. Force the resolver through cancel-and-refund first.
-  if (event.payment_type === 'cash') {
-    const held = await db.escrowHolds.getHeldTotalForEvent(event_id);
-    if (held > 0) {
-      return NextResponse.json(
-        {
-          error: `This event still holds $${held.toFixed(2)} in escrow. Cancel it first to refund every stake, then delete it.`,
-          code: 'ESCROW_OUTSTANDING',
-          escrow_held: held,
-        },
-        { status: 400 }
-      );
-    }
+  // still holds stakes would take the money out of players' wallets (or W
+  // balances) with no way to give it back. Force the resolver through
+  // cancel-and-refund first. Checked for every payment_type now — a play
+  // event ('none') can carry real wp escrow the same way a cash event
+  // carries usd escrow (see lib/payments.ts's currencyForEvent); a legacy
+  // play event with no escrow at all is a harmless 0-held no-op here.
+  const held = await db.escrowHolds.getHeldTotalForEvent(event_id);
+  if (held > 0) {
+    const currency = currencyForEvent(event);
+    return NextResponse.json(
+      {
+        error: `This event still holds ${formatCurrencyAmount(held, currency)} in escrow. Cancel it first to refund every stake, then delete it.`,
+        code: 'ESCROW_OUTSTANDING',
+        escrow_held: held,
+      },
+      { status: 400 }
+    );
   }
 
   // Delete the event (CASCADE will delete bets)

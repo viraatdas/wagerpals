@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { generateId } from '@/lib/utils';
 import { Bet } from '@/lib/types';
 import { requireAuthUser } from '@/lib/auth';
 import { syncUser } from '@/lib/sync-user';
@@ -96,52 +95,33 @@ export async function POST(request: NextRequest) {
   }
 
   let placedBet: Bet;
+  let holdCurrency: 'usd' | 'wp';
 
-  // ---- Cash path: real-money bet, escrowed via placeCashBet ----
-  if (event.payment_type === 'cash') {
-    try {
-      const result = await placeCashBet({
-        eventId: event_id,
-        userId,
-        username,
-        side,
-        amount,
-      });
-      placedBet = result.bet;
-    } catch (error: any) {
-      if (isPaymentError(error)) {
-        return NextResponse.json(
-          { error: error.message, code: error.code, ...error.details },
-          { status: error.status }
-        );
-      }
-      console.error('[iMessage bet side] Failed to place cash bet:', error);
-      return NextResponse.json({ error: 'Failed to place bet' }, { status: 500 });
-    }
-  } else {
-    // ---- Free path: no money moves, points only ----
-    const timestamp = Date.now();
-    const isLate = timestamp > event.end_time;
-    const parsedAmount = Math.round(amount * 100) / 100;
-    if (!(parsedAmount > 0)) {
-      return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 });
-    }
-    const newBet: Bet = {
-      id: generateId(),
-      event_id,
-      user_id: userId,
+  // Same escrowed engine for both currencies now — placeCashBet derives
+  // usd vs the W from event.payment_type. is_late is always recorded false
+  // (R1: events are live until resolved, never by time).
+  try {
+    const result = await placeCashBet({
+      eventId: event_id,
+      userId,
       username,
       side,
-      amount: parsedAmount,
-      timestamp,
-      is_late: isLate,
-    };
-    await db.bets.create(newBet);
-    placedBet = newBet;
+      amount,
+    });
+    placedBet = result.bet;
+    holdCurrency = result.hold.currency;
+  } catch (error: any) {
+    if (isPaymentError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code, ...error.details },
+        { status: error.status }
+      );
+    }
+    console.error('[iMessage bet side] Failed to place bet:', error);
+    return NextResponse.json({ error: 'Failed to place bet' }, { status: 500 });
   }
 
-  // Update user's total_bet (only non-late bets count toward stats) —
-  // mirrors both branches of app/api/bets/route.ts.
+  // Update user's total_bet (only non-late bets count toward stats).
   if (!placedBet.is_late) {
     const user = await db.users.get(userId);
     if (user) {
@@ -170,12 +150,13 @@ export async function POST(request: NextRequest) {
   // ---- Push notification (best-effort), same shape as app/api/bets/route.ts ----
   try {
     const lateText = placedBet.is_late ? ' (late bet)' : '';
+    const amountText = holdCurrency === 'usd' ? `$${placedBet.amount.toFixed(2)}` : `W${placedBet.amount}`;
     await notifyEventAudience({
       eventId: event_id,
       category: 'bets',
       payload: {
         title: `💰 New Bet Placed${lateText}`,
-        body: `${username} bet $${placedBet.amount.toFixed(2)} on "${placedBet.side}" - ${event.title}`,
+        body: `${username} bet ${amountText} on "${placedBet.side}" - ${event.title}`,
         url: `/events/${event_id}`,
         eventId: event_id,
         tag: `bet-${placedBet.id}`,

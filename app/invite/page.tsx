@@ -165,20 +165,14 @@ async function resolveInvite(searchParams: SearchParams): Promise<InviteData> {
   return merged;
 }
 
-function formatDeadline(endTime: number): string {
-  return new Date(endTime).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
+// R1: events never expire — status is 'active' | 'resolved' only, and
+// end_time (still parsed above for older links, see InviteData) is
+// meaningless. Never used to compute "Closes"/"Closed" text anymore.
 function formatStatusLabel(invite: InviteData): string {
   if (invite.status === 'resolved') {
     return invite.winningSide ? `Resolved · ${invite.winningSide} won` : 'Resolved';
   }
-  if (invite.endTime && invite.endTime <= Date.now()) return 'Closed';
-  return invite.endTime ? `Closes ${formatDeadline(invite.endTime)}` : 'Open';
+  return 'Live';
 }
 
 function formatStakeText(invite: InviteData): string | null {
@@ -199,8 +193,6 @@ export async function generateMetadata({
   const descriptionParts = [`${invite.sideA} vs ${invite.sideB}`];
   if (invite.status === 'resolved') {
     descriptionParts.push(invite.winningSide ? `${invite.winningSide} won` : 'settled');
-  } else if (invite.endTime) {
-    descriptionParts.push(`closes ${formatDeadline(invite.endTime)}`);
   }
   const stakeText = formatStakeText(invite);
   if (stakeText) descriptionParts.push(stakeText);
@@ -273,16 +265,14 @@ export default async function InvitePage({
     invite.sideB === DEFAULT_SIDE_B;
 
   // Status tone: resolved markets take the winner's colour (or neutral if
-  // the winner isn't known), a closed-but-unresolved market is "pending" an
-  // outcome, and a still-open market is purely informational.
+  // the winner isn't known); a still-open market (events never expire, R1)
+  // is purely informational.
   const statusTone = isResolved
     ? invite.winningSide === invite.sideA
       ? 'tone-yes'
       : invite.winningSide === invite.sideB
       ? 'tone-no'
       : 'tone-neutral'
-    : invite.endTime && invite.endTime <= Date.now()
-    ? 'tone-pending'
     : 'tone-info';
 
   const hasBothCounts = typeof invite.sideACount === 'number' && typeof invite.sideBCount === 'number';

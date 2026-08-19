@@ -13,6 +13,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import Toast, { ToastType } from '@/components/Toast';
 import CountUp from '@/components/CountUp';
 import EmptySlip from '@/components/EmptySlip';
+import WAmount from '@/components/WMark';
 
 function formatTxTimestamp(value?: string): string {
   if (!value) return '';
@@ -41,7 +42,7 @@ export interface WalletPanelProps {
 
 export default function WalletPanel({ className }: WalletPanelProps) {
   const user = useUser({ or: 'return-null' });
-  const [wallet, setWallet] = useState<{ balance: number } | null>(null);
+  const [wallet, setWallet] = useState<{ balance: number; wp_balance?: number } | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [walletDataLoading, setWalletDataLoading] = useState(true);
   const [depositAmount, setDepositAmount] = useState('');
@@ -140,6 +141,12 @@ export default function WalletPanel({ className }: WalletPanelProps) {
     setTimeout(fetchWallet, 1500);
   };
 
+  // Two separate ledgers, split by the payload's own currency field —
+  // never mixed W and $ in one list. A transaction from before `currency`
+  // existed on the row defaults to cash (undefined !== 'wp').
+  const wpTransactions = transactions.filter((tx: any) => tx.currency === 'wp');
+  const cashTransactions = transactions.filter((tx: any) => tx.currency !== 'wp');
+
   return (
     <div id="wallet" className={`scroll-mt-24 ${className ?? ''}`}>
       <Toast
@@ -149,6 +156,11 @@ export default function WalletPanel({ className }: WalletPanelProps) {
         type={toast?.type || 'info'}
       />
 
+      {/* $ Cash — real money. Stripe deposits/withdrawals, kept a strictly
+          $-only affair, visually separate from the W panel below it. */}
+      <div className="section-head mb-4">
+        <span className="eyebrow-accent eyebrow">$ Cash</span>
+      </div>
       <div className="card p-5 sm:p-7">
         <div className="flex items-center justify-between gap-3 mb-2">
           <p className="eyebrow">Available balance</p>
@@ -270,7 +282,46 @@ export default function WalletPanel({ className }: WalletPanelProps) {
         )}
       </div>
 
-      {/* Transactions ledger */}
+      {/* W — WagerPals' play currency. Never Stripe, never withdrawable,
+          never interchangeable with $ — its own balance, its own recent
+          transactions (the payload distinguishes currency per-transaction),
+          and the faucet line. Amber never touches a money value, so this
+          stays on the same emerald/crimson number treatment as $. */}
+      <div className="section-head mb-4 mt-8">
+        <span className="eyebrow-accent eyebrow">W</span>
+      </div>
+      <div className="card p-5 sm:p-7">
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <p className="eyebrow">W balance</p>
+        </div>
+        <div className="mb-3 text-4xl sm:text-5xl text-emerald">
+          <WAmount value={wallet?.wp_balance ?? 0} animate className="font-mono" />
+        </div>
+        <p className="field-hint mb-4">Out of W? You get W10 back every day.</p>
+
+        {wpTransactions.length > 0 && (
+          <div className="card divide-y divide-line">
+            {wpTransactions.slice(0, 5).map((tx: any) => (
+              <div key={tx.id} className={`flex items-center gap-3 px-4 py-3 ${txTone(tx)}`}>
+                <span className="tone-dot" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-ink truncate">{tx.description || tx.type}</p>
+                  {tx.created_at && (
+                    <p className="text-xs text-ink-muted">{formatTxTimestamp(tx.created_at)}</p>
+                  )}
+                </div>
+                <span className="tone-text text-base whitespace-nowrap inline-flex items-baseline gap-0.5">
+                  {tx.amount > 0 ? '+' : '-'}
+                  <WAmount value={Math.abs(tx.amount)} />
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* $ Transactions ledger — cash only; W's own recent activity is in
+          the panel above. */}
       <div className="mt-8">
         <div className="section-head mb-4">
           <span className="eyebrow">Transactions</span>
@@ -287,7 +338,7 @@ export default function WalletPanel({ className }: WalletPanelProps) {
               </div>
             ))}
           </div>
-        ) : transactions.length === 0 ? (
+        ) : cashTransactions.length === 0 ? (
           <EmptySlip
             headline="Nothing in the ledger yet."
             body="Deposit to fund your wallet — every bet, win, and payout lands here."
@@ -295,7 +346,7 @@ export default function WalletPanel({ className }: WalletPanelProps) {
           />
         ) : (
           <div className="card divide-y divide-line">
-            {transactions.slice(0, 5).map((tx: any) => (
+            {cashTransactions.slice(0, 5).map((tx: any) => (
               <div key={tx.id} className={`flex items-center gap-3 px-4 py-3 ${txTone(tx)}`}>
                 <span className="tone-dot" aria-hidden="true" />
                 <div className="min-w-0 flex-1">

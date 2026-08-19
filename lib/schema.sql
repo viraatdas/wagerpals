@@ -85,6 +85,8 @@ CREATE TABLE IF NOT EXISTS escrow_holds (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   amount DECIMAL(10,2) NOT NULL CONSTRAINT escrow_holds_amount_check CHECK (amount > 0),
   status TEXT NOT NULL DEFAULT 'held' CONSTRAINT escrow_holds_status_check CHECK (status IN ('held', 'released', 'refunded')),
+  -- Same ledger this hold moves: 'usd' (cash events) or 'wp' (play events).
+  currency TEXT NOT NULL DEFAULT 'usd' CONSTRAINT escrow_holds_currency_check CHECK (currency IN ('usd', 'wp')),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   released_at TIMESTAMP
 );
@@ -172,10 +174,14 @@ CREATE TABLE IF NOT EXISTS event_notification_mutes (
   UNIQUE(event_id, user_id)
 );
 
--- Wallets table (real money)
+-- Wallets table (real money + play currency, one row per user)
 CREATE TABLE IF NOT EXISTS wallets (
   user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   balance DECIMAL(10,2) DEFAULT 0 CHECK (balance >= 0),
+  -- The W — WagerPals' play currency. Never interchangeable with `balance`
+  -- (USD): no Stripe path credits it, no withdrawal debits it. See
+  -- lib/payments.ts's signup-grant/faucet mechanics.
+  wp_balance DECIMAL(10,2) NOT NULL DEFAULT 0 CHECK (wp_balance >= 0),
   currency TEXT DEFAULT 'usd',
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -194,6 +200,9 @@ CREATE TABLE IF NOT EXISTS transactions (
   description TEXT,
   idempotency_key TEXT,
   event_id TEXT REFERENCES events(id) ON DELETE SET NULL,
+  -- Which ledger this row moves: 'usd' (real money, Stripe-backed) or 'wp'
+  -- (the W, play currency). Deposits/withdrawals are always 'usd'.
+  currency TEXT NOT NULL DEFAULT 'usd' CONSTRAINT transactions_currency_check CHECK (currency IN ('usd', 'wp')),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

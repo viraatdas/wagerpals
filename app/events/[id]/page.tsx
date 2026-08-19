@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useUser } from '@stackframe/stack';
-import Countdown from '@/components/Countdown';
 import BetForm from '@/components/BetForm';
 import Ledger from '@/components/Ledger';
 import CommentThread from '@/components/CommentThread';
@@ -15,6 +14,7 @@ import StatusPill from '@/components/StatusPill';
 import OddsLine from '@/components/OddsLine';
 import ConfidenceBar from '@/components/ConfidenceBar';
 import CountUp from '@/components/CountUp';
+import WAmount, { WMark } from '@/components/WMark';
 import { AvatarPerson } from '@/components/AvatarStack';
 import { splitPercent } from '@/lib/odds';
 import { EscrowHoldStatus, EventWithStats, NetResult } from '@/lib/types';
@@ -24,10 +24,6 @@ export const dynamic = 'force-dynamic';
 
 type EventPageData = EventWithStats & {
   is_public?: boolean;
-  resolver?: {
-    user_id: string;
-    username?: string;
-  } | null;
   payment_type?: 'none' | 'cash';
   stake_amount?: number | null;
   escrow_total?: number;
@@ -67,7 +63,6 @@ export default function EventPage() {
   const [resolving, setResolving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [netResults, setNetResults] = useState<NetResult[]>([]);
-  const [isPublic, setIsPublic] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [confirmationModal, setConfirmationModal] = useState<ConfirmationModalConfig>({
     isOpen: false,
@@ -108,8 +103,6 @@ export default function EventPage() {
       }
 
       setEvent(data);
-
-      setIsPublic(data.is_public || false);
 
       if (data.status === 'resolved' && data.resolution) {
         const results = calculateNetResults(data.bets, data.resolution.winning_side);
@@ -380,13 +373,15 @@ export default function EventPage() {
     );
   }
 
-  const isEnded = event.end_time < Date.now();
-  const paidResolver = !isPublic ? event.resolver : null;
-  const canResolve = event.status === 'active' && (!paidResolver || paidResolver.user_id === user.id);
+  // R2: creator-only resolve/unresolve/cancel/delete. event.created_by
+  // already carries the server's group-creator fallback for legacy rows
+  // with no created_by of their own (see app/api/events/route.ts) — the
+  // server enforces this the same way (403 otherwise), this is purely UI.
+  const isCreator = !!event.created_by && event.created_by === user.id;
+  const canResolve = event.status === 'active' && isCreator;
   const username = user.displayName || user.primaryEmail || 'User';
   const isCash = event.payment_type === 'cash';
   const isCancelled = event.status === 'resolved' && !event.resolution;
-  const isUrgent = event.status === 'active' && !isEnded && (event.end_time - Date.now()) <= 60 * 60 * 1000;
 
   return (
     <>
@@ -418,13 +413,15 @@ export default function EventPage() {
             >
               <span aria-hidden="true">&larr;</span> Back to group
             </Link>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="btn-quiet-danger press shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {deleting ? 'Deleting…' : 'Delete'}
-            </button>
+            {isCreator && (
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="btn-quiet-danger press shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            )}
           </div>
 
           <h1 className="market-title text-2xl sm:text-3xl md:text-4xl mb-4 break-words">
@@ -436,21 +433,8 @@ export default function EventPage() {
               <StatusPill status="cancelled" />
             ) : event.status === 'resolved' ? (
               <StatusPill status="settled" />
-            ) : isEnded ? (
-              <StatusPill status="ended" label="Ended — awaiting resolution" />
             ) : (
-              <>
-                <StatusPill status="live" />
-                <span className={`font-mono text-sm text-ink-secondary ${isUrgent ? 'animate-urgent' : ''}`}>
-                  <Countdown endTime={event.end_time} />
-                </span>
-              </>
-            )}
-
-            {paidResolver && (
-              <span className="tone-info pill break-all">
-                Resolver @{paidResolver.username || 'Unknown'}
-              </span>
+              <StatusPill status="live" />
             )}
 
             {isCash && <span className="tone-info pill">Real money</span>}
@@ -463,6 +447,15 @@ export default function EventPage() {
               )
             )}
           </div>
+
+          {/* R2/R3: no admin/resolver role — the event's own creator is the
+              only one who can settle it. Quiet, always-visible context near
+              the resolve area (see the "Resolve market" section below). */}
+          {event.creator_username && (
+            <p className="field-hint mb-6">
+              Started by <span className="font-medium text-ink">@{event.creator_username}</span> — only they can settle it.
+            </p>
+          )}
 
           {isCash && (event.escrow_total ?? 0) > 0 && (
             <p className="field-hint mb-6">
@@ -494,7 +487,14 @@ export default function EventPage() {
             <div className="min-w-0">
               <div className="eyebrow mb-1">Pool</div>
               <div className="stat-value truncate">
-                <CountUp value={poolTotal} formatter="currency" />
+                {isCash ? (
+                  <CountUp value={poolTotal} formatter="currency" />
+                ) : (
+                  <span className="inline-flex items-baseline gap-0.5">
+                    <WMark />
+                    <CountUp value={poolTotal} formatter="plain" />
+                  </span>
+                )}
               </div>
             </div>
             <div className="min-w-0">
@@ -523,22 +523,18 @@ export default function EventPage() {
 
         {event.status === 'resolved' && !isCancelled && netResults.length > 0 && (
           <div className="mb-6">
-            <ResolutionBanner event={event} netResults={netResults} isPublic={isPublic} />
-            <div className="mt-3 flex justify-end">
-              <button
-                onClick={handleUnresolve}
-                disabled={resolving}
-                className="btn-quiet-danger press disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {resolving ? 'Unresolving…' : 'Unresolve event'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {event.status === 'active' && paidResolver && paidResolver.user_id !== user.id && (
-          <div className="tone-info tone-surface border rounded-xl p-4 mb-6 text-sm tone-text">
-            @{paidResolver.username || 'The chosen resolver'} resolves this one.
+            <ResolutionBanner event={event} netResults={netResults} />
+            {isCreator && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={handleUnresolve}
+                  disabled={resolving}
+                  className="btn-quiet-danger press disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {resolving ? 'Unresolving…' : 'Unresolve event'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -590,7 +586,9 @@ export default function EventPage() {
                 <div className="font-mono text-3xl sm:text-4xl font-medium tabular-nums tone-text">{pct}%</div>
                 <div className="mt-4 pt-3 border-t border-[var(--color-border)] flex items-center justify-between gap-2 text-sm">
                   <span className="eyebrow">{stats.count} {stats.count === 1 ? 'bet' : 'bets'}</span>
-                  <span className="stat-value text-lg">${stats.total.toFixed(2)}</span>
+                  <span className="stat-value text-lg">
+                    {isCash ? `$${stats.total.toFixed(2)}` : <WAmount value={stats.total} />}
+                  </span>
                 </div>
               </div>
             );
@@ -605,7 +603,6 @@ export default function EventPage() {
               userId={user.id}
               username={username}
               onBetPlaced={fetchEvent}
-              isPublic={isPublic}
               paymentType={event.payment_type}
               stakeAmount={event.stake_amount}
               onWalletChanged={fetchEvent}
@@ -638,7 +635,6 @@ export default function EventPage() {
             bets={event.bets}
             currentUserId={user?.id}
             onBetDeleted={fetchEvent}
-            isPublic={isPublic}
             paymentType={event.payment_type}
             eventId={event.id}
             eventStatus={event.status}

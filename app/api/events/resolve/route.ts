@@ -45,9 +45,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 403 });
   }
 
-  if (isCancel && event.payment_type !== 'cash') {
-    return NextResponse.json({ error: 'Only real-money events can be cancelled' }, { status: 400 });
-  }
+  // Cancel refunds every held stake via settleCashEvent(eventId, null) below
+  // — that now works identically for a cash event's usd escrow and a play
+  // event's W escrow (see lib/payments.ts's currencyForEvent), so cancel is
+  // no longer restricted to payment_type === 'cash'. A legacy play event
+  // with no escrow at all (pre-W bets) is a harmless noop here — the same
+  // no_holds path settleCashEvent already returns for any event with
+  // nothing held.
 
   if (isCancel) {
     let settlement: SettleCashEventResult;
@@ -136,20 +140,25 @@ export async function POST(request: NextRequest) {
   // event that is still 'active', which a retry fixes (a second
   // settleCashEvent finds no held holds and returns a no_holds noop, so it
   // cannot double-pay).
-  let settlement: SettleCashEventResult | null = null;
-  if (event.payment_type === 'cash') {
-    try {
-      settlement = await settleCashEvent(event_id, winning_side);
-    } catch (error: any) {
-      if (isPaymentError(error)) {
-        return NextResponse.json(
-          { error: error.message, code: error.code, ...error.details },
-          { status: error.status }
-        );
-      }
-      console.error('[Resolve API] Failed to settle event:', error);
-      return NextResponse.json({ error: 'Failed to settle event' }, { status: 500 });
+  // settleCashEvent now settles WHICHEVER currency the event's payment_type
+  // selects (usd for 'cash', the W for 'none') — see
+  // lib/payments.ts's currencyForEvent. It is called unconditionally: an
+  // event with no held escrow at all (a legacy play event whose bets predate
+  // the W, or one that genuinely has zero bets) finds nothing to settle and
+  // returns a no_holds noop, which is exactly the "pure bookkeeping, never
+  // touches a wallet" behavior those bets must keep.
+  let settlement: SettleCashEventResult;
+  try {
+    settlement = await settleCashEvent(event_id, winning_side);
+  } catch (error: any) {
+    if (isPaymentError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code, ...error.details },
+        { status: error.status }
+      );
     }
+    console.error('[Resolve API] Failed to settle event:', error);
+    return NextResponse.json({ error: 'Failed to settle event' }, { status: 500 });
   }
 
   // A refunded settlement (nobody bet the winning side) makes every player
@@ -192,16 +201,15 @@ export async function POST(request: NextRequest) {
   // event nobody can settle again. Now that the event is resolved no new
   // hold can appear, so one more sweep is enough. It is a no_holds noop in
   // the normal case, and it cannot double-pay — settleCashEvent only ever
-  // touches holds still in 'held'.
-  if (event.payment_type === 'cash') {
-    try {
-      const sweep = await settleCashEvent(event_id, winning_side);
-      if (sweep.holds_settled > 0) {
-        console.warn(`[Resolve API] Swept ${sweep.holds_settled} late hold(s) on ${event_id} settled after resolution`);
-      }
-    } catch (error: any) {
-      console.error('[Resolve API] Post-resolution escrow sweep failed:', error);
+  // touches holds still in 'held'. Runs for every event now (usd or wp),
+  // same reasoning as the initial settlement call above.
+  try {
+    const sweep = await settleCashEvent(event_id, winning_side);
+    if (sweep.holds_settled > 0) {
+      console.warn(`[Resolve API] Swept ${sweep.holds_settled} late hold(s) on ${event_id} settled after resolution`);
     }
+  } catch (error: any) {
+    console.error('[Resolve API] Post-resolution escrow sweep failed:', error);
   }
 
   // Add to activity feed

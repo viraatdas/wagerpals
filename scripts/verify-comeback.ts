@@ -158,10 +158,18 @@ async function structuralChecks(): Promise<void> {
   console.log('\n13. events: created_by column & index (R2 — resolver is the event creator)');
   await checkColumn('events', 'created_by');
   await checkIndex('idx_events_created_by');
+
+  console.log('\n14. The W: wallets/transactions/escrow_holds currency columns');
+  await checkColumn('wallets', 'wp_balance', { notNull: true, hasDefault: true });
+  await checkConstraint('wallets', 'wallets_wp_balance_check');
+  await checkColumn('transactions', 'currency', { notNull: true, hasDefault: true });
+  await checkConstraint('transactions', 'transactions_currency_check');
+  await checkColumn('escrow_holds', 'currency', { notNull: true, hasDefault: true });
+  await checkConstraint('escrow_holds', 'escrow_holds_currency_check');
 }
 
 async function dataChecks(): Promise<void> {
-  console.log('\n14. data integrity');
+  console.log('\n15. data integrity');
 
   const orphans = await sql`
     SELECT COUNT(*)::int AS c FROM users u
@@ -197,11 +205,20 @@ async function dataChecks(): Promise<void> {
   // itself didn't run, not a legitimately orphaned event.
   const missingCreatedBy = await sql`SELECT COUNT(*)::int AS c FROM events WHERE created_by IS NULL`;
   record('every event has created_by (post-backfill)', missingCreatedBy.rows[0].c === 0, `${missingCreatedBy.rows[0].c} event(s) still NULL`);
+
+  const badTxnCurrency = await sql`SELECT COUNT(*)::int AS c FROM transactions WHERE currency NOT IN ('usd', 'wp')`;
+  record('all transactions.currency within allowed set', badTxnCurrency.rows[0].c === 0, `${badTxnCurrency.rows[0].c} offending row(s)`);
+
+  const badHoldCurrency = await sql`SELECT COUNT(*)::int AS c FROM escrow_holds WHERE currency NOT IN ('usd', 'wp')`;
+  record('all escrow_holds.currency within allowed set', badHoldCurrency.rows[0].c === 0, `${badHoldCurrency.rows[0].c} offending row(s)`);
+
+  const negativeWp = await sql`SELECT COUNT(*)::int AS c FROM wallets WHERE wp_balance < 0`;
+  record('no wallet has a negative wp_balance', negativeWp.rows[0].c === 0, `${negativeWp.rows[0].c} offending row(s)`);
 }
 
 // Exercises the new schema against real writes, then rolls everything back. Nothing is persisted.
 async function functionalChecks(): Promise<void> {
-  console.log('\n15. functional checks (inside a transaction that is always rolled back)');
+  console.log('\n16. functional checks (inside a transaction that is always rolled back)');
 
   const client = createClient();
   await client.connect();
@@ -252,6 +269,26 @@ async function functionalChecks(): Promise<void> {
     await client.sql`ROLLBACK`;
     await client.sql`BEGIN`;
 
+    await client.sql`
+      INSERT INTO escrow_holds (id, event_id, user_id, amount, status, currency)
+      VALUES ('verify-hold-wp-1', ${eventId}, ${userId}, 10.00, 'held', 'wp')
+    `;
+    record('escrow_holds accepts a wp-currency hold', true);
+
+    rejected = false;
+    try {
+      await client.sql`
+        INSERT INTO escrow_holds (id, event_id, user_id, amount, status, currency)
+        VALUES ('verify-hold-badcur', ${eventId}, ${userId}, 10.00, 'held', 'eur')
+      `;
+    } catch {
+      rejected = true;
+    }
+    record('escrow_holds_currency_check rejects an unknown currency', rejected);
+
+    await client.sql`ROLLBACK`;
+    await client.sql`BEGIN`;
+
     rejected = false;
     try {
       await client.sql`UPDATE events SET payment_type = 'crypto' WHERE id = ${eventId}`;
@@ -285,6 +322,8 @@ async function functionalChecks(): Promise<void> {
       VALUES ('verify-tx-2', ${userId}, 'escrow_hold', 25.00, 'verify-key-1', ${eventId})
     `;
     record('transactions accepts escrow_hold with an idempotency key', true);
+    const defaultedCurrency = await client.sql`SELECT currency FROM transactions WHERE id = 'verify-tx-2'`;
+    record('transactions.currency defaults to usd when not specified', defaultedCurrency.rows[0]?.currency === 'usd');
 
     rejected = false;
     try {
@@ -296,6 +335,26 @@ async function functionalChecks(): Promise<void> {
       rejected = true;
     }
     record('idx_transactions_idempotency_key blocks a duplicate key', rejected);
+
+    await client.sql`ROLLBACK`;
+    await client.sql`BEGIN`;
+
+    await client.sql`
+      INSERT INTO transactions (id, user_id, type, amount, currency, idempotency_key, event_id)
+      VALUES ('verify-tx-wp-1', ${userId}, 'deposit', 100.00, 'wp', 'verify-key-wp-1', ${eventId})
+    `;
+    record('transactions accepts a wp-currency deposit (signup-grant shape)', true);
+
+    rejected = false;
+    try {
+      await client.sql`
+        INSERT INTO transactions (id, user_id, type, amount, currency)
+        VALUES ('verify-tx-badcur', ${userId}, 'deposit', 1.00, 'eur')
+      `;
+    } catch {
+      rejected = true;
+    }
+    record('transactions_currency_check rejects an unknown currency', rejected);
 
     await client.sql`ROLLBACK`;
     await client.sql`BEGIN`;

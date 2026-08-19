@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { generateId } from '@/lib/utils';
-import { Bet } from '@/lib/types';
 import { notifyEventAudience } from '@/lib/push';
 import { requireAuth, verifyUserMatch } from '@/lib/auth';
 import { placeCashBet, isPaymentError } from '@/lib/payments';
@@ -28,113 +26,45 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
-  // ---- Cash path: real-money bet, escrowed via placeCashBet ----
-  if (event.payment_type === 'cash') {
-    if (side !== event.side_a && side !== event.side_b) {
-      return NextResponse.json({ error: 'Invalid side' }, { status: 400 });
-    }
+  if (side !== event.side_a && side !== event.side_b) {
+    return NextResponse.json({ error: 'Invalid side' }, { status: 400 });
+  }
 
-    let result;
-    try {
-      result = await placeCashBet({
-        eventId: event_id,
-        userId: user_id,
-        username,
-        side,
-        amount: parseFloat(amount),
-        note,
-      });
-    } catch (error: any) {
-      if (isPaymentError(error)) {
-        return NextResponse.json(
-          { error: error.message, code: error.code, ...error.details },
-          { status: error.status }
-        );
-      }
-      console.error('[Bets API] Failed to place cash bet:', error);
-      return NextResponse.json({ error: 'Failed to place bet' }, { status: 500 });
-    }
-
-    // Update user's total_bet (only non-late bets count toward stats)
-    if (!result.bet.is_late) {
-      const user = await db.users.get(user_id);
-      if (user) {
-        await db.users.update(user_id, {
-          total_bet: Math.round((user.total_bet + result.bet.amount) * 100) / 100,
-        });
-      }
-    }
-
-    // Add to activity feed
-    const activityData = {
-      type: 'bet' as const,
-      timestamp: result.bet.timestamp,
-      event_id,
-      event_title: event.title,
-      user_id,
+  // Every bet — cash event (usd) or play event (the W) — goes through the
+  // same escrowed engine now; placeCashBet derives the currency from
+  // event.payment_type. is_late is always recorded false going forward
+  // (events are live until resolved, never by time — R1).
+  let result;
+  try {
+    result = await placeCashBet({
+      eventId: event_id,
+      userId: user_id,
       username,
       side,
-      amount: result.bet.amount,
-      note: note || undefined,
-    };
-
-    try {
-      await db.activities.add(activityData);
-    } catch (error: any) {
-      console.error('[Bets API] Failed to add to activity feed:', error);
+      amount: parseFloat(amount),
+      note,
+    });
+  } catch (error: any) {
+    if (isPaymentError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code, ...error.details },
+        { status: error.status }
+      );
     }
-
-    // Send push notification
-    try {
-      await notifyEventAudience({
-        eventId: event_id,
-        category: 'bets',
-        payload: {
-          title: '💰 New Bet Placed',
-          body: `${username} bet $${result.bet.amount.toFixed(2)} on "${side}" - ${event.title}`,
-          url: `/events/${event_id}`,
-          eventId: event_id,
-          tag: `bet-${result.bet.id}`,
-        },
-        excludeUserIds: [user_id],
-      });
-    } catch (error: any) {
-      console.error('[Bets API] Failed to send push notifications:', error);
-    }
-
-    return NextResponse.json({ ...result.bet, wallet: result.wallet, hold_id: result.hold.id });
+    console.error('[Bets API] Failed to place bet:', error);
+    return NextResponse.json({ error: 'Failed to place bet' }, { status: 500 });
   }
 
-  // ---- Free path: no money moves, points only ----
-  const timestamp = Date.now();
-  const isLate = timestamp > event.end_time;
+  const currency = result.hold.currency;
 
-  // Parse and round amount to 2 decimal places
-  const parsedAmount = Math.round(parseFloat(amount) * 100) / 100;
-  if (!(parsedAmount > 0)) {
-    return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 });
-  }
-
-  const newBet: Bet = {
-    id: generateId(),
-    event_id,
-    user_id,
-    username,
-    side,
-    amount: parsedAmount,
-    note: note || undefined,
-    timestamp,
-    is_late: isLate,
-  };
-
-  await db.bets.create(newBet);
-
-  // Update user's total_bet (only non-late bets count toward stats)
-  if (!isLate) {
+  // Update user's total_bet (only non-late bets count toward stats — every
+  // new bet is on-time now, so this always runs, but the guard is kept for
+  // clarity and in case a future path ever sets is_late again).
+  if (!result.bet.is_late) {
     const user = await db.users.get(user_id);
     if (user) {
       await db.users.update(user_id, {
-        total_bet: Math.round((user.total_bet + parsedAmount) * 100) / 100,
+        total_bet: Math.round((user.total_bet + result.bet.amount) * 100) / 100,
       });
     }
   }
@@ -142,13 +72,13 @@ export async function POST(request: NextRequest) {
   // Add to activity feed
   const activityData = {
     type: 'bet' as const,
-    timestamp,
+    timestamp: result.bet.timestamp,
     event_id,
     event_title: event.title,
     user_id,
     username,
     side,
-    amount: parsedAmount,
+    amount: result.bet.amount,
     note: note || undefined,
   };
 
@@ -160,16 +90,16 @@ export async function POST(request: NextRequest) {
 
   // Send push notification
   try {
-    const lateText = isLate ? ' (late bet)' : '';
+    const amountText = currency === 'usd' ? `$${result.bet.amount.toFixed(2)}` : `W${result.bet.amount}`;
     await notifyEventAudience({
       eventId: event_id,
       category: 'bets',
       payload: {
-        title: `💰 New Bet Placed${lateText}`,
-        body: `${username} bet $${parsedAmount.toFixed(2)} on "${side}" - ${event.title}`,
+        title: '💰 New Bet Placed',
+        body: `${username} bet ${amountText} on "${side}" - ${event.title}`,
         url: `/events/${event_id}`,
         eventId: event_id,
-        tag: `bet-${newBet.id}`,
+        tag: `bet-${result.bet.id}`,
       },
       excludeUserIds: [user_id],
     });
@@ -177,7 +107,7 @@ export async function POST(request: NextRequest) {
     console.error('[Bets API] Failed to send push notifications:', error);
   }
 
-  return NextResponse.json(newBet);
+  return NextResponse.json({ ...result.bet, wallet: result.wallet, hold_id: result.hold.id });
 }
 
 export async function GET(request: NextRequest) {
@@ -221,13 +151,16 @@ export async function DELETE(request: NextRequest) {
     const mismatch = verifyUserMatch(authResult.userId, bet.user_id);
     if (mismatch) return mismatch;
 
-    // Bets on cash events cannot be deleted — the stake is escrowed and
-    // deleting the bet would strand it. The resolver must cancel the event
-    // to refund every stake instead.
-    const event = await db.events.get(bet.event_id);
-    if (event && event.payment_type === 'cash') {
+    // A bet with an escrow hold (cash usd OR play-event W — both stake
+    // through the same escrow engine now) cannot be deleted: the stake is
+    // escrowed and deleting the bet would strand it. The resolver must
+    // cancel the event to refund every stake instead. Gated on
+    // bet.escrow_hold_id (not payment_type) so it correctly covers both
+    // currencies while still leaving pre-W legacy play bets (no hold)
+    // deletable exactly as before.
+    if (bet.escrow_hold_id) {
       return NextResponse.json({
-        error: 'Bets on real-money events cannot be deleted. Ask the resolver to cancel the event to refund every stake.',
+        error: "Bets with escrowed stakes can't be deleted — the creator can cancel the event to refund everyone.",
         code: 'CASH_BET_IMMUTABLE',
       }, { status: 400 });
     }

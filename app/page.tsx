@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
 import PushNotificationPrompt from '@/components/PushNotificationPrompt';
-import UsernameModal from '@/components/UsernameModal';
 import Toast, { ToastType } from '@/components/Toast';
 import EmptySlip from '@/components/EmptySlip';
 import EventCard from '@/components/EventCard';
@@ -20,15 +19,16 @@ interface GroupSummary extends Group {
   is_admin: boolean;
 }
 
-// Board ordering: currently-open wagers first (most recent deadline first),
-// then everything else (ended/settled) newest first. Mirrors the ordering
-// db.events.getAllWithStats already applies per-group; re-applied here
-// because the Board combines multiple groups' event lists client-side.
+// Board ordering: currently-open wagers first, then everything settled.
+// Events never expire (R2) — there's no end_time to break ties on, so this
+// is a STABLE sort: each per-group fetch already arrives ordered
+// recency-first from db.events.getAllWithStats, and Array.prototype.sort's
+// stability preserves that relative order within each status bucket once
+// the Board flattens multiple groups' lists together.
 function boardOrder(a: EventWithStats, b: EventWithStats): number {
   const aOpen = a.status === 'active' ? 0 : 1;
   const bOpen = b.status === 'active' ? 0 : 1;
-  if (aOpen !== bOpen) return aOpen - bOpen;
-  return b.end_time - a.end_time;
+  return aOpen - bOpen;
 }
 
 export default function Home() {
@@ -47,9 +47,9 @@ export default function Home() {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
-  const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [groupCode, setGroupCode] = useState('');
+  const [cashEnabled, setCashEnabled] = useState(false);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
@@ -60,35 +60,13 @@ export default function Home() {
       return;
     }
 
-    // Create/update returns the user row, so avoid an extra username lookup on first load.
-    createOrUpdateUser().then(async (userData) => {
-      if (userData) {
-        setShowUsernameModal(!userData.username_selected);
-      } else {
-        await checkUsernameSelected();
-      }
-      checkAndHandlePendingInvite();
-    });
+    // The "pick a username" check + row sync now lives in ClientProviders'
+    // UsernameGate (mounted once for every route), not here — this effect
+    // only owns the board-specific stuff.
+    checkAndHandlePendingInvite();
     fetchBoard(user.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
-
-  const checkUsernameSelected = async () => {
-    if (!user) return;
-
-    try {
-      const response = await fetch(`/api/users?id=${user.id}`);
-      if (response.ok) {
-        const userData = await response.json();
-        // Show username modal if user hasn't selected a username yet
-        if (!userData.username_selected) {
-          setShowUsernameModal(true);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to check username status:', error);
-    }
-  };
 
   const checkAndHandlePendingInvite = async () => {
     if (!user) return;
@@ -103,58 +81,6 @@ export default function Home() {
       localStorage.removeItem('pendingGroupInvite');
       sessionStorage.removeItem('pendingGroupInvite');
       router.push(`/groups/join/${pendingInvite}`);
-    }
-  };
-
-  const createOrUpdateUser = async () => {
-    if (!user) return;
-
-    try {
-      // Generate initial username from displayName or email
-      let initialUsername = user.displayName || user.primaryEmail?.split('@')[0] || 'User';
-
-      const response = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: user.id,
-          username: initialUsername,
-          // Don't set username_selected - let the user choose their username
-        }),
-      });
-      if (response.ok) {
-        return await response.json();
-      }
-    } catch (error) {
-      console.error('Failed to create/update user:', error);
-    }
-
-    return null;
-  };
-
-  const handleUsernameSubmit = async (username: string) => {
-    if (!user) return;
-
-    try {
-      const response = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: user.id,
-          username: username,
-          username_selected: true,
-        }),
-      });
-
-      if (response.ok) {
-        setShowUsernameModal(false);
-        setToast({ message: 'Username saved.', type: 'success' });
-      } else {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to set username');
-      }
-    } catch (error: any) {
-      throw error; // Let UsernameModal handle the error display
     }
   };
 
@@ -219,6 +145,7 @@ export default function Home() {
         body: JSON.stringify({
           name: groupName.trim(),
           created_by: user.id,
+          cash_enabled: cashEnabled,
         }),
       });
 
@@ -226,6 +153,7 @@ export default function Home() {
         const newGroup = await response.json();
         setShowCreateModal(false);
         setGroupName('');
+        setCashEnabled(false);
         router.push(`/groups/${newGroup.id}`);
       } else {
         const data = await response.json().catch(() => ({}));
@@ -257,7 +185,8 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
-        setToast({ message: 'Join request sent — waiting on an admin.', type: 'success' });
+        // R3: joining via a group code is instant now, never pending.
+        setToast({ message: "You're in.", type: 'success' });
         setShowJoinModal(false);
         setGroupCode('');
         fetchBoard(user.id);
@@ -327,7 +256,6 @@ export default function Home() {
 
   return (
     <div className="page-shell mobile-page">
-      {showUsernameModal && <UsernameModal onSubmit={handleUsernameSubmit} />}
       <PushNotificationPrompt />
       <Toast
         isOpen={toast !== null}
@@ -358,10 +286,41 @@ export default function Home() {
                 className="input mb-6"
                 required
               />
+
+              <div className="mb-6 flex items-start justify-between gap-4 rounded-control border border-line bg-card px-4 py-3">
+                <div className="min-w-0">
+                  <label htmlFor="create-group-cash" className="font-sans text-sm font-medium text-ink">
+                    Cash wagers
+                  </label>
+                  <p className="mt-0.5 font-sans text-xs text-ink-secondary">
+                    Members can stake real money from their wallets.
+                  </p>
+                </div>
+                <button
+                  id="create-group-cash"
+                  type="button"
+                  role="switch"
+                  aria-checked={cashEnabled}
+                  onClick={() => setCashEnabled((v) => !v)}
+                  className={`press relative inline-flex h-6 w-11 shrink-0 items-center rounded-pill transition-colors duration-fast ${
+                    cashEnabled ? 'bg-emerald' : 'bg-line'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-pill bg-card shadow-elev-1 transition-transform duration-fast ${
+                      cashEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setCashEnabled(false);
+                  }}
                   className="flex-1 rounded-control border border-line bg-card px-4 py-2 font-sans text-sm font-medium text-ink-secondary transition-colors duration-fast hover:border-ink-secondary"
                 >
                   Cancel
@@ -496,7 +455,7 @@ export default function Home() {
                     href={`/groups/${selectedGroup.id}/admin`}
                     className="font-sans text-sm font-medium text-ink-secondary hover:text-ink"
                   >
-                    Admin
+                    Manage
                   </Link>
                 )}
               </span>

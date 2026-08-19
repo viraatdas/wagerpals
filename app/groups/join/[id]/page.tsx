@@ -18,6 +18,9 @@ export default function JoinGroupPage() {
   const [alreadyMember, setAlreadyMember] = useState(false);
   const [hasPending, setHasPending] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false);
+  // R3: joining via a code is instant now — this is the brief "You're in."
+  // beat before landing in the group, not a "request sent" state.
+  const [justJoined, setJustJoined] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -133,12 +136,13 @@ export default function JoinGroupPage() {
         return;
       }
 
-      // Successfully submitted join request
-      // For now, redirect to home - admin will need to approve
-      router.push('/?joined=pending');
+      // R3: joins via a code are instant — show the "You're in." beat, then
+      // land straight in the group.
+      setJustJoined(true);
+      setTimeout(() => router.push(`/groups/${params.id}`), 600);
     } catch (err) {
       console.error('Failed to join group:', err);
-      setError("Couldn't send the join request — try again.");
+      setError("Couldn't join the group — try again.");
       setJoining(false);
     }
   };
@@ -197,6 +201,17 @@ export default function JoinGroupPage() {
     );
   }
 
+  if (justJoined) {
+    return (
+      <div className="page-shell-narrow mobile-page">
+        <div className="card rail-top tone-yes p-8 text-center animate-rise">
+          <h1 className="display-3 mb-2">You&apos;re in.</h1>
+          <p className="text-sm text-muted">Taking you to {group?.name}…</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="page-shell-narrow mobile-page">
       <div className="hero-field rounded-[var(--radius-panel)] border border-hairline p-8 sm:p-10 animate-rise">
@@ -231,7 +246,9 @@ export default function JoinGroupPage() {
           {hasPending ? (
             <div className="tone-pending tone-surface border rounded-2xl px-5 py-4 w-full mb-6 text-left">
               <p className="text-sm font-semibold tone-text mb-1">Request pending</p>
-              <p className="text-sm text-muted">{error}</p>
+              <p className="text-sm text-muted">
+                This is a leftover request from before joining became instant — it&apos;s waiting on the group creator.
+              </p>
             </div>
           ) : error ? (
             <div className="tone-no tone-surface border rounded-2xl px-5 py-4 w-full mb-6 text-left">
@@ -255,9 +272,11 @@ export default function JoinGroupPage() {
             </button>
           </div>
 
-          <p className="field-hint mt-6">
-            Your join request will be pending until a group admin approves it.
-          </p>
+          {!hasPending && (
+            <p className="field-hint mt-6">
+              Joining is instant — you&apos;ll land right in the group.
+            </p>
+          )}
         </div>
       </div>
     </div>

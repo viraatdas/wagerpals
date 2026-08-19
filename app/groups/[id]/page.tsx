@@ -18,7 +18,6 @@ export default function GroupPage() {
   const [group, setGroup] = useState<any>(null);
   const [events, setEvents] = useState<EventWithStats[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [copied, setCopied] = useState(false);
   const [wallet, setWallet] = useState<{ balance: number } | null>(null);
 
@@ -56,10 +55,6 @@ export default function GroupPage() {
       setGroup(groupData);
       setEvents(Array.isArray(eventsData) ? eventsData : []);
 
-      // Check if user is admin
-      const userMember = (groupData.members || []).find((m: any) => m.user_id === uid);
-      setIsAdmin(userMember?.role === 'admin');
-
       if (!groupData.is_public) {
         fetch(`/api/wallet?userId=${uid}`)
           .then((response) => response.ok ? response.json() : null)
@@ -87,11 +82,12 @@ export default function GroupPage() {
     }
   };
 
+  // Events never expire (R2) — status is 'active' | 'resolved' only, so
+  // there's no third "ended but unresolved" bucket anymore. Both lists keep
+  // the order the API already returned them in (recency-first, per
+  // db.events.getAllWithStats), since there's no end_time left to sort by.
   const categorizeEvents = () => {
-    const now = Date.now();
-    const allOngoingEvents = events
-      .filter((e) => e.status === 'active' && e.end_time > now)
-      .sort((a, b) => a.end_time - b.end_time);
+    const allOngoingEvents = events.filter((e) => e.status === 'active');
 
     const eventsWithTotals = allOngoingEvents.map(event => {
       const totalMoney = Object.values(event.side_stats).reduce((sum, stats) => sum + stats.total, 0);
@@ -110,11 +106,9 @@ export default function GroupPage() {
     const trendingIds = new Set(trendingEvents.map(e => e.id));
     const ongoingEvents = allOngoingEvents.filter(e => !trendingIds.has(e.id));
 
-    const endedEvents = events
-      .filter((e) => e.status === 'resolved' || (e.status === 'active' && e.end_time <= now))
-      .sort((a, b) => b.end_time - a.end_time);
+    const settledEvents = events.filter((e) => e.status === 'resolved');
 
-    return { trendingEvents, ongoingEvents, endedEvents };
+    return { trendingEvents, ongoingEvents, settledEvents };
   };
 
   if (!user) {
@@ -159,7 +153,7 @@ export default function GroupPage() {
     );
   }
 
-  const { trendingEvents, ongoingEvents, endedEvents } = categorizeEvents();
+  const { trendingEvents, ongoingEvents, settledEvents } = categorizeEvents();
   const members: any[] = Array.isArray(group.members) ? group.members : [];
 
   return (
@@ -172,7 +166,6 @@ export default function GroupPage() {
               <span className="eyebrow">
                 Group <span className="font-mono normal-case tracking-normal">{group.id}</span>
               </span>
-              {isAdmin && <span className="pill tone-accent">Admin</span>}
               {group.is_public ? (
                 <span className="pill tone-info"><span className="tone-dot" />Free points</span>
               ) : (
@@ -202,7 +195,7 @@ export default function GroupPage() {
                 </>
               )}
             </button>
-            {isAdmin && (
+            {group.is_admin && (
               <Link
                 href={`/groups/${group.id}/admin`}
                 className="btn-glass press text-sm w-full sm:w-auto text-center"
@@ -240,11 +233,6 @@ export default function GroupPage() {
               <div className="min-w-0 space-y-1">
                 <p className="eyebrow">Wallet balance</p>
                 <p className="numeral text-2xl text-foreground">${wallet?.balance?.toFixed(2) || '0.00'}</p>
-                {group.resolver && (
-                  <p className="text-sm text-muted truncate">
-                    Resolver <span className="font-medium text-foreground">@{group.resolver.username || 'Unknown'}</span>
-                  </p>
-                )}
               </div>
               <Link
                 href="/profile?wallet=deposit#wallet"
@@ -283,13 +271,13 @@ export default function GroupPage() {
         </section>
       )}
 
-      {endedEvents.length > 0 && (
+      {settledEvents.length > 0 && (
         <section className="mt-10">
           <div className="section-head mb-5">
-            <span className="eyebrow">Ended bets</span>
+            <span className="eyebrow">Settled bets</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 stagger-rows">
-            {endedEvents.map((event) => (
+            {settledEvents.map((event) => (
               <EventCard key={event.id} event={event} />
             ))}
           </div>
@@ -321,9 +309,6 @@ export default function GroupPage() {
                   </span>
                   {member.user_id === group.created_by && (
                     <span className="pill tone-info shrink-0">Creator</span>
-                  )}
-                  {member.role === 'admin' && (
-                    <span className="pill tone-accent shrink-0">Admin</span>
                   )}
                 </li>
               ))}

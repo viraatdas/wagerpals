@@ -112,6 +112,7 @@ function mapTransaction(row: any): Transaction {
     created_at: row.created_at,
     idempotency_key: row.idempotency_key ?? null,
     event_id: row.event_id ?? null,
+    currency: (row.currency ?? 'usd') as Transaction['currency'],
   };
 }
 
@@ -125,6 +126,7 @@ function mapEscrowHold(row: any): EscrowHold {
     status: row.status,
     created_at: row.created_at,
     released_at: row.released_at ?? null,
+    currency: (row.currency ?? 'usd') as EscrowHold['currency'],
   };
 }
 
@@ -622,13 +624,18 @@ export const db = {
   
   activities: {
     getAll: async (): Promise<ActivityItem[]> => {
+      // LEFT JOIN (not INNER): activities carry no FK to events, so a row
+      // can outlive its event (e.g. after deletion) — payment_type is just
+      // absent for those instead of dropping the activity. Batched in the
+      // same query, no N+1.
       const result = await sql`
-        SELECT * 
-        FROM activities
-        ORDER BY timestamp DESC
+        SELECT a.*, e.payment_type
+        FROM activities a
+        LEFT JOIN events e ON a.event_id = e.id
+        ORDER BY a.timestamp DESC
         LIMIT 50
       `;
-      
+
       return result.rows.map(row => ({
         type: row.type,
         event_id: row.event_id,
@@ -640,6 +647,7 @@ export const db = {
         note: row.note || undefined,
         winning_side: row.winning_side,
         timestamp: parseInt(row.timestamp),
+        payment_type: row.payment_type ?? undefined,
       }));
     },
 
@@ -653,6 +661,7 @@ export const db = {
         SELECT
           a.*,
           e.group_id,
+          e.payment_type,
           g.name as group_name
         FROM activities a
         INNER JOIN events e ON a.event_id = e.id
@@ -664,7 +673,7 @@ export const db = {
         ORDER BY a.timestamp DESC
         LIMIT ${limit} OFFSET ${offset}
       `;
-      
+
       return result.rows.map(row => ({
         type: row.type,
         event_id: row.event_id,
@@ -678,6 +687,7 @@ export const db = {
         note: row.note || undefined,
         winning_side: row.winning_side,
         timestamp: parseInt(row.timestamp),
+        payment_type: row.payment_type ?? undefined,
       }));
     },
     
@@ -1226,6 +1236,7 @@ export const db = {
       return {
         user_id: row.user_id,
         balance: parseFloat(row.balance),
+        wp_balance: parseFloat(row.wp_balance),
         currency: row.currency,
         updated_at: row.updated_at,
       };
@@ -1271,6 +1282,7 @@ export const db = {
         wallet: {
           user_id: row.user_id,
           balance: parseFloat(row.balance),
+          wp_balance: parseFloat(row.wp_balance),
           currency: row.currency,
           updated_at: row.updated_at,
         },
@@ -1297,7 +1309,7 @@ export const db = {
 
     create: async (transaction: Transaction): Promise<Transaction> => {
       await sql`
-        INSERT INTO transactions (id, user_id, type, amount, status, stripe_payment_intent_id, description, idempotency_key, event_id)
+        INSERT INTO transactions (id, user_id, type, amount, status, stripe_payment_intent_id, description, idempotency_key, event_id, currency)
         VALUES (
           ${transaction.id},
           ${transaction.user_id},
@@ -1307,7 +1319,8 @@ export const db = {
           ${transaction.stripe_payment_intent_id || null},
           ${transaction.description || null},
           ${transaction.idempotency_key ?? null},
-          ${transaction.event_id ?? null}
+          ${transaction.event_id ?? null},
+          ${transaction.currency || 'usd'}
         )
       `;
       return transaction;
@@ -1391,14 +1404,15 @@ export const db = {
 
     create: async (hold: EscrowHold): Promise<EscrowHold> => {
       await sql`
-        INSERT INTO escrow_holds (id, event_id, bet_id, user_id, amount, status)
+        INSERT INTO escrow_holds (id, event_id, bet_id, user_id, amount, status, currency)
         VALUES (
           ${hold.id},
           ${hold.event_id},
           ${hold.bet_id ?? null},
           ${hold.user_id},
           ${hold.amount},
-          ${hold.status || 'held'}
+          ${hold.status || 'held'},
+          ${hold.currency || 'usd'}
         )
       `;
       return hold;
@@ -1428,11 +1442,15 @@ export const db = {
       return mapEscrowHold(result.rows[0]);
     },
 
-    getHeldTotalForUser: async (userId: string): Promise<number> => {
+    // `currency` is required (not optional) on purpose: a user can now hold
+    // both usd and wp escrow simultaneously (cash events + play events), so
+    // an unscoped sum would silently mix two different currencies into one
+    // meaningless number. Every call site must say which ledger it wants.
+    getHeldTotalForUser: async (userId: string, currency: 'usd' | 'wp'): Promise<number> => {
       const result = await sql`
         SELECT COALESCE(SUM(amount), 0)::numeric as total
         FROM escrow_holds
-        WHERE user_id = ${userId} AND status = 'held'
+        WHERE user_id = ${userId} AND status = 'held' AND currency = ${currency}
       `;
       return parseFloat(result.rows[0].total);
     },

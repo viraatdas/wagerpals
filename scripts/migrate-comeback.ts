@@ -297,7 +297,17 @@ async function migrateComeback(): Promise<void> {
     skipped++;
   }
 
-  console.log('\n19. backfill: notification_preferences for existing users');
+  console.log('\n19. The W: wallets/transactions/escrow_holds currency columns');
+  // Plain ADD COLUMN with a DEFAULT + CHECK, not the NOT VALID/VALIDATE
+  // pattern addTransactionsTypeCheck() above needs: a brand-new column with
+  // a DEFAULT satisfies every existing row via Postgres's fast-default
+  // mechanism (no rewrite), so the CHECK — evaluated against that same
+  // default — passes for existing rows without a separate validation pass.
+  await step('wallets.wp_balance', () => columnExists('wallets', 'wp_balance'), () => sql`ALTER TABLE wallets ADD COLUMN IF NOT EXISTS wp_balance DECIMAL(10,2) NOT NULL DEFAULT 0 CONSTRAINT wallets_wp_balance_check CHECK (wp_balance >= 0)`);
+  await step('transactions.currency', () => columnExists('transactions', 'currency'), () => sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'usd' CONSTRAINT transactions_currency_check CHECK (currency IN ('usd', 'wp'))`);
+  await step('escrow_holds.currency', () => columnExists('escrow_holds', 'currency'), () => sql`ALTER TABLE escrow_holds ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'usd' CONSTRAINT escrow_holds_currency_check CHECK (currency IN ('usd', 'wp'))`);
+
+  console.log('\n20. backfill: notification_preferences for existing users');
   const backfilled = await sql`
     INSERT INTO notification_preferences (user_id)
     SELECT id FROM users

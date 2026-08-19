@@ -9,6 +9,7 @@ import { useUser } from '@stackframe/stack';
 import { useRouter } from 'next/navigation';
 import { ActivityItem } from '@/lib/types';
 import { formatTimestamp } from '@/lib/utils';
+import { formatW } from '@/lib/odds';
 import AvatarStack from '@/components/AvatarStack';
 import EmptySlip from '@/components/EmptySlip';
 
@@ -124,7 +125,11 @@ function ActivityRow({ activity }: { activity: ActivityItem }) {
       </div>
       <div className="flex flex-none flex-col items-end gap-0.5 pl-1 text-right">
         {activity.type === 'bet' && typeof activity.amount === 'number' && (
-          <span className="numeral tone-text text-sm">${activity.amount.toFixed(2)}</span>
+          <span className="numeral tone-text text-sm">
+            {activity.payment_type === 'cash'
+              ? `$${activity.amount.toFixed(2)}`
+              : formatW(activity.amount)}
+          </span>
         )}
         <span className="whitespace-nowrap font-mono text-xs text-muted">{formatTimestamp(activity.timestamp)}</span>
       </div>

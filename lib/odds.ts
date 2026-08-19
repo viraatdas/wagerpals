@@ -151,15 +151,22 @@ export function formatMoney(amount: number): string {
   return Number.isInteger(rounded) ? `$${rounded.toFixed(0)}` : `$${rounded.toFixed(2)}`;
 }
 
-/** Formats a points amount for display, e.g. `"40 pts"` / `"40.5 pts"`. */
-export function formatPoints(amount: number): string {
+/**
+ * Plain-text form of a W (WagerPals play-currency) amount, e.g. `"W40"` /
+ * `"W40.50"` — no space between the glyph letter and the digits. This is the
+ * sibling of the visual mark rendered by components/WMark.tsx's `WMark` /
+ * `WAmount`: use this helper anywhere a real DOM node can't carry the SVG
+ * glyph — aria-labels, push notifications, activity feed strings, OG
+ * content. See W-CURRENCY-SPEC.md.
+ */
+export function formatW(amount: number): string {
   const rounded = Math.round((amount || 0) * 100) / 100;
-  return Number.isInteger(rounded) ? `${rounded.toFixed(0)} pts` : `${rounded.toFixed(2)} pts`;
+  return Number.isInteger(rounded) ? `W${rounded.toFixed(0)}` : `W${rounded.toFixed(2)}`;
 }
 
-/** Picks {@link formatMoney} or {@link formatPoints} for a stake amount based on the event's payment type. */
+/** Picks {@link formatMoney} or the plain-text {@link formatW} form for a stake amount, based on the event's payment type. */
 export function formatStake(amount: number, paymentType: 'none' | 'cash' = 'cash'): string {
-  return paymentType === 'cash' ? formatMoney(amount) : formatPoints(amount);
+  return paymentType === 'cash' ? formatMoney(amount) : formatW(amount);
 }
 
 /**

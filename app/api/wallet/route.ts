@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth, verifyUserMatch } from '@/lib/auth';
 import { generateId } from '@/lib/utils';
-import { MAX_TRANSACTION_AMOUNT, withdrawFromWallet, getWalletSummary, isPaymentError } from '@/lib/payments';
+import { MAX_TRANSACTION_AMOUNT, withdrawFromWallet, getWalletSummary, ensureWallet, isPaymentError } from '@/lib/payments';
 import Stripe from 'stripe';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +38,9 @@ export async function GET(request: NextRequest) {
     transactions,
     escrow_held_total: summary.escrow_held_total,
     available: summary.available,
+    // The W counterparts — additive, never mixed with the usd fields above.
+    escrow_held_total_wp: summary.escrow_held_total_wp,
+    available_wp: summary.available_wp,
     ...(summary.event ? { event: summary.event } : {}),
   });
 }
@@ -72,8 +75,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Ensure wallet exists
-  await db.wallets.getOrCreate(user_id);
+  // Ensure wallet exists — and lazily apply the W signup grant/daily faucet
+  // (see lib/payments.ts's ensureWallet), same as the GET handler above.
+  await ensureWallet(user_id);
 
   if (action === 'deposit') {
     try {
@@ -106,6 +110,8 @@ export async function POST(request: NextRequest) {
         stripe_payment_intent_id: paymentIntent.id,
         description: `Deposit $${parsedAmount.toFixed(2)}`,
         idempotency_key: stripeKey,
+        // Deposits are always usd — there is no Stripe path for the W.
+        currency: 'usd' as const,
       };
 
       await db.transactions.create(transaction);

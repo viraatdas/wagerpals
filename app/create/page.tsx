@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
 import Toast, { ToastType } from '@/components/Toast';
 import ConfidenceBar from '@/components/ConfidenceBar';
+import { WMark } from '@/components/WMark';
 
 // Small checkmark used to mark a "selected" choice — selection is never
 // conveyed by colour alone (a heavier border always accompanies it).
@@ -32,8 +33,6 @@ function CreateEventForm() {
   const [paymentType, setPaymentType] = useState<'none' | 'cash'>('none');
   const [stakeMode, setStakeMode] = useState<'fixed' | 'open'>('fixed');
   const [stake, setStake] = useState('10');
-  const [endDate, setEndDate] = useState('');
-  const [endTime, setEndTime] = useState('');
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<any[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -158,7 +157,7 @@ function CreateEventForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAttempted(true);
-    if (!title || sides.some((s) => !s.trim()) || !endDate || !endTime || !user || !selectedGroupId) {
+    if (!title || sides.some((s) => !s.trim()) || !user || !selectedGroupId) {
       setToast({ message: 'Fill in every field and pick a group.', type: 'warning' });
       return;
     }
@@ -176,14 +175,14 @@ function CreateEventForm() {
     setLoading(true);
 
     try {
-      const endDateTime = new Date(`${endDate}T${endTime}`).getTime();
       const username = user.displayName || user.primaryEmail || 'User';
 
+      // R1: events never expire — end_time is omitted; the server fills a
+      // meaningless placeholder purely to satisfy the NOT NULL column.
       const eventData = {
         title: title.trim(),
         side_a: sides[0].trim(),
         side_b: sides[1].trim(),
-        end_time: endDateTime,
         group_id: selectedGroupId,
         creator_user_id: user.id,
         creator_username: username,
@@ -352,10 +351,14 @@ function CreateEventForm() {
               <p className="field-hint mt-2">Only this group will see and be able to bet on this event.</p>
             )}
 
-            {/* Optional subject picker */}
+            {/* Subject picker — this bet can be about a specific group
+                member. Amber throughout: amber is the "person" accent
+                (never money), and reusing the verified tone-pending fill
+                keeps it inside the existing AA-safe amber tone rather than
+                inventing a new border/fill pair. */}
             {selectedGroupId && membersError && (
               <div className="tone-pending tone-surface border rounded-panel p-4 mt-5">
-                <p className="field-label mb-1">Who is this bet about? (optional)</p>
+                <p className="field-label mb-1">This bet is about someone (optional)</p>
                 <p className="tone-text text-sm">
                   Couldn&apos;t load this group&apos;s members right now, so this bet won&apos;t be tied to anyone in particular.
                 </p>
@@ -363,14 +366,14 @@ function CreateEventForm() {
             )}
 
             {selectedGroupId && !membersError && eligibleSubjects.length > 0 && (
-              <div className="mt-5">
-                <label htmlFor="subject" className="field-label">Who is this bet about? (optional)</label>
+              <div className="tone-pending tone-surface border rounded-panel p-4 mt-5">
+                <label htmlFor="subject" className="field-label">This bet is about someone (optional)</label>
                 <select
                   id="subject"
-                  aria-label="Who is this bet about?"
+                  aria-label="This bet is about someone"
                   value={selectedSubjectId}
                   onChange={(e) => setSelectedSubjectId(e.target.value)}
-                  className="input"
+                  className="input mt-1"
                 >
                   <option value="">No one / Nobody in particular</option>
                   {eligibleSubjects.map((member) => (
@@ -384,31 +387,29 @@ function CreateEventForm() {
                 </p>
 
                 {selectedSubjectId && (
-                  <div className="mt-4 flex items-start gap-3">
+                  <div className="mt-4 flex items-start gap-3 border-t border-amber/30 pt-4">
                     <button
                       type="button"
                       role="switch"
-                      aria-checked={notifySubject}
-                      aria-label="Let them know about this bet"
+                      aria-checked={!notifySubject}
+                      aria-label="Keep it secret from them"
                       onClick={() => setNotifySubject(!notifySubject)}
                       className={`press relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${
-                        notifySubject ? 'bg-emerald' : 'bg-surface-elevated'
+                        !notifySubject ? 'bg-amber' : 'bg-surface-elevated'
                       }`}
                     >
                       <span
                         className={`inline-block h-5 w-5 transform rounded-full bg-ink shadow-elev-1 transition-transform ${
-                          notifySubject ? 'translate-x-6' : 'translate-x-1'
+                          !notifySubject ? 'translate-x-6' : 'translate-x-1'
                         }`}
                       />
                     </button>
                     <div>
                       <div className="text-sm font-medium text-foreground">
-                        Let them know about this bet
+                        Keep it secret from them
                       </div>
                       {!notifySubject && (
-                        <p className="field-hint mt-1">
-                          They won&apos;t get any notifications about this bet — not when it&apos;s created, when people bet, when someone comments, or when it resolves. It stays off their activity feed until it&apos;s resolved. They can still see it if they open the bet directly or browse the group.
-                        </p>
+                        <p className="field-hint mt-1">They won&apos;t see this bet anywhere.</p>
                       )}
                     </div>
                   </div>
@@ -539,50 +540,6 @@ function CreateEventForm() {
             </div>
           </div>
 
-          {/* When it ends */}
-          <div>
-            <div className="section-head mb-4">
-              <span className="eyebrow">When it ends</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="endDate" className="field-label">Ends on</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg pointer-events-none z-10" aria-hidden="true">
-                    📅
-                  </span>
-                  <input
-                    type="date"
-                    id="endDate"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className={`input pl-12 [color-scheme:light] ${attempted && !endDate ? 'input-invalid' : ''}`}
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <label htmlFor="endTime" className="field-label">Ends at</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg pointer-events-none z-10" aria-hidden="true">
-                    ⏰
-                  </span>
-                  <input
-                    type="time"
-                    id="endTime"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className={`input pl-12 [color-scheme:light] ${attempted && !endTime ? 'input-invalid' : ''}`}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-            {attempted && (!endDate || !endTime) && (
-              <p className="tone-no tone-text field-hint mt-2">Pick a date and time for this event to end.</p>
-            )}
-          </div>
-
           {/* Stakes — the cash option only appears when the selected group has
               cash wagers turned on; otherwise every event in that group is
               points-only, with no choice to show. */}
@@ -603,10 +560,12 @@ function CreateEventForm() {
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-foreground">Just for fun</span>
+                  <span className="font-semibold text-foreground">Play with W</span>
                   {paymentType === 'none' && <SelectedCheck />}
                 </div>
-                <div className="text-sm text-muted mt-0.5">Points only, no money</div>
+                <div className="flex items-center gap-1 text-sm text-muted mt-0.5">
+                  Stakes <WMark className="h-3 w-3" /> — no real money
+                </div>
               </button>
               <button
                 type="button"

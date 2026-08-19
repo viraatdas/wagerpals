@@ -35,16 +35,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    const isCash = event.payment_type === 'cash';
+    // W-currency: play events escrow W exactly like cash events escrow USD,
+    // so escrow_total/escrow_by_bet are computed for EVERY event now — the
+    // old `isCash` gate here would have blinded the escrow chips (§8
+    // invariant) for W bets. Legacy hold-less play bets simply don't appear
+    // in the map, which the chip gating already handles.
     const [bets, group, escrow_total, escrow_by_bet] = await Promise.all([
       db.bets.getByEvent(id),
       db.groups.get(event.group_id),
-      isCash ? db.escrowHolds.getHeldTotalForEvent(id) : Promise.resolve(0),
+      db.escrowHolds.getHeldTotalForEvent(id),
       // Every player's escrow status, not just the caller's: the ledger renders
-      // an escrow chip on each cash bet regardless of who placed it.
-      isCash
-        ? db.escrowHolds.getStatusByBetForEvent(id)
-        : Promise.resolve({} as Record<string, EscrowHoldStatus>),
+      // an escrow chip on each escrowed bet regardless of who placed it.
+      db.escrowHolds.getStatusByBetForEvent(id),
     ]);
     const sideStats: Record<string, { count: number; total: number }> = {
       [event.side_a]: { count: 0, total: 0 },

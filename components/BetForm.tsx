@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { formatW } from '@/lib/odds';
+import WAmount, { WMark } from './WMark';
 
 interface BetFormProps {
   sides: string[];
@@ -9,7 +11,6 @@ interface BetFormProps {
   userId: string;
   username: string;
   onBetPlaced: () => void;
-  isPublic?: boolean;
   paymentType?: 'none' | 'cash';
   stakeAmount?: number | null;
   walletBalance?: number | null;
@@ -22,7 +23,6 @@ export default function BetForm({
   userId,
   username,
   onBetPlaced,
-  isPublic = false,
   paymentType = 'none',
   stakeAmount = null,
   walletBalance,
@@ -39,8 +39,12 @@ export default function BetForm({
   const isCash = paymentType === 'cash';
   const isFixedStake = isCash && typeof stakeAmount === 'number' && stakeAmount > 0;
 
+  // Cash and W are separate ledgers (see W-CURRENCY-SPEC.md) — fetch both so
+  // insufficient-funds checks work on whichever currency this event stakes.
   const [fetchedBalance, setFetchedBalance] = useState<number | null>(null);
+  const [fetchedWpBalance, setFetchedWpBalance] = useState<number | null>(null);
   const balance = typeof walletBalance === 'number' ? walletBalance : fetchedBalance;
+  const wpBalance = fetchedWpBalance;
 
   const fetchBalance = async () => {
     try {
@@ -50,13 +54,16 @@ export default function BetForm({
       if (data && data.wallet && typeof data.wallet.balance === 'number') {
         setFetchedBalance(data.wallet.balance);
       }
+      if (data && data.wallet && typeof data.wallet.wp_balance === 'number') {
+        setFetchedWpBalance(data.wallet.wp_balance);
+      }
     } catch (err) {
       // Silently ignore — do not block betting on a wallet fetch failure.
     }
   };
 
   useEffect(() => {
-    if (isCash && typeof walletBalance !== 'number') {
+    if (!isCash || typeof walletBalance !== 'number') {
       fetchBalance();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -70,7 +77,9 @@ export default function BetForm({
   }, [justPlaced]);
 
   const effectiveStake = isFixedStake ? (stakeAmount as number) : parseFloat(amount) || 0;
-  const insufficientFunds = isCash && typeof balance === 'number' && effectiveStake > 0 && balance < effectiveStake;
+  const insufficientFunds = isCash
+    ? typeof balance === 'number' && effectiveStake > 0 && balance < effectiveStake
+    : typeof wpBalance === 'number' && effectiveStake > 0 && wpBalance < effectiveStake;
 
   const clearError = () => {
     if (error) setError(null);
@@ -108,8 +117,9 @@ export default function BetForm({
         }
         const message = errorBody?.error || "Couldn't place that bet — try again.";
         setError({ message, code: errorBody?.code, shortfall: errorBody?.shortfall });
-        if (errorBody?.code === 'INSUFFICIENT_FUNDS' && typeof errorBody?.balance === 'number') {
-          setFetchedBalance(errorBody.balance);
+        if (errorBody?.code === 'INSUFFICIENT_FUNDS') {
+          if (typeof errorBody?.balance === 'number') setFetchedBalance(errorBody.balance);
+          if (typeof errorBody?.wp_balance === 'number') setFetchedWpBalance(errorBody.wp_balance);
         }
         return;
       }
@@ -120,9 +130,7 @@ export default function BetForm({
       setError(null);
       onBetPlaced();
       onWalletChanged?.();
-      if (isCash) {
-        fetchBalance();
-      }
+      fetchBalance();
     } catch (err) {
       console.error('Failed to place bet:', err);
       setError({ message: "Couldn't place that bet — try again." });
@@ -131,15 +139,13 @@ export default function BetForm({
     }
   };
 
-  const currencyLabel = isCash ? '$' : isPublic ? 'pts' : '$';
-
-  const submitLabel = loading
-    ? 'Placing bet…'
-    : isCash
-    ? effectiveStake > 0
-      ? `Place $${effectiveStake.toFixed(2)} Bet`
-      : 'Place Bet'
-    : 'Place Bet';
+  const submitLabelText =
+    effectiveStake > 0
+      ? isCash
+        ? `Place $${effectiveStake.toFixed(2)} Bet`
+        : `Place ${formatW(effectiveStake)} Bet`
+      : 'Place Bet';
+  const submitLabel = loading ? 'Placing bet…' : submitLabelText;
 
   const submitDisabled =
     loading ||
@@ -200,7 +206,7 @@ export default function BetForm({
           </div>
         </div>
 
-        {isCash && (
+        {isCash ? (
           <div className="panel flex items-center justify-between text-sm px-4 py-3">
             <span className="eyebrow">Wallet balance</span>
             <div className="flex items-center gap-3">
@@ -211,6 +217,15 @@ export default function BetForm({
                 Add funds
               </Link>
             </div>
+          </div>
+        ) : (
+          <div className="panel flex items-center justify-between text-sm px-4 py-3">
+            <span className="eyebrow">W balance</span>
+            {typeof wpBalance === 'number' ? (
+              <WAmount value={wpBalance} className="text-lg text-foreground" />
+            ) : (
+              <span className="numeral text-lg text-foreground">—</span>
+            )}
           </div>
         )}
 
@@ -224,8 +239,15 @@ export default function BetForm({
           </div>
         ) : (
           <div>
-            <label htmlFor="amount" className="field-label">
-              Amount ({currencyLabel})
+            <label htmlFor="amount" className="field-label inline-flex items-center gap-1">
+              Amount
+              {isCash ? (
+                <span>($)</span>
+              ) : (
+                <span className="inline-flex items-center gap-0.5" aria-label="(W)">
+                  (<WMark className="h-2.5 w-2.5" />)
+                </span>
+              )}
             </label>
             <input
               type="number"
@@ -272,25 +294,38 @@ export default function BetForm({
         )}
 
         {(insufficientFunds || error?.code === 'INSUFFICIENT_FUNDS') && (
-          <div className="tone-pending tone-surface border rounded-xl p-3 text-sm tone-text flex items-center justify-between gap-3 flex-wrap">
-            <span>
-              You need $
-              {(
-                error?.shortfall ?? Math.max(0, effectiveStake - (balance || 0))
-              ).toFixed(2)}{' '}
-              more to place this bet.
-            </span>
-            <Link href="/profile" className="btn-primary press px-4 py-2 text-sm">
-              Add funds
-            </Link>
-          </div>
+          isCash ? (
+            <div className="tone-pending tone-surface border rounded-xl p-3 text-sm tone-text flex items-center justify-between gap-3 flex-wrap">
+              <span>
+                You need $
+                {(
+                  error?.shortfall ?? Math.max(0, effectiveStake - (balance || 0))
+                ).toFixed(2)}{' '}
+                more to place this bet.
+              </span>
+              <Link href="/profile" className="btn-primary press px-4 py-2 text-sm">
+                Add funds
+              </Link>
+            </div>
+          ) : (
+            <div className="tone-pending tone-surface border rounded-xl p-3 text-sm tone-text space-y-1">
+              <p>
+                Not enough W — you have <WAmount value={wpBalance ?? 0} className="text-sm" />.
+              </p>
+              <p className="text-ink-muted">Out of W? You get W10 back every day.</p>
+            </div>
+          )
         )}
 
         {justPlaced && (
           <div className="tone-yes tone-surface border rounded-xl p-3 text-sm animate-bet-land flex items-center justify-between gap-3">
             <span className="tone-text font-medium">Bet placed on {justPlaced.side}</span>
-            <span className="numeral tone-text text-lg">
-              {isPublic && !isCash ? `${justPlaced.amount.toFixed(2)} pts` : `$${justPlaced.amount.toFixed(2)}`}
+            <span className="tone-text text-lg">
+              {isCash ? (
+                <span className="numeral">${justPlaced.amount.toFixed(2)}</span>
+              ) : (
+                <WAmount value={justPlaced.amount} />
+              )}
             </span>
           </div>
         )}

@@ -174,51 +174,31 @@ export async function POST(request: NextRequest) {
   // error handling simple (one failure path instead of two).
   let placedBet: Bet | null = null;
   if (initialSide !== null && initialAmount !== null) {
-    if (payment_type === 'cash') {
-      try {
-        const result = await placeCashBet({
-          eventId: newEvent.id,
-          userId: creatorId,
-          username: creatorUsername,
-          side: initialSide,
-          amount: initialAmount,
-        });
-        placedBet = result.bet;
-      } catch (error: any) {
-        await db.events.delete(newEvent.id);
-        if (isPaymentError(error)) {
-          return NextResponse.json(
-            { error: error.message, code: error.code, ...error.details },
-            { status: error.status }
-          );
-        }
-        console.error('[iMessage bets] Failed to place creator cash bet:', error);
-        return NextResponse.json({ error: 'Failed to place bet' }, { status: 500 });
-      }
-    } else {
-      const timestamp = Date.now();
-      const isLate = timestamp > newEvent.end_time;
-      const parsedAmount = Math.round(initialAmount * 100) / 100;
-      if (!(parsedAmount > 0)) {
-        await db.events.delete(newEvent.id);
-        return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 });
-      }
-      const bet: Bet = {
-        id: generateId(),
-        event_id: newEvent.id,
-        user_id: creatorId,
+    // Same escrowed engine for both currencies now — placeCashBet derives
+    // usd vs the W from newEvent.payment_type. is_late is always recorded
+    // false (R1: events are live until resolved, never by time).
+    try {
+      const result = await placeCashBet({
+        eventId: newEvent.id,
+        userId: creatorId,
         username: creatorUsername,
         side: initialSide,
-        amount: parsedAmount,
-        timestamp,
-        is_late: isLate,
-      };
-      await db.bets.create(bet);
-      placedBet = bet;
+        amount: initialAmount,
+      });
+      placedBet = result.bet;
+    } catch (error: any) {
+      await db.events.delete(newEvent.id);
+      if (isPaymentError(error)) {
+        return NextResponse.json(
+          { error: error.message, code: error.code, ...error.details },
+          { status: error.status }
+        );
+      }
+      console.error('[iMessage bets] Failed to place creator bet:', error);
+      return NextResponse.json({ error: 'Failed to place bet' }, { status: 500 });
     }
 
-    // Update creator's total_bet (only non-late bets count toward stats) —
-    // mirrors both the cash and free branches of app/api/bets/route.ts.
+    // Update creator's total_bet (only non-late bets count toward stats).
     if (placedBet && !placedBet.is_late) {
       const user = await db.users.get(creatorId);
       if (user) {

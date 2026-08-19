@@ -86,6 +86,12 @@ export interface ActivityItem {
   note?: string;
   winning_side?: string;
   content?: string;
+  // Populated by db.activities.getAll / getByUserGroups via a batched JOIN
+  // against events — lets the History feed distinguish a W (play) bet from
+  // a $ (cash) one without a second round trip. Absent when the owning
+  // event has since been deleted (activities carry no FK to events, so a
+  // row can outlive its event).
+  payment_type?: PaymentType;
 }
 
 /** One entry in EventWithStats.bettor_preview — see that field's doc comment. */
@@ -217,9 +223,19 @@ export interface GroupWithMembers extends Group {
 }
 
 // Wallet & Payments
+// The W — WagerPals' play currency (see lib/payments.ts's header + the
+// signup-grant/faucet mechanics). `Currency` names which ledger a money row
+// moves: 'usd' is real money (Stripe-backed, deposit/withdraw eligible);
+// 'wp' is the W (never interchangeable with usd — no Stripe path, no
+// withdrawal).
+export type Currency = 'usd' | 'wp';
+
 export interface Wallet {
   user_id: string;
   balance: number;
+  // The W balance. Same row as `balance` (one wallet per user) — additive,
+  // never converted to/from `balance`.
+  wp_balance: number;
   currency: string;
   updated_at?: string;
 }
@@ -244,6 +260,11 @@ export interface Transaction {
   created_at?: string;
   idempotency_key?: string | null;
   event_id?: string | null;
+  // Which ledger this row moves. Deposits/withdrawals are always 'usd' — no
+  // Stripe path or withdrawal exists for 'wp'. The signup grant and daily
+  // faucet reuse type='deposit' with currency='wp' rather than widening the
+  // `type` CHECK.
+  currency: Currency;
 }
 
 // Escrow holds
@@ -258,6 +279,10 @@ export interface EscrowHold {
   status: EscrowHoldStatus;
   created_at?: string;
   released_at?: string | null;
+  // Which ledger this hold moves — derived from the owning event's
+  // payment_type at the time the hold was created ('cash' -> 'usd', 'none'
+  // -> 'wp') and never changes afterward.
+  currency: Currency;
 }
 
 // Notification preferences

@@ -74,10 +74,10 @@ function latestNote(bets: Bet[] | undefined): { username: string; note: string }
   return best ? { username: best.username, note: best.note!.trim() } : null;
 }
 
+// Events never expire (R2) — status is 'active' | 'resolved' only, and
+// end_time is meaningless. active -> live, resolved -> settled.
 function statusFor(event: EventCardProps['event']): StatusPillStatus {
-  if (event.status === 'resolved') return 'settled';
-  if (event.end_time <= Date.now()) return 'ended';
-  return 'live';
+  return event.status === 'resolved' ? 'settled' : 'live';
 }
 
 export default function EventCard({ event, groupName, className }: EventCardProps) {

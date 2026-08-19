@@ -49,12 +49,12 @@ export default function AllEventsPage() {
     }
   };
 
-  // Live is currently-open wagers only — settled/ended events belong to
-  // History (app/activity), not here. Everything else about the data
-  // plumbing (grouping, per-group fetch) is unchanged from before.
+  // Live is currently-open wagers only (status 'active' — events never
+  // expire, R2) — settled events belong to History (app/activity), not
+  // here. Everything else about the data plumbing (grouping, per-group
+  // fetch) is unchanged from before.
   const openEventsFor = (events: EventWithStats[]) => {
-    const now = Date.now();
-    return events.filter((e) => e.status === 'active' && e.end_time > now);
+    return events.filter((e) => e.status === 'active');
   };
 
   if (!user) {

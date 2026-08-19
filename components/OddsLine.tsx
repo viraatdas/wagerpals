@@ -1,13 +1,15 @@
 // The big tabular odds display from the card sketch: "3 : 1" alongside
-// "$40 staked". Plex Mono with tabular figures, emerald/crimson split
-// across the two sides of the ratio (large numerals, so canonical crimson
-// is fine here per the token contract — only SMALL crimson text needs the
-// darker `crimson-ink` twin). The staked amount counts up on first mount.
+// "$40 staked" (cash events) or the W mark + "40 staked" (play events).
+// Plex Mono with tabular figures, emerald/crimson split across the two
+// sides of the ratio (large numerals, so canonical crimson is fine here per
+// the token contract — only SMALL crimson text needs the darker
+// `crimson-ink` twin). The staked amount counts up on first mount.
 //
 // No local state of its own; CountUp underneath is the only client bit.
 
 import { reducedOddsRatio, formatStake } from '@/lib/odds';
-import CountUp, { CountUpFormatter } from './CountUp';
+import CountUp from './CountUp';
+import { WMark } from './WMark';
 
 export type OddsLineSize = 'compact' | 'large';
 
@@ -37,13 +39,7 @@ export default function OddsLine({
   const ratio = reducedOddsRatio(sideA.total, sideB.total);
   const classes = SIZE_CLASSES[size];
   const isEmpty = ratio.a === '—';
-  // CountUp's own formatter only ever supplies ONE unit marker — for cash
-  // that's the "$" prefix, so the trailing word can just say "staked". For
-  // points there is no prefix glyph, so the plain number is paired with a
-  // trailing "pts staked" instead of double-appending "pts" from both
-  // CountUp and this label.
-  const formatter: CountUpFormatter = paymentType === 'cash' ? 'currency' : 'plain';
-  const stakeWord = paymentType === 'cash' ? 'staked' : 'pts staked';
+  const isCash = paymentType === 'cash';
 
   return (
     <div className={`flex items-baseline ${classes.gap} ${className ?? ''}`}>
@@ -57,12 +53,23 @@ export default function OddsLine({
       </span>
 
       <span className={`flex items-baseline gap-1.5 font-sans text-ink-secondary ${classes.stake}`}>
-        <CountUp
-          value={stakeAmount}
-          formatter={formatter}
-          ariaLabel={formatStake(stakeAmount, paymentType)}
-        />
-        <span>{stakeWord}</span>
+        {isCash ? (
+          <CountUp
+            value={stakeAmount}
+            formatter="currency"
+            ariaLabel={formatStake(stakeAmount, paymentType)}
+          />
+        ) : (
+          <span className="inline-flex items-baseline gap-0.5 font-mono tabular-nums">
+            <WMark />
+            <CountUp
+              value={stakeAmount}
+              formatter="plain"
+              ariaLabel={formatStake(stakeAmount, paymentType)}
+            />
+          </span>
+        )}
+        <span>staked</span>
       </span>
     </div>
   );

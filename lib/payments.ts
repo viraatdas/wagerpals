@@ -1,15 +1,13 @@
 import { sql, type VercelPoolClient } from '@vercel/postgres';
 import { withTransaction, db } from './db';
 import { generateId } from './utils';
-import type { Wallet, Transaction, EscrowHold, Bet } from './types';
+import type { Wallet, Transaction, EscrowHold, Bet, Currency } from './types';
 
 export const MAX_TRANSACTION_AMOUNT = 500;
 
 export type PaymentErrorCode =
   | 'INSUFFICIENT_FUNDS'
-  | 'NOT_CASH_EVENT'
   | 'EVENT_NOT_FOUND'
-  | 'EVENT_CLOSED'
   | 'EVENT_RESOLVED'
   | 'EVENT_NOT_RESOLVED'
   | 'INVALID_STAKE'
@@ -59,6 +57,26 @@ function fromCents(cents: number): number {
   return cents / 100;
 }
 
+// Which ledger an event's bets/holds/settlement move. payment_type is the
+// single source of truth: 'cash' -> usd (real money, Stripe-backed), 'none'
+// -> wp (the W, play currency). The events_payment_type_check CHECK
+// constraint guarantees no third value exists, so this is total.
+export function currencyForEvent(event: { payment_type?: string | null }): Currency {
+  return event.payment_type === 'cash' ? 'usd' : 'wp';
+}
+
+// Renders an amount the way product copy wants it: "$25.00" for usd, "W25"
+// (or "W25.50" if fractional — grants/faucet are always whole numbers, but
+// a bettor-chosen stake need not be) for wp. Backend-only formatting for
+// PaymentError messages and route-level text; the UUI-facing WMark
+// component/formatW helper (out of this file's scope) is the display
+// counterpart for rendered pages.
+export function formatCurrencyAmount(amount: number, currency: Currency): string {
+  if (currency === 'usd') return `$${amount.toFixed(2)}`;
+  const rounded = roundMoney(amount);
+  return `W${Number.isInteger(rounded) ? rounded : rounded.toFixed(2)}`;
+}
+
 // ---- row mappers (mirrors lib/db.ts's private mapX helpers, since those
 // aren't exported and this file must run its own tx.sql statements) --------
 
@@ -66,6 +84,7 @@ function mapWallet(row: any): Wallet {
   return {
     user_id: row.user_id,
     balance: parseFloat(row.balance),
+    wp_balance: parseFloat(row.wp_balance),
     currency: row.currency,
     updated_at: row.updated_at,
   };
@@ -83,6 +102,7 @@ function mapTransaction(row: any): Transaction {
     created_at: row.created_at,
     idempotency_key: row.idempotency_key ?? null,
     event_id: row.event_id ?? null,
+    currency: (row.currency ?? 'usd') as Currency,
   };
 }
 
@@ -96,6 +116,7 @@ function mapEscrowHold(row: any): EscrowHold {
     status: row.status,
     created_at: row.created_at,
     released_at: row.released_at ?? null,
+    currency: (row.currency ?? 'usd') as Currency,
   };
 }
 
@@ -114,34 +135,137 @@ function mapBet(row: any): Bet {
   };
 }
 
-// Ensures a wallet row exists, then locks it FOR UPDATE and returns the
-// locked row. Callers must be inside a withTransaction.
-async function lockOrCreateWallet(tx: VercelPoolClient, userId: string): Promise<{ balance: number }> {
-  await tx.sql`
-    INSERT INTO wallets (user_id, balance, currency)
-    VALUES (${userId}, 0, 'usd')
-    ON CONFLICT (user_id) DO NOTHING
-  `;
-  const result = await tx.sql`SELECT balance FROM wallets WHERE user_id = ${userId} FOR UPDATE`;
-  return { balance: parseFloat(result.rows[0].balance) };
+// ---- The W: signup grant + daily faucet --------------------------------
+//
+// Both are lazy, idempotent, no-cron. Reuses transaction type='deposit'
+// (currency='wp') rather than widening the transactions_type_check CHECK.
+// Concurrency safety comes from the SAME mechanism every other money-moving
+// insert in this file uses: a partial UNIQUE index on idempotency_key plus
+// `ON CONFLICT (idempotency_key) DO NOTHING`, crediting the wallet only if a
+// row was actually inserted. Two concurrent callers racing on the same key
+// serialize on that unique index — Postgres blocks the loser's INSERT until
+// the winner commits (or rolls back), so exactly one grant lands.
+
+const SIGNUP_GRANT_WP = 100;
+const FAUCET_GRANT_WP = 10;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function signupGrantKey(userId: string): string {
+  return `signup-grant:${userId}`;
 }
 
-// Guarded credit: creates the wallet row if missing, then adds `amountCents`.
-// Callers are expected to have already established a deterministic lock
-// order (ascending user_id) across the whole settlement to avoid deadlocks.
-async function creditWalletCents(tx: VercelPoolClient, userId: string, amountCents: number): Promise<Wallet> {
-  const amount = fromCents(amountCents);
+function faucetGrantKey(userId: string): string {
+  return `faucet:${userId}:${Math.floor(Date.now() / DAY_MS)}`;
+}
+
+async function applySignupGrantIfNeeded(tx: VercelPoolClient, userId: string): Promise<void> {
+  const insertResult = await tx.sql`
+    INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, currency)
+    VALUES (${generateId()}, ${userId}, 'deposit', ${SIGNUP_GRANT_WP}, 'completed', 'Welcome bonus — W100 to get you started', ${signupGrantKey(userId)}, 'wp')
+    ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+    RETURNING id
+  `;
+  if (insertResult.rows.length > 0) {
+    await creditWalletCents(tx, userId, toCents(SIGNUP_GRANT_WP), 'wp');
+  }
+}
+
+// Only fires when wp_balance is currently 0 (checked AFTER the signup grant
+// above has had a chance to apply within the same transaction, so a
+// brand-new user's very first touch never gets both a signup grant AND a
+// faucet top-up in the same call) and at most once per calendar day — the
+// day-bucketed idempotency key IS the "once per 24h" mechanism, not a
+// separate lookback query.
+async function applyFaucetGrantIfNeeded(tx: VercelPoolClient, userId: string): Promise<void> {
+  const walletRow = await tx.sql`SELECT wp_balance FROM wallets WHERE user_id = ${userId}`;
+  const wpBalance = walletRow.rows.length > 0 ? parseFloat(walletRow.rows[0].wp_balance) : 0;
+  if (wpBalance > 0) return;
+
+  const insertResult = await tx.sql`
+    INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, currency)
+    VALUES (${generateId()}, ${userId}, 'deposit', ${FAUCET_GRANT_WP}, 'completed', 'Daily W faucet', ${faucetGrantKey(userId)}, 'wp')
+    ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+    RETURNING id
+  `;
+  if (insertResult.rows.length > 0) {
+    await creditWalletCents(tx, userId, toCents(FAUCET_GRANT_WP), 'wp');
+  }
+}
+
+// Ensures the wallet row exists and both lazy W grants have been applied,
+// then returns the current wallet. This is "the wallet is ensured/read"
+// choke point the spec calls out — GET/POST /api/wallet and
+// getWalletSummary all funnel through this rather than lib/db.ts's plain
+// db.wallets.getOrCreate, because writing ledger transactions belongs in
+// the money engine (see this file's file-ownership note), not a dumb
+// accessor.
+export async function ensureWallet(userId: string): Promise<Wallet> {
+  return withTransaction(async (tx) => {
+    await tx.sql`
+      INSERT INTO wallets (user_id, balance, wp_balance, currency)
+      VALUES (${userId}, 0, 0, 'usd')
+      ON CONFLICT (user_id) DO NOTHING
+    `;
+    await applySignupGrantIfNeeded(tx, userId);
+    await applyFaucetGrantIfNeeded(tx, userId);
+    const result = await tx.sql`SELECT * FROM wallets WHERE user_id = ${userId}`;
+    return mapWallet(result.rows[0]);
+  });
+}
+
+// Ensures a wallet row exists, then locks it FOR UPDATE and returns both
+// balances. Callers must be inside a withTransaction. For the wp currency,
+// this is also a "wallet touch" — it applies the same lazy signup-grant/
+// faucet mechanics as ensureWallet() before reading the balance, so a
+// brand-new user placing their very first W bet (with no prior GET
+// /api/wallet call) still has their signup grant available to stake. The
+// usd path is left exactly as before: cash bets never trigger a W grant.
+async function lockOrCreateWallet(
+  tx: VercelPoolClient,
+  userId: string,
+  currency: Currency
+): Promise<{ balance: number; wp_balance: number }> {
   await tx.sql`
-    INSERT INTO wallets (user_id, balance, currency)
-    VALUES (${userId}, 0, 'usd')
+    INSERT INTO wallets (user_id, balance, wp_balance, currency)
+    VALUES (${userId}, 0, 0, 'usd')
     ON CONFLICT (user_id) DO NOTHING
   `;
-  const result = await tx.sql`
-    UPDATE wallets
-    SET balance = balance + ${amount}, updated_at = CURRENT_TIMESTAMP
-    WHERE user_id = ${userId}
-    RETURNING *
+  if (currency === 'wp') {
+    await applySignupGrantIfNeeded(tx, userId);
+    await applyFaucetGrantIfNeeded(tx, userId);
+  }
+  const result = await tx.sql`SELECT balance, wp_balance FROM wallets WHERE user_id = ${userId} FOR UPDATE`;
+  return { balance: parseFloat(result.rows[0].balance), wp_balance: parseFloat(result.rows[0].wp_balance) };
+}
+
+function balanceForCurrency(row: { balance: number; wp_balance: number }, currency: Currency): number {
+  return currency === 'usd' ? row.balance : row.wp_balance;
+}
+
+// Guarded credit: creates the wallet row if missing, then adds `amountCents`
+// to the column the given currency maps to. Callers are expected to have
+// already established a deterministic lock order (ascending user_id) across
+// the whole settlement to avoid deadlocks.
+async function creditWalletCents(tx: VercelPoolClient, userId: string, amountCents: number, currency: Currency): Promise<Wallet> {
+  const amount = fromCents(amountCents);
+  await tx.sql`
+    INSERT INTO wallets (user_id, balance, wp_balance, currency)
+    VALUES (${userId}, 0, 0, 'usd')
+    ON CONFLICT (user_id) DO NOTHING
   `;
+  const result = currency === 'usd'
+    ? await tx.sql`
+        UPDATE wallets
+        SET balance = balance + ${amount}, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ${userId}
+        RETURNING *
+      `
+    : await tx.sql`
+        UPDATE wallets
+        SET wp_balance = wp_balance + ${amount}, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ${userId}
+        RETURNING *
+      `;
   return mapWallet(result.rows[0]);
 }
 
@@ -157,33 +281,49 @@ const DEBIT_CONTEXT_LABEL: Record<DebitContext, string> = {
 };
 
 // Guarded debit: throws INSUFFICIENT_FUNDS (rather than relying on the DB
-// CHECK constraint) when the balance would go negative.
+// CHECK constraint) when the balance would go negative. Debits the column
+// the given currency maps to (`balance` for usd, `wp_balance` for wp) with
+// its own guarded UPDATE — same invariant as the usd path, per-currency.
 async function debitWalletGuarded(
   tx: VercelPoolClient,
   userId: string,
   amount: number,
-  context: DebitContext
+  context: DebitContext,
+  currency: Currency
 ): Promise<Wallet> {
-  const result = await tx.sql`
-    UPDATE wallets
-    SET balance = balance - ${amount}, updated_at = CURRENT_TIMESTAMP
-    WHERE user_id = ${userId} AND balance >= ${amount}
-    RETURNING *
-  `;
+  const result = currency === 'usd'
+    ? await tx.sql`
+        UPDATE wallets
+        SET balance = balance - ${amount}, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ${userId} AND balance >= ${amount}
+        RETURNING *
+      `
+    : await tx.sql`
+        UPDATE wallets
+        SET wp_balance = wp_balance - ${amount}, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ${userId} AND wp_balance >= ${amount}
+        RETURNING *
+      `;
   if (result.rows.length === 0) {
-    const existing = await tx.sql`SELECT balance FROM wallets WHERE user_id = ${userId}`;
-    const balance = existing.rows.length > 0 ? parseFloat(existing.rows[0].balance) : 0;
+    const existing = await tx.sql`SELECT balance, wp_balance FROM wallets WHERE user_id = ${userId}`;
+    const balance = existing.rows.length > 0 ? balanceForCurrency(
+      { balance: parseFloat(existing.rows[0].balance), wp_balance: parseFloat(existing.rows[0].wp_balance) },
+      currency
+    ) : 0;
+    const message = currency === 'wp'
+      ? `Not enough W — you have ${formatCurrencyAmount(balance, 'wp')}.`
+      : `Insufficient balance. You have ${formatCurrencyAmount(balance, 'usd')} but ${DEBIT_CONTEXT_LABEL[context]} needs ${formatCurrencyAmount(amount, 'usd')}.`;
     throw new PaymentError(
       'INSUFFICIENT_FUNDS',
-      `Insufficient balance. You have $${balance.toFixed(2)} but ${DEBIT_CONTEXT_LABEL[context]} needs $${amount.toFixed(2)}.`,
+      message,
       400,
-      { balance, required: amount, shortfall: roundMoney(amount - balance) }
+      { balance, required: amount, shortfall: roundMoney(amount - balance), currency }
     );
   }
   return mapWallet(result.rows[0]);
 }
 
-// ---- placing a bet on a cash event -------------------------------------
+// ---- placing a bet (cash events stake usd, play events stake the W) ----
 
 export interface PlaceCashBetInput {
   eventId: string;
@@ -201,6 +341,13 @@ export interface PlaceCashBetResult {
   wallet: Wallet;
 }
 
+// Named placeCashBet for backward compatibility with every existing call
+// site (app/api/bets, both iMessage bet routes) — it now places a bet in
+// WHICHEVER currency the event's payment_type selects. A cash event stakes
+// usd exactly as before; a play event ('none') now stakes the W through
+// this SAME escrow path (guarded debit, escrow_holds row, escrow_hold
+// transaction, bet.escrow_hold_id) instead of a separate wallet-less
+// insert — see currencyForEvent().
 export async function placeCashBet(input: PlaceCashBetInput): Promise<PlaceCashBetResult> {
   return withTransaction(async (tx) => {
     const eventResult = await tx.sql`SELECT * FROM events WHERE id = ${input.eventId} FOR UPDATE`;
@@ -208,16 +355,15 @@ export async function placeCashBet(input: PlaceCashBetInput): Promise<PlaceCashB
       throw new PaymentError('EVENT_NOT_FOUND', 'Event not found.', 404);
     }
     const event = eventResult.rows[0];
+    const currency = currencyForEvent(event);
 
-    if (event.payment_type !== 'cash') {
-      throw new PaymentError('NOT_CASH_EVENT', 'This event does not use real-money betting.', 400);
-    }
     if (event.status !== 'active') {
       throw new PaymentError('EVENT_RESOLVED', 'This event has already been resolved.', 400);
     }
-    if (Date.now() > parseInt(event.end_time)) {
-      throw new PaymentError('EVENT_CLOSED', 'Betting closed for this event.', 400);
-    }
+    // R1: events are live until the creator resolves them, never by time —
+    // no end_time gate here. (Previously rejected a bet once
+    // Date.now() > event.end_time as EVENT_CLOSED; status is now the only
+    // gate, for both currencies.)
 
     const fixedStake = event.stake_amount !== null && event.stake_amount !== undefined
       ? parseFloat(event.stake_amount)
@@ -228,7 +374,7 @@ export async function placeCashBet(input: PlaceCashBetInput): Promise<PlaceCashB
       if (roundMoney(input.amount) !== roundMoney(fixedStake)) {
         throw new PaymentError(
           'INVALID_STAKE',
-          `This event has a fixed stake of $${fixedStake.toFixed(2)}.`,
+          `This event has a fixed stake of ${formatCurrencyAmount(fixedStake, currency)}.`,
           400,
           { required_stake: fixedStake }
         );
@@ -237,44 +383,48 @@ export async function placeCashBet(input: PlaceCashBetInput): Promise<PlaceCashB
     } else {
       stake = roundMoney(input.amount);
       if (!(stake > 0)) {
-        throw new PaymentError('INVALID_STAKE', 'Stake must be greater than $0.', 400);
+        throw new PaymentError('INVALID_STAKE', `Stake must be greater than ${formatCurrencyAmount(0, currency)}.`, 400);
       }
       if (stake > MAX_TRANSACTION_AMOUNT) {
         throw new PaymentError(
           'AMOUNT_TOO_LARGE',
-          `Maximum transaction amount is $${MAX_TRANSACTION_AMOUNT}`,
+          `Maximum transaction amount is ${formatCurrencyAmount(MAX_TRANSACTION_AMOUNT, currency)}`,
           400
         );
       }
     }
 
-    const { balance } = await lockOrCreateWallet(tx, input.userId);
-    if (balance < stake) {
+    const walletBalances = await lockOrCreateWallet(tx, input.userId, currency);
+    const currentBalance = balanceForCurrency(walletBalances, currency);
+    if (currentBalance < stake) {
       // Nothing has been written yet — throwing here rolls the whole
       // transaction back, which is the point (no partial holds/debits).
+      const message = currency === 'wp'
+        ? `Not enough W — you have ${formatCurrencyAmount(currentBalance, 'wp')}.`
+        : `Insufficient balance. You have ${formatCurrencyAmount(currentBalance, 'usd')} but this bet needs ${formatCurrencyAmount(stake, 'usd')}.`;
       throw new PaymentError(
         'INSUFFICIENT_FUNDS',
-        `Insufficient balance. You have $${balance.toFixed(2)} but this bet needs $${stake.toFixed(2)}.`,
+        message,
         400,
-        { balance, required: stake, shortfall: roundMoney(stake - balance) }
+        { balance: currentBalance, required: stake, shortfall: roundMoney(stake - currentBalance), currency }
       );
     }
 
     // Guarded UPDATE is the race-loser path: another concurrent debit could
     // have won between the balance read above and this statement.
-    const wallet = await debitWalletGuarded(tx, input.userId, stake, 'bet');
+    const wallet = await debitWalletGuarded(tx, input.userId, stake, 'bet', currency);
 
     const holdId = generateId();
     const holdResult = await tx.sql`
-      INSERT INTO escrow_holds (id, event_id, bet_id, user_id, amount, status)
-      VALUES (${holdId}, ${input.eventId}, NULL, ${input.userId}, ${stake}, 'held')
+      INSERT INTO escrow_holds (id, event_id, bet_id, user_id, amount, status, currency)
+      VALUES (${holdId}, ${input.eventId}, NULL, ${input.userId}, ${stake}, 'held', ${currency})
       RETURNING *
     `;
     const hold = mapEscrowHold(holdResult.rows[0]);
 
     const transactionId = generateId();
     const txnResult = await tx.sql`
-      INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, event_id)
+      INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, event_id, currency)
       VALUES (
         ${transactionId},
         ${input.userId},
@@ -283,7 +433,8 @@ export async function placeCashBet(input: PlaceCashBetInput): Promise<PlaceCashB
         'completed',
         ${`Stake on "${input.side}" — ${event.title}`},
         ${`bet:${holdId}`},
-        ${input.eventId}
+        ${input.eventId},
+        ${currency}
       )
       RETURNING *
     `;
@@ -337,8 +488,18 @@ export interface SettleCashEventResult {
   payouts: SettlementPayout[];
   refunds: SettlementRefund[];
   holds_settled: number;
+  currency: Currency;
 }
 
+// Named settleCashEvent for backward compatibility — settles WHICHEVER
+// currency the event's payment_type selects. Only ever moves money for
+// bets that actually HAVE an escrow hold: a legacy play bet placed before
+// the W existed (payment_type='none', escrow_hold_id NULL) has no
+// escrow_holds row at all, so it is structurally excluded from every query
+// below — it settles as pure bookkeeping (net_total/streak, done by the
+// resolve route, not here) and never touches wp_balance. This function
+// used to short-circuit to a noop for any non-cash event; that branch is
+// gone because 'none' events can now carry real wp escrow to settle.
 export async function settleCashEvent(eventId: string, winningSide: string | null): Promise<SettleCashEventResult> {
   return withTransaction(async (tx) => {
     const eventResult = await tx.sql`SELECT * FROM events WHERE id = ${eventId} FOR UPDATE`;
@@ -346,12 +507,7 @@ export async function settleCashEvent(eventId: string, winningSide: string | nul
       throw new PaymentError('EVENT_NOT_FOUND', 'Event not found.', 404);
     }
     const event = eventResult.rows[0];
-
-    if (event.payment_type !== 'cash') {
-      // Free events move no money — this must be a safe no-op so callers
-      // don't need to branch on payment_type before settling.
-      return { mode: 'noop', pot: 0, payouts: [], refunds: [], holds_settled: 0 };
-    }
+    const currency = currencyForEvent(event);
 
     // Settlement generation number: resolve -> unresolve (reverseCashSettlement)
     // -> resolve again must NOT collide with the first settlement's
@@ -377,7 +533,7 @@ export async function settleCashEvent(eventId: string, winningSide: string | nul
       SELECT * FROM escrow_holds WHERE event_id = ${eventId} AND status = 'held' ORDER BY user_id, id FOR UPDATE
     `;
     if (holdsResult.rows.length === 0) {
-      return { mode: 'noop', reason: 'no_holds', pot: 0, payouts: [], refunds: [], holds_settled: 0 };
+      return { mode: 'noop', reason: 'no_holds', pot: 0, payouts: [], refunds: [], holds_settled: 0, currency };
     }
     const holds = holdsResult.rows.map(mapEscrowHold);
     const potCents = holds.reduce((sum, h) => sum + toCents(h.amount), 0);
@@ -417,7 +573,7 @@ export async function settleCashEvent(eventId: string, winningSide: string | nul
       // wallet lock ordering deterministic and avoid deadlocks.
       for (const hold of holds) {
         const insertResult = await tx.sql`
-          INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, event_id)
+          INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, event_id, currency)
           VALUES (
             ${generateId()},
             ${hold.user_id},
@@ -426,13 +582,14 @@ export async function settleCashEvent(eventId: string, winningSide: string | nul
             'completed',
             ${`Refund for "${event.title}"`},
             ${`refund:${eventId}:${hold.id}:${seq}`},
-            ${eventId}
+            ${eventId},
+            ${currency}
           )
           ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
           RETURNING *
         `;
         if (insertResult.rows.length > 0) {
-          await creditWalletCents(tx, hold.user_id, toCents(hold.amount));
+          await creditWalletCents(tx, hold.user_id, toCents(hold.amount), currency);
           refunds.push({ user_id: hold.user_id, amount: hold.amount });
         }
         await tx.sql`
@@ -448,6 +605,7 @@ export async function settleCashEvent(eventId: string, winningSide: string | nul
         payouts: [],
         refunds,
         holds_settled: holds.length,
+        currency,
       };
     }
 
@@ -491,7 +649,7 @@ export async function settleCashEvent(eventId: string, winningSide: string | nul
       const netWinnings = roundMoney(gross - stake);
 
       const releaseResult = await tx.sql`
-        INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, event_id)
+        INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, event_id, currency)
         VALUES (
           ${generateId()},
           ${u.user_id},
@@ -500,19 +658,20 @@ export async function settleCashEvent(eventId: string, winningSide: string | nul
           'completed',
           ${`Stake returned — "${event.title}"`},
           ${`release:${eventId}:${u.user_id}:${seq}`},
-          ${eventId}
+          ${eventId},
+          ${currency}
         )
         ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
         RETURNING *
       `;
       if (releaseResult.rows.length > 0) {
-        await creditWalletCents(tx, u.user_id, u.stakeCents);
+        await creditWalletCents(tx, u.user_id, u.stakeCents, currency);
       }
 
       if (netWinnings > 0) {
         const payoutCents = u.grossCents - u.stakeCents;
         const payoutResult = await tx.sql`
-          INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, event_id)
+          INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, event_id, currency)
           VALUES (
             ${generateId()},
             ${u.user_id},
@@ -521,13 +680,14 @@ export async function settleCashEvent(eventId: string, winningSide: string | nul
             'completed',
             ${`Winnings — "${event.title}"`},
             ${`payout:${eventId}:${u.user_id}:${seq}`},
-            ${eventId}
+            ${eventId},
+            ${currency}
           )
           ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
           RETURNING *
         `;
         if (payoutResult.rows.length > 0) {
-          await creditWalletCents(tx, u.user_id, payoutCents);
+          await creditWalletCents(tx, u.user_id, payoutCents, currency);
         }
       }
 
@@ -549,6 +709,7 @@ export async function settleCashEvent(eventId: string, winningSide: string | nul
       payouts,
       refunds: [],
       holds_settled: holds.length,
+      currency,
     };
   });
 }
@@ -562,6 +723,13 @@ export interface ReverseCashSettlementResult {
   already_reversed: boolean;
 }
 
+// Named reverseCashSettlement for backward compatibility — reverses
+// WHICHEVER currency the event's payment_type selects. Same "structurally
+// a noop for anything that was never settled" property as settleCashEvent:
+// an event with no escrow_release/payout/refund rows (either because it
+// never had cash/W bets, or every bet was a hold-less legacy play bet)
+// simply finds zero rows to reverse below and returns already_reversed:
+// false with reversed_transactions: 0 — no special-case branch needed.
 export async function reverseCashSettlement(eventId: string): Promise<ReverseCashSettlementResult> {
   return withTransaction(async (tx) => {
     const eventResult = await tx.sql`SELECT * FROM events WHERE id = ${eventId} FOR UPDATE`;
@@ -569,10 +737,7 @@ export async function reverseCashSettlement(eventId: string): Promise<ReverseCas
       throw new PaymentError('EVENT_NOT_FOUND', 'Event not found.', 404);
     }
     const event = eventResult.rows[0];
-
-    if (event.payment_type !== 'cash') {
-      return { reversed_transactions: 0, holds_restored: 0, debited: [], already_reversed: true };
-    }
+    const currency = currencyForEvent(event);
 
     const toReverseResult = await tx.sql`
       SELECT * FROM transactions t
@@ -603,8 +768,13 @@ export async function reverseCashSettlement(eventId: string): Promise<ReverseCas
     const blocked: Array<{ user_id: string; balance: number; required: number }> = [];
     const balances = new Map<string, number>();
     for (const userId of userIds) {
-      const walletResult = await tx.sql`SELECT user_id, balance FROM wallets WHERE user_id = ${userId} FOR UPDATE`;
-      const balance = walletResult.rows.length > 0 ? parseFloat(walletResult.rows[0].balance) : 0;
+      const walletResult = await tx.sql`SELECT user_id, balance, wp_balance FROM wallets WHERE user_id = ${userId} FOR UPDATE`;
+      const balance = walletResult.rows.length > 0
+        ? balanceForCurrency(
+            { balance: parseFloat(walletResult.rows[0].balance), wp_balance: parseFloat(walletResult.rows[0].wp_balance) },
+            currency
+          )
+        : 0;
       balances.set(userId, balance);
       const required = fromCents(debitCentsByUser.get(userId)!);
       if (balance < required) {
@@ -636,7 +806,7 @@ export async function reverseCashSettlement(eventId: string): Promise<ReverseCas
 
     for (const row of rowsToReverse) {
       const insertResult = await tx.sql`
-        INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, event_id)
+        INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, event_id, currency)
         VALUES (
           ${generateId()},
           ${row.user_id},
@@ -645,13 +815,14 @@ export async function reverseCashSettlement(eventId: string): Promise<ReverseCas
           'completed',
           ${`Reversal of ${row.description || row.type}`},
           ${`reverse:${row.id}`},
-          ${eventId}
+          ${eventId},
+          ${currency}
         )
         ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
         RETURNING *
       `;
       if (insertResult.rows.length > 0) {
-        await debitWalletGuarded(tx, row.user_id, row.amount, 'reversal');
+        await debitWalletGuarded(tx, row.user_id, row.amount, 'reversal', currency);
         debited.push({ user_id: row.user_id, amount: row.amount });
         reversedCount += 1;
       }
@@ -673,7 +844,7 @@ export async function reverseCashSettlement(eventId: string): Promise<ReverseCas
   });
 }
 
-// ---- Stripe deposits ---------------------------------------------------
+// ---- Stripe deposits (usd only — no Stripe path exists for the W) ------
 
 export interface CreditStripeDepositResult {
   credited: boolean;
@@ -722,7 +893,7 @@ export async function creditStripeDeposit(params: {
       // created at intent time is authoritative; Stripe metadata handed to
       // this call could in principle disagree and send money to the wrong
       // wallet.
-      const wallet = await creditWalletCents(tx, txn.user_id, toCents(txn.amount));
+      const wallet = await creditWalletCents(tx, txn.user_id, toCents(txn.amount), 'usd');
       return { credited: true, duplicate: false, wallet, transaction_id: txn.id };
     }
 
@@ -733,7 +904,7 @@ export async function creditStripeDeposit(params: {
     // same payment intent (which would otherwise produce two distinct keys
     // and both credit) from crediting more than once.
     const insertResult = await tx.sql`
-      INSERT INTO transactions (id, user_id, type, amount, status, stripe_payment_intent_id, description, idempotency_key)
+      INSERT INTO transactions (id, user_id, type, amount, status, stripe_payment_intent_id, description, idempotency_key, currency)
       SELECT
         ${generateId()},
         ${params.userId},
@@ -742,7 +913,8 @@ export async function creditStripeDeposit(params: {
         'completed',
         ${params.paymentIntentId},
         ${params.description || 'Deposit'},
-        ${key}
+        ${key},
+        'usd'
       WHERE NOT EXISTS (
         SELECT 1 FROM transactions
         WHERE stripe_payment_intent_id = ${params.paymentIntentId} AND type = 'deposit' AND status = 'completed'
@@ -753,7 +925,7 @@ export async function creditStripeDeposit(params: {
 
     if (insertResult.rows.length > 0) {
       const txn = mapTransaction(insertResult.rows[0]);
-      const wallet = await creditWalletCents(tx, txn.user_id, toCents(txn.amount));
+      const wallet = await creditWalletCents(tx, txn.user_id, toCents(txn.amount), 'usd');
       return { credited: true, duplicate: false, wallet, transaction_id: txn.id };
     }
 
@@ -776,7 +948,7 @@ export async function failStripeDeposit(params: {
   });
 }
 
-// ---- withdrawals -------------------------------------------------------
+// ---- withdrawals (usd only — the W is never withdrawable) --------------
 
 export interface WithdrawResult {
   wallet: Wallet;
@@ -803,8 +975,8 @@ export async function withdrawFromWallet(params: {
     // (another withdrawal, a deposit, a settlement touching this user)
     // can't interleave with the idempotency check below.
     await tx.sql`
-      INSERT INTO wallets (user_id, balance, currency)
-      VALUES (${params.userId}, 0, 'usd')
+      INSERT INTO wallets (user_id, balance, wp_balance, currency)
+      VALUES (${params.userId}, 0, 0, 'usd')
       ON CONFLICT (user_id) DO NOTHING
     `;
     await tx.sql`SELECT balance FROM wallets WHERE user_id = ${params.userId} FOR UPDATE`;
@@ -830,7 +1002,7 @@ export async function withdrawFromWallet(params: {
     // this path unreachable by default until a real payout mechanism
     // marks these rows 'completed'.
     const insertResult = await tx.sql`
-      INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key)
+      INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, currency)
       VALUES (
         ${generateId()},
         ${params.userId},
@@ -838,7 +1010,8 @@ export async function withdrawFromWallet(params: {
         ${-amount},
         'pending',
         ${description},
-        ${key}
+        ${key},
+        'usd'
       )
       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
       RETURNING *
@@ -860,7 +1033,7 @@ export async function withdrawFromWallet(params: {
     // Guarded debit after the insert: if this throws INSUFFICIENT_FUNDS, the
     // transaction rolls back and takes the just-inserted row with it — exactly
     // right, since the withdrawal never actually happened.
-    const wallet = await debitWalletGuarded(tx, params.userId, amount, 'withdrawal');
+    const wallet = await debitWalletGuarded(tx, params.userId, amount, 'withdrawal', 'usd');
 
     return { wallet, transaction, duplicate: false };
   });
@@ -869,6 +1042,7 @@ export async function withdrawFromWallet(params: {
 // ---- read model for the UI --------------------------------------------
 
 export interface EventWalletSummary {
+  currency: Currency;
   escrow_held: number;
   holds: EscrowHold[];
   transactions: Transaction[];
@@ -880,20 +1054,30 @@ export interface WalletSummary {
   wallet: Wallet;
   escrow_held_total: number;
   available: number;
+  // W counterparts of escrow_held_total/available — additive, never mixed
+  // with the usd figures above.
+  escrow_held_total_wp: number;
+  available_wp: number;
   event?: EventWalletSummary;
 }
 
 export async function getWalletSummary(userId: string, eventId?: string): Promise<WalletSummary> {
-  const wallet = await db.wallets.getOrCreate(userId);
-  const escrow_held_total = await db.escrowHolds.getHeldTotalForUser(userId);
+  const wallet = await ensureWallet(userId);
+  const escrow_held_total = await db.escrowHolds.getHeldTotalForUser(userId, 'usd');
+  const escrow_held_total_wp = await db.escrowHolds.getHeldTotalForUser(userId, 'wp');
 
   const summary: WalletSummary = {
     wallet,
     escrow_held_total,
     available: wallet.balance,
+    escrow_held_total_wp,
+    available_wp: wallet.wp_balance,
   };
 
   if (eventId) {
+    const eventRow = await sql`SELECT payment_type FROM events WHERE id = ${eventId}`;
+    const currency: Currency = eventRow.rows.length > 0 ? currencyForEvent(eventRow.rows[0]) : 'usd';
+
     const holdsResult = await sql`
       SELECT * FROM escrow_holds
       WHERE user_id = ${userId} AND event_id = ${eventId}
@@ -918,6 +1102,7 @@ export async function getWalletSummary(userId: string, eventId?: string): Promis
     const settled = pot === 0;
 
     summary.event = {
+      currency,
       escrow_held: roundMoney(escrow_held),
       holds,
       transactions,

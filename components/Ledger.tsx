@@ -4,16 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Bet, EscrowHold, EscrowHoldStatus, Transaction } from '@/lib/types';
 import { formatTimestamp, formatAmount } from '@/lib/utils';
+import { formatW } from '@/lib/odds';
 import ConfirmationModal from './ConfirmationModal';
 import Toast, { ToastType } from './Toast';
 import AvatarStack from './AvatarStack';
 import EmptySlip from './EmptySlip';
+import WAmount from './WMark';
 
 interface LedgerProps {
   bets: Bet[];
   currentUserId?: string;
   onBetDeleted?: () => void;
-  isPublic?: boolean;
   paymentType?: 'none' | 'cash';
   eventId?: string;
   /**
@@ -82,7 +83,7 @@ function holdChipTitle(status: EscrowHoldStatus, isOwnBet: boolean, username: st
   }
 }
 
-export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = false, paymentType = 'none', eventId, eventStatus, escrowByBet }: LedgerProps) {
+export default function Ledger({ bets, currentUserId, onBetDeleted, paymentType = 'none', eventId, eventStatus, escrowByBet }: LedgerProps) {
   const [deletingBets, setDeletingBets] = useState<Set<string>>(new Set());
   const [betToDelete, setBetToDelete] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
@@ -196,8 +197,8 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = f
   const getBetDetails = (betId: string) => {
     const bet = bets.find(b => b.id === betId);
     if (!bet) return '';
-    const currency = isPublic ? 'pts' : '$';
-    return `@${bet.username}'s ${currency}${bet.amount.toFixed(2)} bet on ${bet.side}`;
+    const amountText = paymentType === 'cash' ? `$${bet.amount.toFixed(2)}` : formatW(bet.amount);
+    return `@${bet.username}'s ${amountText} bet on ${bet.side}`;
   };
 
   return (
@@ -328,8 +329,12 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, isPublic = f
                       {holdChip.label}
                     </span>
                   )}
-                  <span className={`font-mono text-base font-medium tabular-nums shrink-0 ${toneForSide(bet.side)} tone-text`}>
-                    {paymentType !== 'cash' && isPublic ? `${bet.amount.toFixed(2)} pts` : `$${bet.amount.toFixed(2)}`}
+                  <span className={`text-base font-medium shrink-0 ${toneForSide(bet.side)} tone-text`}>
+                    {paymentType === 'cash' ? (
+                      <span className="font-mono tabular-nums">${bet.amount.toFixed(2)}</span>
+                    ) : (
+                      <WAmount value={bet.amount} />
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-2 pl-[2.125rem]">
