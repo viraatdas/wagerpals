@@ -184,3 +184,21 @@ App Store releases stay deliberate: attaching a build to a store version and fil
 Review is its own decision with the owner, never a side effect of the train.
 
 Web needs no train: pushing `main` deploys wagerpals.io automatically via Vercel.
+
+## 8. Versioning: one product version, two surfaces
+
+The web app and the iOS app share their MAJOR.MINOR version; the patch position is each
+surface's own (owner's rule, 2026-08-20). Web patches roll continuously with deploys; iOS
+patches ride build trains — they WILL deviate, and that's fine. What may never deviate is
+the major.minor pair: a user on wagerpals.io 1.1.x and the iPhone app 1.1.x is on the same
+product.
+
+Where each lives:
+- iOS: `mobile/app.json` → `expo.version` (the App Store marketing version). Build numbers
+  auto-increment separately on EAS (`appVersionSource: remote`) and are NOT part of this
+  scheme.
+- Web: root `package.json` → `version`.
+
+Protocol: whenever `mobile/app.json`'s version bumps its major or minor (a new store
+release train), bump root `package.json` to the same major.minor in the same commit, and
+vice versa. Patch bumps never require cross-surface sync.
