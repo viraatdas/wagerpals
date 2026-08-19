@@ -10,10 +10,10 @@ import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
 import { Group, GroupMember } from '../types';
 import { ApiError, toApiError } from '../utils/errors';
-import { tapHeavy, tapMedium, success, warning, error as hapticError } from '../utils/haptics';
+import { tapHeavy, tapMedium, success, error as hapticError } from '../utils/haptics';
 import { handle } from '../utils/format';
 import { colors, font, radius, spacing, tokens } from '../theme';
-import { Avatar, Button, Card, EmptyState, ErrorState, Pill, SectionHeader, Skeleton, SkeletonList, Toggle } from '../components';
+import { Avatar, Button, Card, EmptyState, ErrorState, Pill, SectionHeader, Skeleton, SkeletonList } from '../components';
 import TextInputModal from '../components/TextInputModal';
 
 type GroupData = Group & { members?: GroupMember[]; pending_requests?: GroupMember[] };
@@ -90,7 +90,6 @@ export default function GroupAdminScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [rowBusy, setRowBusy] = useState<Record<string, MemberAction | undefined>>({});
-  const [isTogglingCash, setIsTogglingCash] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -224,47 +223,6 @@ export default function GroupAdminScreen() {
       ]);
     },
     [runMemberAction]
-  );
-
-  const runCashToggle = useCallback(
-    async (nextCashEnabled: boolean) => {
-      if (!group || isTogglingCash) return;
-      warning();
-      setIsTogglingCash(true);
-      try {
-        const updated = await apiService.updateGroupSettings({ id: groupId, cash_enabled: nextCashEnabled });
-        setGroup((prev) => (prev ? { ...prev, ...updated } : (updated as GroupData)));
-        success();
-      } catch (err) {
-        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups');
-        hapticError();
-        Alert.alert("Couldn't update group", apiErr.userMessage);
-      } finally {
-        setIsTogglingCash(false);
-      }
-    },
-    [group, groupId, isTogglingCash]
-  );
-
-  const handleCashToggle = useCallback(
-    (nextCashEnabled: boolean) => {
-      if (!group) return;
-      if (!nextCashEnabled) {
-        // Turning cash off is non-destructive to existing money — it only
-        // stops NEW cash events from being created — so it needs no confirm.
-        void runCashToggle(false);
-        return;
-      }
-      Alert.alert(
-        'Turn on cash wagers?',
-        'Members will be able to stake real money from their wallets on new events in this group.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Turn on', onPress: () => void runCashToggle(true) },
-        ]
-      );
-    },
-    [group, runCashToggle]
   );
 
   const runRenameGroup = useCallback(
@@ -421,20 +379,6 @@ export default function GroupAdminScreen() {
                   </View>
                   <Ionicons name="create-outline" size={18} color={colors.textMuted} />
                 </Pressable>
-
-                <View style={styles.settingsDivider} />
-
-                <Toggle
-                  label="Cash wagers"
-                  description={
-                    group?.cash_enabled
-                      ? 'Members can stake real money from their wallets.'
-                      : 'Bets stake W: WagerPals’ play currency.'
-                  }
-                  value={!!group?.cash_enabled}
-                  onValueChange={handleCashToggle}
-                  disabled={isTogglingCash}
-                />
               </Card>
             </View>
           </View>

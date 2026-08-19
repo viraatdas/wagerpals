@@ -32,7 +32,7 @@ import {
   EmptyState,
   ErrorState,
   Money,
-  WAmount,
+  TitleText,
   Pill,
   SectionHeader,
   Skeleton,
@@ -67,10 +67,8 @@ const EventRow = React.memo(function EventRow({
   return (
     <Card onPress={() => onPress(event.id)} style={styles.eventCard} accessibilityLabel={event.title}>
       <View style={styles.eventHeaderRow}>
-        <Text style={styles.eventTitle} numberOfLines={2} ellipsizeMode="tail">
-          {event.title}
-        </Text>
-        {isCash ? <Money amount={pot} tone="neutral" size="sm" /> : <WAmount value={pot} tone="neutral" size="sm" />}
+        <TitleText title={event.title} style={styles.eventTitle} numberOfLines={2} ellipsizeMode="tail" />
+        <Money amount={pot} tone="neutral" size="sm" />
       </View>
 
       <SplitBar aValue={aTotal} bValue={bTotal} aLabel={event.side_a} bLabel={event.side_b} />
@@ -383,10 +381,11 @@ export default function GroupDetailScreen() {
                 ) : null}
               </View>
 
-              <View style={styles.pillsRow}>
-                {isCreator && <Pill label="Creator" tone="brand" size="sm" />}
-                <Pill label={cashEnabled ? 'Cash' : 'W only'} tone={cashEnabled ? 'pending' : 'neutral'} size="sm" />
-              </View>
+              {isCreator ? (
+                <View style={styles.pillsRow}>
+                  <Pill label="Creator" tone="brand" size="sm" />
+                </View>
+              ) : null}
             </View>
 
             {error && group ? (

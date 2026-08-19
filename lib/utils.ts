@@ -1,5 +1,4 @@
 import { Bet, Event, NetResult, Payment } from './types';
-import { formatW } from './odds';
 
 export function generateId(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
@@ -133,14 +132,7 @@ export function formatTimestamp(timestamp: number): string {
   return 'just now';
 }
 
-export function formatAmount(amount: number, isPublic: boolean = false): string {
-  if (isPublic) {
-    // Play-money (W) amounts: plain-text glyph form, signed. Prefer the
-    // <WAmount> component (components/WMark.tsx) wherever real markup can
-    // render it — this text form exists for string-only contexts (modal
-    // copy, aria-labels) that can't carry the SVG mark.
-    return amount >= 0 ? `+${formatW(amount)}` : `-${formatW(Math.abs(amount))}`;
-  }
+export function formatAmount(amount: number): string {
   const formatted = amount.toFixed(2);
   return amount >= 0 ? `+$${formatted}` : `-$${Math.abs(amount).toFixed(2)}`;
 }

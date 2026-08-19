@@ -113,31 +113,31 @@ class FakeDb {
   private _activities: AnyRec[] = [];
   private _escrowHolds = new Map<string, AnyRec>();
 
-  wallets = new Map<string, number>(); // usd balance
-  private _wpWallets = new Map<string, number>(); // wp (the W) balance
-  private _wpGranted = new Set<string>(); // mirrors lib/payments.ts's lazy signup-grant-on-touch
+  wallets = new Map<string, number>(); // usd balance — the only ledger now
+  private _seeded = new Set<string>(); // mirrors lib/payments.ts's lazy $10 signup-seed-on-touch
   pushCalls: AnyRec[] = [];
   subjectPrivacyCalls: AnyRec[] = [];
   mutationCount = 0;
 
-  // Mirrors lib/payments.ts's lockOrCreateWallet's wp branch: the FIRST time
-  // a user's wp balance is touched (by a bet, not a wallet read — this fake
-  // has no GET /api/wallet route to drive), they get the same lazy W100
-  // signup grant real users get. Real bets can't tell the difference: the
-  // real engine grants inside the same transaction the bet is placed in.
-  ensureWpBalance(userId: string): number {
-    if (!this._wpGranted.has(userId)) {
-      this._wpGranted.add(userId);
-      this._wpWallets.set(userId, (this._wpWallets.get(userId) ?? 0) + 100);
+  // Mirrors lib/payments.ts's lockOrCreateWallet: the FIRST time a user's
+  // wallet is touched (by a bet, not a wallet read — this fake has no GET
+  // /api/wallet route to drive), they get the same lazy $10 signup seed
+  // real users get. Real bets can't tell the difference: the real engine
+  // grants inside the same transaction the bet is placed in.
+  ensureUsdSeed(userId: string): number {
+    if (!this._seeded.has(userId)) {
+      this._seeded.add(userId);
+      this.wallets.set(userId, (this.wallets.get(userId) ?? 0) + 10);
     }
-    return this._wpWallets.get(userId) ?? 0;
+    return this.wallets.get(userId) ?? 0;
   }
-  setWpBalance(userId: string, amount: number): void {
-    this._wpGranted.add(userId); // an explicit fixture balance suppresses the auto-grant
-    this._wpWallets.set(userId, amount);
-  }
-  debitWp(userId: string, amount: number): void {
-    this._wpWallets.set(userId, round((this._wpWallets.get(userId) ?? 0) - amount));
+  // Test-fixture helper: sets an exact starting balance AND marks the user
+  // as already seeded, so ensureUsdSeed's lazy $10 grant doesn't silently
+  // top it back up — mirrors a real user who already touched their wallet
+  // once before the scenario under test.
+  setBalance(userId: string, amount: number): void {
+    this._seeded.add(userId);
+    this.wallets.set(userId, amount);
   }
 
   private key(groupId: string, userId: string): string {
@@ -315,24 +315,23 @@ async function main(): Promise<void> {
   const { NextRequest, NextResponse } = await import('next/server');
 
   // ---- Fake `placeCashBet`, enforcing the same rules read directly out of
-  // lib/payments.ts's placeCashBet: currency is derived from
-  // event.payment_type ('cash' -> usd, 'none' -> wp — the W), active only
-  // (no more end_time gate — R1, events are live until resolved), a
-  // non-null stake_amount is a FIXED stake the amount must equal, balance
-  // must cover it. For the wp currency this also mirrors
-  // lockOrCreateWallet's lazy signup-grant-on-touch (db.ensureWpBalance),
-  // so a fixture user with no wallet set up still has their W100 to stake —
-  // exactly like the real engine. ------------------------------------------------------
+  // lib/payments.ts's placeCashBet: every bet stakes usd through the SAME
+  // wallet regardless of payment_type — currencyForEvent is gone, there is
+  // only one ledger now — active only (no more end_time gate — R1, events
+  // are live until resolved), a non-null stake_amount is a FIXED stake the
+  // amount must equal, balance must cover it. This also mirrors
+  // lockOrCreateWallet's lazy $10 signup-seed-on-touch (db.ensureUsdSeed),
+  // so a fixture user with no wallet set up still has their $10 to stake —
+  // exactly like the real engine.
   function fakePlaceCashBet(input: { eventId: string; userId: string; username: string; side: string; amount: number }) {
     return (async () => {
       const db: FakeDb = (globalThis as any).__wp_fakes__.db;
       const event = await db.events.get(input.eventId);
       if (!event) throw new PaymentError('EVENT_NOT_FOUND', 'Event not found.', 404);
-      const currency: 'usd' | 'wp' = event.payment_type === 'cash' ? 'usd' : 'wp';
       if (event.status !== 'active') throw new PaymentError('EVENT_RESOLVED', 'This event has already been resolved.', 400);
 
       const fixedStake = event.stake_amount !== null && event.stake_amount !== undefined ? event.stake_amount : null;
-      const fmt = (n: number) => (currency === 'usd' ? `$${n.toFixed(2)}` : `W${Number.isInteger(round(n)) ? round(n) : round(n).toFixed(2)}`);
+      const fmt = (n: number) => `$${n.toFixed(2)}`;
       let stake: number;
       if (fixedStake !== null && fixedStake > 0) {
         if (round(input.amount) !== round(fixedStake)) {
@@ -347,21 +346,15 @@ async function main(): Promise<void> {
         if (stake > 500) throw new PaymentError('AMOUNT_TOO_LARGE', `Maximum transaction amount is ${fmt(500)}`, 400);
       }
 
-      const balance = currency === 'usd' ? (db.wallets.get(input.userId) ?? 0) : db.ensureWpBalance(input.userId);
+      const balance = db.ensureUsdSeed(input.userId);
       if (balance < stake) {
-        const message = currency === 'wp'
-          ? `Not enough W — you have ${fmt(balance)}.`
-          : `Insufficient balance. You have ${fmt(balance)} but this bet needs ${fmt(stake)}.`;
-        throw new PaymentError('INSUFFICIENT_FUNDS', message, 400, { balance, required: stake, shortfall: round(stake - balance), currency });
+        const message = `Insufficient balance. You have ${fmt(balance)} but this bet needs ${fmt(stake)}.`;
+        throw new PaymentError('INSUFFICIENT_FUNDS', message, 400, { balance, required: stake, shortfall: round(stake - balance), currency: 'usd' });
       }
-      if (currency === 'usd') {
-        db.wallets.set(input.userId, round(balance - stake));
-      } else {
-        db.debitWp(input.userId, stake);
-      }
+      db.wallets.set(input.userId, round(balance - stake));
 
       const holdId = nid('hold');
-      const hold = { id: holdId, event_id: input.eventId, bet_id: null as string | null, user_id: input.userId, amount: stake, status: 'held', currency };
+      const hold = { id: holdId, event_id: input.eventId, bet_id: null as string | null, user_id: input.userId, amount: stake, status: 'held', currency: 'usd' };
       await db.escrowHolds.create(hold);
 
       const betId = nid('bet');
@@ -379,9 +372,7 @@ async function main(): Promise<void> {
       await db.bets.create(bet);
       hold.bet_id = betId;
 
-      const walletAfter = currency === 'usd'
-        ? { user_id: input.userId, balance: db.wallets.get(input.userId)! }
-        : { user_id: input.userId, wp_balance: db.ensureWpBalance(input.userId) };
+      const walletAfter = { user_id: input.userId, balance: db.wallets.get(input.userId)! };
       return { bet, hold, transaction: { id: nid('txn') }, wallet: walletAfter };
     })();
   }
@@ -857,7 +848,7 @@ async function main(): Promise<void> {
   // ===========================================================================
   await step('Create: a failed opening bet deletes the just-created event (no orphan)', async () => {
     const { db, creator, group } = seedBasicWorld();
-    db.wallets.set(creator.id, 10); // not enough for a $25 stake
+    db.setBalance(creator.id, 10); // not enough for a $25 stake
     loginAs(creator);
     const eventsBefore = db.events.size();
     const betsBefore = db.bets.size();
@@ -886,12 +877,16 @@ async function main(): Promise<void> {
   });
 
   // ===========================================================================
-  // Group 8b — same rollback proof, but for the W (play event, currency='wp')
+  // Group 8b — same rollback proof, but on a payment_type: 'none' event.
+  // Proves payment_type no longer selects (or gates) a ledger: a 'none'
+  // event's opening bet stakes the SAME usd wallet a 'cash' event's does,
+  // guarded by the same INSUFFICIENT_FUNDS path and the same rollback.
   // ===========================================================================
-  await step('Create: insufficient W on a play event also rolls back (currency-aware engine)', async () => {
+  await step("Create: insufficient funds on a payment_type: 'none' event also rolls back (payment_type doesn't select a ledger)", async () => {
     const { db, creator, group } = seedBasicWorld();
-    // Deliberately >100 so it exceeds the lazy signup grant (W100) every
-    // fresh wp touch gets — proves the wp path is guarded exactly like usd.
+    // Deliberately >$10 so it exceeds the lazy $10 signup seed every fresh
+    // wallet touch gets — proves a 'none' event is guarded exactly like a
+    // 'cash' one, through the exact same usd wallet.
     loginAs(creator);
     const eventsBefore = db.events.size();
     const betsBefore = db.bets.size();
@@ -901,22 +896,25 @@ async function main(): Promise<void> {
       method: 'POST',
       body: {
         group_id: group.id,
-        title: 'Insufficient W rollback test',
+        title: 'Insufficient funds rollback test (payment_type: none)',
         side_a: 'A',
         side_b: 'B',
         end_time: Date.now() + ONE_HOUR,
         payment_type: 'none',
         side: 'A',
-        amount: 150,
+        amount: 15,
       },
     });
 
-    assert(res.status === 400, 'failed W opening bet: PaymentError status propagated (400)');
-    assert(res.body?.code === 'INSUFFICIENT_FUNDS', 'failed W opening bet: PaymentError code propagated (INSUFFICIENT_FUNDS)');
-    assert(typeof res.body?.error === 'string' && res.body.error.includes('W'), 'failed W opening bet: message is product-voice ("Not enough W...")');
-    assert(db.events.size() === eventsBefore, 'failed W opening bet: no orphan event remains (net event count unchanged)');
-    assert(db.bets.size() === betsBefore, 'failed W opening bet: no bet row was left behind');
-    assert(db.escrowHolds.size() === holdsBefore, 'failed W opening bet: no escrow hold was left behind');
+    assert(res.status === 400, 'failed opening bet (none): PaymentError status propagated (400)');
+    assert(res.body?.code === 'INSUFFICIENT_FUNDS', 'failed opening bet (none): PaymentError code propagated (INSUFFICIENT_FUNDS)');
+    assert(
+      typeof res.body?.error === 'string' && res.body.error.startsWith('Insufficient balance.'),
+      'failed opening bet (none): message is the "$" product-voice version, not "Not enough W..."'
+    );
+    assert(db.events.size() === eventsBefore, 'failed opening bet (none): no orphan event remains (net event count unchanged)');
+    assert(db.bets.size() === betsBefore, 'failed opening bet (none): no bet row was left behind');
+    assert(db.escrowHolds.size() === holdsBefore, 'failed opening bet (none): no escrow hold was left behind');
   });
 
   // ===========================================================================
@@ -924,7 +922,7 @@ async function main(): Promise<void> {
   // ===========================================================================
   await step("Create: 201 shape and preview reflects the creator's opening bet", async () => {
     const { db, creator, group } = seedBasicWorld();
-    db.wallets.set(creator.id, 100);
+    db.setBalance(creator.id, 100);
     loginAs(creator);
 
     const res = await callJSON(betsRoute.POST, '/api/imessage/bets', {
@@ -1015,7 +1013,7 @@ async function main(): Promise<void> {
   // ===========================================================================
   await step('Take-a-side: fixed-stake cash event rejects a mismatched amount', async () => {
     const { db, creator, group } = seedBasicWorld();
-    db.wallets.set(creator.id, 100);
+    db.setBalance(creator.id, 100);
     const event = {
       id: nid('event'),
       title: 'Fixed stake mismatch',
@@ -1044,7 +1042,7 @@ async function main(): Promise<void> {
     // Cash: ANY second bet from the same user is rejected, regardless of side.
     {
       const { db, creator, group } = seedBasicWorld();
-      db.wallets.set(creator.id, 1000);
+      db.setBalance(creator.id, 1000);
       const event = {
         id: nid('event'),
         title: 'Cash duplicate guard',

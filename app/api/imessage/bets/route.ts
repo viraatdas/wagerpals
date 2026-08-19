@@ -174,9 +174,9 @@ export async function POST(request: NextRequest) {
   // error handling simple (one failure path instead of two).
   let placedBet: Bet | null = null;
   if (initialSide !== null && initialAmount !== null) {
-    // Same escrowed engine for both currencies now — placeCashBet derives
-    // usd vs the W from newEvent.payment_type. is_late is always recorded
-    // false (R1: events are live until resolved, never by time).
+    // Every bet stakes real usd through the same escrowed engine now,
+    // regardless of payment_type. is_late is always recorded false (R1:
+    // events are live until resolved, never by time).
     try {
       const result = await placeCashBet({
         eventId: newEvent.id,

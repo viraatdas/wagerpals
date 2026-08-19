@@ -30,10 +30,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid side' }, { status: 400 });
   }
 
-  // Every bet — cash event (usd) or play event (the W) — goes through the
-  // same escrowed engine now; placeCashBet derives the currency from
-  // event.payment_type. is_late is always recorded false going forward
-  // (events are live until resolved, never by time — R1).
+  // Every bet stakes real usd through the same escrowed engine now,
+  // regardless of payment_type (see lib/payments.ts). is_late is always
+  // recorded false going forward (events are live until resolved, never by
+  // time — R1).
   let result;
   try {
     result = await placeCashBet({
@@ -54,8 +54,6 @@ export async function POST(request: NextRequest) {
     console.error('[Bets API] Failed to place bet:', error);
     return NextResponse.json({ error: 'Failed to place bet' }, { status: 500 });
   }
-
-  const currency = result.hold.currency;
 
   // Update user's total_bet (only non-late bets count toward stats — every
   // new bet is on-time now, so this always runs, but the guard is kept for
@@ -90,7 +88,7 @@ export async function POST(request: NextRequest) {
 
   // Send push notification
   try {
-    const amountText = currency === 'usd' ? `$${result.bet.amount.toFixed(2)}` : `W${result.bet.amount}`;
+    const amountText = `$${result.bet.amount.toFixed(2)}`;
     await notifyEventAudience({
       eventId: event_id,
       category: 'bets',
@@ -151,13 +149,12 @@ export async function DELETE(request: NextRequest) {
     const mismatch = verifyUserMatch(authResult.userId, bet.user_id);
     if (mismatch) return mismatch;
 
-    // A bet with an escrow hold (cash usd OR play-event W — both stake
-    // through the same escrow engine now) cannot be deleted: the stake is
-    // escrowed and deleting the bet would strand it. The resolver must
-    // cancel the event to refund every stake instead. Gated on
-    // bet.escrow_hold_id (not payment_type) so it correctly covers both
-    // currencies while still leaving pre-W legacy play bets (no hold)
-    // deletable exactly as before.
+    // A bet with an escrow hold cannot be deleted: the stake is escrowed
+    // and deleting the bet would strand it. The resolver must cancel the
+    // event to refund every stake instead. Gated on bet.escrow_hold_id
+    // (not payment_type — every event stakes usd through the same escrow
+    // engine now) so legacy hold-less bets stay deletable exactly as
+    // before.
     if (bet.escrow_hold_id) {
       return NextResponse.json({
         error: "Bets with escrowed stakes can't be deleted. The creator can cancel the event to refund everyone.",

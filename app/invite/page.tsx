@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import ConfidenceBar from '@/components/ConfidenceBar';
 import EmptySlip from '@/components/EmptySlip';
+import TitleText from '@/components/TitleText';
 
 // Server component (not 'use client') so we can produce real per-invite
 // OpenGraph metadata. This page is what a visitor lands on when they tap an
@@ -302,7 +303,9 @@ export default async function InvitePage({
               </span>
             </div>
 
-            <h2 className="market-title text-2xl text-center mb-6">{invite.title}</h2>
+            <h2 className="market-title text-2xl text-center mb-6">
+              <TitleText title={invite.title} />
+            </h2>
 
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 mb-4">
               <div className="tone-yes tone-surface border rounded-2xl p-4 text-center min-w-0">

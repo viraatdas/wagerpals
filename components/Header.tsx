@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { WMark } from './WMark';
 import { handle } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -67,7 +66,6 @@ export default function Header() {
   const router = useRouter();
   const user = useUser({ or: "return-null" });
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
-  const [wBalance, setWBalance] = useState<number | null>(null);
   const [username, setUsername] = useState<string | null>(null);
 
   useEffect(() => {
@@ -87,7 +85,6 @@ export default function Header() {
       .then((response) => response.ok ? response.json() : null)
       .then((data) => {
         setWalletBalance(data?.wallet?.balance ?? null);
-        setWBalance(data?.wallet?.wp_balance ?? null);
       })
       .catch(() => setWalletBalance(null));
   }, [user]);
@@ -126,16 +123,6 @@ export default function Header() {
                   </svg>
                   <span className="hidden sm:inline text-xs font-semibold uppercase tracking-wide text-ink-secondary">Wallet</span>
                   <span className="font-mono truncate text-sm text-ink">${walletBalance?.toFixed(2) || '0.00'}</span>
-                  {wBalance !== null && (
-                    <>
-                      <span aria-hidden="true" className="h-3.5 w-px flex-shrink-0 bg-line" />
-                      {/* W balance — small and inline, per the owner. Emerald: it's money. */}
-                      <span className="inline-flex items-baseline font-mono truncate text-sm text-emerald">
-                        <WMark className="mr-px" />
-                        {Math.round(wBalance)}
-                      </span>
-                    </>
-                  )}
                 </Link>
               )}
 

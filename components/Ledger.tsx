@@ -4,12 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Bet, EscrowHold, EscrowHoldStatus, Transaction } from '@/lib/types';
 import { formatTimestamp, formatAmount, handle } from '@/lib/utils';
-import { formatW } from '@/lib/odds';
 import ConfirmationModal from './ConfirmationModal';
 import Toast, { ToastType } from './Toast';
 import AvatarStack from './AvatarStack';
 import EmptySlip from './EmptySlip';
-import WAmount from './WMark';
 
 interface LedgerProps {
   bets: Bet[];
@@ -197,8 +195,7 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, paymentType 
   const getBetDetails = (betId: string) => {
     const bet = bets.find(b => b.id === betId);
     if (!bet) return '';
-    const amountText = paymentType === 'cash' ? `$${bet.amount.toFixed(2)}` : formatW(bet.amount);
-    return `${handle(bet.username)}'s ${amountText} bet on ${bet.side}`;
+    return `${handle(bet.username)}'s $${bet.amount.toFixed(2)} bet on ${bet.side}`;
   };
 
   return (
@@ -330,11 +327,7 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, paymentType 
                     </span>
                   )}
                   <span className={`text-base font-medium shrink-0 ${toneForSide(bet.side)} tone-text`}>
-                    {paymentType === 'cash' ? (
-                      <span className="font-mono tabular-nums">${bet.amount.toFixed(2)}</span>
-                    ) : (
-                      <WAmount value={bet.amount} />
-                    )}
+                    <span className="font-mono tabular-nums">${bet.amount.toFixed(2)}</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-2 pl-[2.125rem]">

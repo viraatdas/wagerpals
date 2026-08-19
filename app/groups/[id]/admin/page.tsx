@@ -11,11 +11,11 @@ import { handle } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
-// R3: flat groups have no admin role — moderation (rename, cash toggle,
-// kick, delete) is creator-only, and this whole route is the "Manage"
-// surface for that. GET /api/groups?id= already computes `is_admin` as
-// "is the group creator" server-side; this page just reads it, it never
-// re-derives it from a member's `role`.
+// R3: flat groups have no admin role — moderation (rename, kick, delete) is
+// creator-only, and this whole route is the "Manage" surface for that. GET
+// /api/groups?id= already computes `is_admin` as "is the group creator"
+// server-side; this page just reads it, it never re-derives it from a
+// member's `role`.
 export default function GroupManagePage() {
   const params = useParams();
   const router = useRouter();
@@ -86,7 +86,7 @@ export default function GroupManagePage() {
   };
 
   const handleGroupSettings = async (
-    settings: { is_public?: boolean; cash_enabled?: boolean },
+    settings: { is_public?: boolean },
     successMessage: string = 'Group settings updated'
   ) => {
     if (!user) return;
@@ -117,11 +117,6 @@ export default function GroupManagePage() {
     } finally {
       setProcessing(false);
     }
-  };
-
-  const handleCashToggle = () => {
-    const next = !group.cash_enabled;
-    handleGroupSettings({ cash_enabled: next }, next ? 'Cash wagers on.' : 'Cash wagers off.');
   };
 
   const handleDeleteGroup = async () => {
@@ -294,24 +289,6 @@ export default function GroupManagePage() {
               </button>
             </div>
 
-            <div className="flex flex-col gap-3 pt-4 border-t border-hairline sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <p className="text-sm text-foreground">
-                  Cash wagers: <span className="font-semibold text-foreground">{group.cash_enabled ? 'On' : 'Off'}</span>
-                </p>
-                <p className="text-sm text-muted">
-                  Members can stake real money from their wallets.
-                </p>
-              </div>
-              <button
-                onClick={handleCashToggle}
-                disabled={processing}
-                aria-pressed={!!group.cash_enabled}
-                className="btn-glass press w-full sm:w-auto text-sm disabled:opacity-50"
-              >
-                {group.cash_enabled ? 'Turn off cash wagers' : 'Turn on cash wagers'}
-              </button>
-            </div>
           </div>
         </section>
 

@@ -2,7 +2,6 @@
 
 import { Event, NetResult, Payment } from '@/lib/types';
 import { calculatePayments, handle } from '@/lib/utils';
-import WAmount from './WMark';
 
 interface ResolutionBannerProps {
   event: Event;
@@ -11,11 +10,6 @@ interface ResolutionBannerProps {
 
 export default function ResolutionBanner({ event, netResults }: ResolutionBannerProps) {
   if (!event.resolution) return null;
-
-  // Currency is the EVENT's own payment_type, not the group's public/private
-  // flag — a private group can still run a free (W) event alongside its
-  // cash ones, and vice versa (see W-CURRENCY-SPEC.md).
-  const isCash = event.payment_type === 'cash';
 
   const payments = calculatePayments([...netResults]);
   const sortedResults = [...netResults].sort((a, b) => b.net - a.net);
@@ -49,14 +43,7 @@ export default function ResolutionBanner({ event, netResults }: ResolutionBanner
               >
                 <span className="text-foreground truncate min-w-0">{handle(result.username)}</span>
                 <span className="numeral tone-text text-base shrink-0">
-                  {isCash ? (
-                    (result.net >= 0 ? '+' : '-') + `$${Math.abs(result.net).toFixed(2)}`
-                  ) : (
-                    <span className="inline-flex items-baseline gap-0.5">
-                      {result.net >= 0 ? '+' : '-'}
-                      <WAmount value={Math.abs(result.net)} />
-                    </span>
-                  )}
+                  {(result.net >= 0 ? '+' : '-') + `$${Math.abs(result.net).toFixed(2)}`}
                 </span>
               </div>
             ))}
@@ -79,7 +66,7 @@ export default function ResolutionBanner({ event, netResults }: ResolutionBanner
                   <span className="font-medium text-foreground break-words">{handle(payment.to)}</span>
                   {': '}
                   <span className="numeral tone-text tone-gold text-base">
-                    {isCash ? `$${payment.amount.toFixed(2)}` : <WAmount value={payment.amount} />}
+                    ${payment.amount.toFixed(2)}
                   </span>
                 </div>
               ))}

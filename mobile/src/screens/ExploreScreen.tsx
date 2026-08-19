@@ -22,7 +22,7 @@ import { SkeletonList } from '../components/Skeleton';
 import { Card } from '../components/Card';
 import { Pill, PillTone } from '../components/Pill';
 import { Money } from '../components/Money';
-import { WAmount } from '../components/WMark';
+import { TitleText } from '../components/TitleText';
 import { SplitBar } from '../components/ProgressBar';
 import { formatMoney } from '../utils/format';
 import { ApiError, toApiError } from '../utils/errors';
@@ -63,9 +63,7 @@ const EventCard = React.memo(function EventCard({ item, onPress }: EventCardProp
 
   return (
     <Card onPress={() => onPress(item)} style={styles.eventCard}>
-      <Text style={styles.eventTitle} numberOfLines={2} ellipsizeMode="tail">
-        {item.title}
-      </Text>
+      <TitleText title={item.title} style={styles.eventTitle} numberOfLines={2} ellipsizeMode="tail" />
 
       <View style={styles.pillRow}>
         <Pill label={statusPill.label} tone={statusPill.tone} size="sm" />
@@ -90,11 +88,7 @@ const EventCard = React.memo(function EventCard({ item, onPress }: EventCardProp
 
       <View style={styles.footerRow}>
         <Text style={styles.potLabel}>Pot</Text>
-        {item.payment_type === 'cash' ? (
-          <Money amount={potTotal} size="sm" tone="neutral" />
-        ) : (
-          <WAmount value={potTotal} size="sm" tone="neutral" />
-        )}
+        <Money amount={potTotal} size="sm" tone="neutral" />
       </View>
     </Card>
   );

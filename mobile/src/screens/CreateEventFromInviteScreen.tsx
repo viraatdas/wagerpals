@@ -7,15 +7,14 @@ import { colors, font, radius, spacing, tokens } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
-import { Group, GroupMember, PaymentType } from '../types';
+import { Group, GroupMember } from '../types';
 import { ApiError, toApiError } from '../utils/errors';
-import { formatMoney, formatW } from '../utils/format';
+import { formatMoney } from '../utils/format';
 import { tapLight, tapMedium, selectionTick, success, error as hapticError } from '../utils/haptics';
 import {
   FormScreen,
   Field,
   AmountInput,
-  SegmentedControl,
   Toggle,
   UserPicker,
   BottomSheet,
@@ -23,7 +22,6 @@ import {
   LoadingState,
   EmptyState,
   ErrorState,
-  type SegmentedOption,
 } from '../components';
 import type { UserPickerUser } from '../components/UserPicker';
 import { MentionSuggestions } from '../components/MentionSuggestions';
@@ -38,11 +36,6 @@ const MAX_STAKE_AMOUNT = 500;
 const MAX_TITLE_LENGTH = 100;
 const MAX_SIDE_LENGTH = 40;
 
-const PAYMENT_OPTIONS: SegmentedOption<PaymentType>[] = [
-  { value: 'none', label: 'Free' },
-  { value: 'cash', label: 'Cash', icon: 'cash-outline', tone: 'brand' },
-];
-
 interface FormErrors {
   title?: string;
   sideA?: string;
@@ -56,7 +49,6 @@ function validateForm(input: {
   sideA: string;
   sideB: string;
   selectedGroup: Group | null;
-  paymentType: PaymentType;
   stakeAmount: string;
 }): FormErrors {
   const errors: FormErrors = {};
@@ -90,9 +82,10 @@ function validateForm(input: {
     errors.group = 'Choose a group for this wager.';
   }
 
-  if (input.paymentType === 'cash') {
-    const stake = parseFloat(input.stakeAmount);
-    if (!input.stakeAmount || !Number.isFinite(stake) || stake <= 0) {
+  const trimmedStake = input.stakeAmount.trim();
+  if (trimmedStake) {
+    const stake = parseFloat(trimmedStake);
+    if (!Number.isFinite(stake) || stake <= 0) {
       errors.stake = 'Enter a stake amount.';
     } else if (stake > MAX_STAKE_AMOUNT) {
       errors.stake = `Max stake is $${MAX_STAKE_AMOUNT}.`;
@@ -161,7 +154,8 @@ export default function CreateEventFromInviteScreen() {
   const [title, setTitle] = useState(inviteTitle);
   const [sideA, setSideA] = useState(inviteSideA);
   const [sideB, setSideB] = useState(inviteSideB);
-  const [paymentType, setPaymentType] = useState<PaymentType>('none');
+  // ONE optional $ stake field — see CreateEventScreen.tsx for the same
+  // dollar-consolidation change.
   const [stakeAmount, setStakeAmount] = useState('');
   const [subjectUserId, setSubjectUserId] = useState<string | null>(null);
   const [notifySubject, setNotifySubject] = useState(true);
@@ -311,20 +305,6 @@ export default function CreateEventFromInviteScreen() {
 
   const titleMention = useMentionAutocomplete({ members: mentionMembers, value: title, onChange: setTitle });
 
-  // POST /api/events rejects payment_type: 'cash' for a group where
-  // cash_enabled is false — a missing value (no group selected yet) is
-  // treated as disabled, never as enabled.
-  const cashEnabled = selectedGroup?.cash_enabled ?? false;
-
-  // Switching to a group without cash enabled falls back to the free/points
-  // path gracefully instead of submitting a request the server will reject.
-  useEffect(() => {
-    if (!cashEnabled && paymentType === 'cash') {
-      setPaymentType('none');
-      setStakeAmount('');
-    }
-  }, [cashEnabled, paymentType]);
-
   const handleStartFromScratch = () => {
     tapLight();
     setShowForm(true);
@@ -336,7 +316,7 @@ export default function CreateEventFromInviteScreen() {
       return;
     }
 
-    const errors = validateForm({ title, sideA, sideB, selectedGroup, paymentType, stakeAmount });
+    const errors = validateForm({ title, sideA, sideB, selectedGroup, stakeAmount });
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
       return;
@@ -365,8 +345,11 @@ export default function CreateEventFromInviteScreen() {
         group_id: (selectedGroup as Group).id,
         creator_user_id: user.id,
         creator_username: creatorUsername,
-        payment_type: paymentType,
-        stake_amount: paymentType === 'cash' ? parseFloat(stakeAmount) : undefined,
+        // Dollar consolidation: every wager stakes dollars now — no more
+        // "play with W" vs "real money" choice, so this always sends
+        // 'cash'. stake_amount stays optional/undefined for an open stake.
+        payment_type: 'cash',
+        stake_amount: stakeAmount.trim() ? parseFloat(stakeAmount.trim()) : undefined,
         subject_user_id: subjectUserId ?? undefined,
         notify_subject: subjectUserId ? notifySubject : undefined,
       });
@@ -469,7 +452,7 @@ export default function CreateEventFromInviteScreen() {
           <View style={styles.suggestedBetBox}>
             <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.brand2} />
             <Text style={styles.suggestedBetText}>
-              iMessage bet: {paymentType === 'cash' ? formatMoney(inviteAmount) : formatW(inviteAmount)} on {invitePick}
+              iMessage bet: {formatMoney(inviteAmount)} on {invitePick}
             </Text>
           </View>
         ) : null}
@@ -587,30 +570,30 @@ export default function CreateEventFromInviteScreen() {
           </>
         )}
 
-        {selectedGroup && cashEnabled ? (
+        {selectedGroup ? (
           <>
-            <Text style={styles.sectionLabel}>Payment</Text>
-            <SegmentedControl options={PAYMENT_OPTIONS} value={paymentType} onChange={setPaymentType} />
-            {paymentType === 'cash' ? (
-              <View style={styles.stakeWrap}>
-                <AmountInput
-                  label="Stake Amount"
-                  value={stakeAmount}
-                  onChangeText={(v) => {
-                    setStakeAmount(v);
-                    if (formErrors.stake) setFormErrors((prev) => ({ ...prev, stake: undefined }));
-                  }}
-                  max={MAX_STAKE_AMOUNT}
-                  error={formErrors.stake}
-                />
-                <View style={styles.infoRow}>
-                  <Ionicons name="lock-closed-outline" size={14} color={colors.textFaint} />
-                  <Text style={styles.infoText}>
-                    Each participant's stake is escrowed from their wallet until the event resolves.
-                  </Text>
-                </View>
+            {/* ONE optional $ stake field — leave it blank for an open
+                stake (each bettor chooses their own amount), or fill it in
+                and everyone puts in the same amount. */}
+            <Text style={styles.sectionLabel}>Stakes</Text>
+            <View style={styles.stakeWrap}>
+              <AmountInput
+                label="Stake Amount (optional)"
+                value={stakeAmount}
+                onChangeText={(v) => {
+                  setStakeAmount(v);
+                  if (formErrors.stake) setFormErrors((prev) => ({ ...prev, stake: undefined }));
+                }}
+                max={MAX_STAKE_AMOUNT}
+                error={formErrors.stake}
+              />
+              <View style={styles.infoRow}>
+                <Ionicons name="lock-closed-outline" size={14} color={colors.textFaint} />
+                <Text style={styles.infoText}>
+                  Each participant's stake is escrowed from their wallet until the event resolves.
+                </Text>
               </View>
-            ) : null}
+            </View>
           </>
         ) : null}
 

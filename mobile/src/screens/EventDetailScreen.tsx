@@ -25,7 +25,7 @@ import type { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
 import { EventWithStats, Bet, Comment, EscrowHoldStatus, WalletSummary } from '../types';
-import { formatMoney, formatW, formatRelativeTime, truncate, handle } from '../utils/format';
+import { formatMoney, formatRelativeTime, truncate, handle } from '../utils/format';
 import { tapLight, tapMedium, tapHeavy, success, error as hapticError } from '../utils/haptics';
 import { ApiError, toApiError } from '../utils/errors';
 import {
@@ -46,7 +46,7 @@ import {
   AmountInput,
   SegmentedControl,
   BottomSheet,
-  WAmount,
+  TitleText,
 } from '../components';
 
 type EventDetailRouteProps = RouteProp<RootStackParamList, 'EventDetail'>;
@@ -107,7 +107,6 @@ function holdPillLabel(status: EscrowHoldStatus, isOwnBet: boolean, username: st
 function BetRow({
   bet,
   sideAName,
-  isCash,
   holdStatus,
   isOwnBet,
   canDelete,
@@ -117,8 +116,6 @@ function BetRow({
   bet: Bet;
   /** event.side_a — which side this bet's amount should read Emerald vs Crimson. */
   sideAName: string;
-  /** Whether this event is a cash event ($) or a play event (W). */
-  isCash: boolean;
   /**
    * Live escrow status of THIS bet, from the event payload's `escrow_by_bet`.
    * Undefined for free events and for any bet with no hold. Deliberately not
@@ -142,11 +139,7 @@ function BetRow({
         <Text style={styles.rowText} numberOfLines={3}>
           <Text style={styles.rowBold}>{handle(truncate(bet.username, 20))}</Text>
           {' bet '}
-          {isCash ? (
-            <Money amount={bet.amount} size="sm" tone="neutral" style={{ color: stakeColor }} />
-          ) : (
-            <WAmount value={bet.amount} size="sm" tone="neutral" color={stakeColor} />
-          )}
+          <Money amount={bet.amount} size="sm" tone="neutral" style={{ color: stakeColor }} />
           {' on '}
           <Text style={styles.rowSide}>{truncate(bet.side, 24)}</Text>
         </Text>
@@ -326,11 +319,9 @@ export default function EventDetailScreen() {
 
   const numericBetAmount = parseFloat(betAmount);
   const hasValidBetAmount = betAmount.length > 0 && !isNaN(numericBetAmount) && numericBetAmount > 0;
-  const overAvailable = isCash && !!wallet && hasValidBetAmount && numericBetAmount > wallet.available;
-  const overCashMax = isCash && hasValidBetAmount && numericBetAmount > MAX_TRANSACTION_AMOUNT;
-  const wpBalance = wallet?.wallet.wp_balance ?? 0;
-  const overWpAvailable = !isCash && !!wallet && hasValidBetAmount && numericBetAmount > wpBalance;
-  const betAmountInvalid = !hasValidBetAmount || overAvailable || overCashMax || overWpAvailable;
+  const overAvailable = !!wallet && hasValidBetAmount && numericBetAmount > wallet.available;
+  const overCashMax = hasValidBetAmount && numericBetAmount > MAX_TRANSACTION_AMOUNT;
+  const betAmountInvalid = !hasValidBetAmount || overAvailable || overCashMax;
 
   const handlePlaceBet = async () => {
     if (!user || !event || isPlacingBet) return;
@@ -434,9 +425,7 @@ export default function EventDetailScreen() {
   };
 
   const confirmDeleteBet = (bet: Bet) => {
-    // canDelete never allows this for a cash bet (immutable once escrowed —
-    // see the onDelete gate below), so a deletable bet is always a W stake.
-    Alert.alert('Delete this bet?', `Remove your ${formatW(bet.amount)} bet on "${bet.side}"?`, [
+    Alert.alert('Delete this bet?', `Remove your ${formatMoney(bet.amount)} bet on "${bet.side}"?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => handleDeleteBet(bet.id) },
     ]);
@@ -465,9 +454,7 @@ export default function EventDetailScreen() {
   const confirmResolve = () => {
     if (!event) return;
     const side = resolveSide ?? event.side_a;
-    const consequence = isCash
-      ? `"${side}" will be marked the winner and ${formatMoney(event.escrow_total ?? 0)} in escrowed funds will be paid out to winners. Undo only with Unresolve.`
-      : `"${side}" will be marked the winner and W stakes will be paid out to winners. Undo only with Unresolve.`;
+    const consequence = `"${side}" will be marked the winner and ${formatMoney(event.escrow_total ?? 0)} in escrowed funds will be paid out to winners. Undo only with Unresolve.`;
     Alert.alert('Resolve event?', consequence, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Resolve', style: 'destructive', onPress: () => { tapMedium(); handleResolve(side); } },
@@ -704,9 +691,7 @@ export default function EventDetailScreen() {
           {/* Header */}
           <View style={styles.headerSection}>
             <View style={styles.headerTopRow}>
-              <Text style={styles.eventTitle} numberOfLines={3} ellipsizeMode="tail">
-                {event.title}
-              </Text>
+              <TitleText title={event.title} style={styles.eventTitle} numberOfLines={3} ellipsizeMode="tail" />
               {canManage ? (
                 <Pressable
                   onPress={() => {
@@ -783,11 +768,7 @@ export default function EventDetailScreen() {
               <Text style={styles.sideName} numberOfLines={2}>
                 {truncate(event.side_a, 24)}
               </Text>
-              {isCash ? (
-                <Money amount={sideAStats.total} tone="neutral" size="lg" style={styles.sideAMoney} />
-              ) : (
-                <WAmount value={sideAStats.total} tone="neutral" size="lg" color={tokens.color.emerald} />
-              )}
+              <Money amount={sideAStats.total} tone="neutral" size="lg" style={styles.sideAMoney} />
               <Text style={styles.sideCount}>
                 {sideAStats.count} bet{sideAStats.count === 1 ? '' : 's'}
               </Text>
@@ -798,11 +779,7 @@ export default function EventDetailScreen() {
               <Text style={styles.sideName} numberOfLines={2}>
                 {truncate(event.side_b, 24)}
               </Text>
-              {isCash ? (
-                <Money amount={sideBStats.total} tone="neutral" size="lg" style={styles.sideBMoney} />
-              ) : (
-                <WAmount value={sideBStats.total} tone="neutral" size="lg" color={tokens.color.crimson} />
-              )}
+              <Money amount={sideBStats.total} tone="neutral" size="lg" style={styles.sideBMoney} />
               <Text style={styles.sideCount}>
                 {sideBStats.count} bet{sideBStats.count === 1 ? '' : 's'}
               </Text>
@@ -848,10 +825,9 @@ export default function EventDetailScreen() {
                         setBetInsufficientFunds(false);
                       }}
                       quickAmounts={hasFixedStake ? undefined : [5, 10, 25, 50]}
-                      max={isCash ? MAX_TRANSACTION_AMOUNT : undefined}
-                      available={isCash ? wallet?.available : wallet ? wpBalance : undefined}
+                      max={MAX_TRANSACTION_AMOUNT}
+                      available={wallet?.available}
                       editable={!hasFixedStake && !isPlacingBet}
-                      currency={isCash ? 'usd' : 'wp'}
                     />
                   </View>
 
@@ -861,17 +837,15 @@ export default function EventDetailScreen() {
                     </Text>
                   ) : null}
 
-                  {overAvailable || overWpAvailable || betInsufficientFunds ? (
+                  {overAvailable || betInsufficientFunds ? (
                     <View style={styles.fundsRow}>
                       <Text style={styles.fundsText} numberOfLines={3}>
                         {betInsufficientFunds && betError
                           ? betError
-                          : isCash
-                            ? `You need ${formatMoney(Math.max(0, numericBetAmount - (wallet?.available ?? 0)))} more to place this bet.`
-                            : `Not enough W. You have ${formatW(wpBalance)}. You get W10 back every day.`}
+                          : `You need ${formatMoney(Math.max(0, numericBetAmount - (wallet?.available ?? 0)))} more to place this bet.`}
                       </Text>
                       <Button
-                        title={isCash ? 'Add funds' : 'View wallet'}
+                        title="Add funds"
                         size="sm"
                         variant="secondary"
                         onPress={() => navigation.navigate('Wallet')}
@@ -888,7 +862,7 @@ export default function EventDetailScreen() {
                     showCount
                   />
 
-                  {betError && !betInsufficientFunds && !overAvailable && !overWpAvailable ? (
+                  {betError && !betInsufficientFunds && !overAvailable ? (
                     <Text style={styles.betErrorText}>{betError}</Text>
                   ) : null}
 
@@ -917,7 +891,6 @@ export default function EventDetailScreen() {
                   key={bet.id}
                   bet={bet}
                   sideAName={event.side_a}
-                  isCash={isCash}
                   // Every player's chip, not just the viewer's — see
                   // scripts/verify-escrow-chips.ts.
                   holdStatus={event.escrow_by_bet?.[bet.id]}

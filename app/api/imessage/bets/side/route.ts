@@ -95,11 +95,10 @@ export async function POST(request: NextRequest) {
   }
 
   let placedBet: Bet;
-  let holdCurrency: 'usd' | 'wp';
 
-  // Same escrowed engine for both currencies now — placeCashBet derives
-  // usd vs the W from event.payment_type. is_late is always recorded false
-  // (R1: events are live until resolved, never by time).
+  // Every bet stakes real usd through the same escrowed engine now,
+  // regardless of payment_type. is_late is always recorded false (R1:
+  // events are live until resolved, never by time).
   try {
     const result = await placeCashBet({
       eventId: event_id,
@@ -109,7 +108,6 @@ export async function POST(request: NextRequest) {
       amount,
     });
     placedBet = result.bet;
-    holdCurrency = result.hold.currency;
   } catch (error: any) {
     if (isPaymentError(error)) {
       return NextResponse.json(
@@ -150,7 +148,7 @@ export async function POST(request: NextRequest) {
   // ---- Push notification (best-effort), same shape as app/api/bets/route.ts ----
   try {
     const lateText = placedBet.is_late ? ' (late bet)' : '';
-    const amountText = holdCurrency === 'usd' ? `$${placedBet.amount.toFixed(2)}` : `W${placedBet.amount}`;
+    const amountText = `$${placedBet.amount.toFixed(2)}`;
     await notifyEventAudience({
       eventId: event_id,
       category: 'bets',

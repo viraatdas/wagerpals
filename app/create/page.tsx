@@ -8,7 +8,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
 import Toast, { ToastType } from '@/components/Toast';
 import ConfidenceBar from '@/components/ConfidenceBar';
-import { WMark } from '@/components/WMark';
 import { useMentionAutocomplete, MentionAutocompleteMenu } from '@/components/useMentionAutocomplete';
 import { handle } from '@/lib/utils';
 
@@ -32,9 +31,12 @@ function CreateEventForm() {
   const user = useUser({ or: "return-null" });
   const [title, setTitle] = useState('');
   const [sides, setSides] = useState(['Yes', 'No']);
-  const [paymentType, setPaymentType] = useState<'none' | 'cash'>('none');
-  const [stakeMode, setStakeMode] = useState<'fixed' | 'open'>('fixed');
-  const [stake, setStake] = useState('10');
+  // ONE optional $ stake field — no more "play with W" vs "real money"
+  // choice, and no more group-level cash_enabled gating (see CLAUDE.md
+  // dollar-consolidation notes). Left blank, bettors each choose their own
+  // amount when they bet (the old "open stake" behavior); filled in, it's
+  // the fixed amount everyone puts in.
+  const [stake, setStake] = useState('');
   const [loading, setLoading] = useState(false);
   const [groups, setGroups] = useState<any[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -137,19 +139,6 @@ function CreateEventForm() {
     };
   }, [selectedGroupId]);
 
-  // The selected group decides whether cash wagers are even an option here —
-  // it's a group-level setting, not a per-event choice. If the group changes
-  // out from under a 'cash' selection (or never allowed it), fall back to
-  // 'none' rather than silently submitting a cash event the server will reject.
-  const selectedGroup = groups.find((g) => g.id === selectedGroupId);
-  const cashAvailable = !!selectedGroup?.cash_enabled;
-
-  useEffect(() => {
-    if (!cashAvailable && paymentType === 'cash') {
-      setPaymentType('none');
-    }
-  }, [cashAvailable, paymentType]);
-
   const fetchGroups = async (uid: string) => {
     try {
       const response = await fetch(`/api/groups?userId=${uid}`);
@@ -189,8 +178,9 @@ function CreateEventForm() {
     }
 
     let stakeAmount: number | null = null;
-    if (paymentType === 'cash' && stakeMode === 'fixed') {
-      const parsedStake = parseFloat(stake);
+    const trimmedStake = stake.trim();
+    if (trimmedStake) {
+      const parsedStake = parseFloat(trimmedStake);
       if (isNaN(parsedStake) || parsedStake <= 0 || parsedStake > 500) {
         setToast({ message: 'Stake per bettor must be between $0.01 and $500.', type: 'warning' });
         return;
@@ -205,6 +195,10 @@ function CreateEventForm() {
 
       // R1: events never expire — end_time is omitted; the server fills a
       // meaningless placeholder purely to satisfy the NOT NULL column.
+      // payment_type: dollar consolidation removed the "play with W" vs
+      // "real money" choice — every wager stakes dollars now, so this
+      // always sends 'cash' (stake_amount stays optional/null for an open
+      // stake, where each bettor picks their own amount when they bet).
       const eventData = {
         title: title.trim(),
         side_a: sides[0].trim(),
@@ -212,7 +206,7 @@ function CreateEventForm() {
         group_id: selectedGroupId,
         creator_user_id: user.id,
         creator_username: username,
-        payment_type: paymentType,
+        payment_type: 'cash' as const,
         stake_amount: stakeAmount,
         subject_user_id: selectedSubjectId || null,
         notify_subject: selectedSubjectId ? notifySubject : true,
@@ -255,8 +249,7 @@ function CreateEventForm() {
   // already enforces, just echoed inline once the user has tried to submit.
   const stakeAmountInvalid =
     attempted &&
-    paymentType === 'cash' &&
-    stakeMode === 'fixed' &&
+    stake.trim() !== '' &&
     (() => {
       const n = parseFloat(stake);
       return isNaN(n) || n <= 0 || n > 500;
@@ -587,110 +580,41 @@ function CreateEventForm() {
             </div>
           </div>
 
-          {/* Stakes — the cash option only appears when the selected group has
-              cash wagers turned on; otherwise every event in that group is
-              points-only, with no choice to show. */}
-          {cashAvailable && (
+          {/* Stakes — one optional $ field. Leave it blank and each bettor
+              picks their own amount when they bet (an open stake); fill it
+              in and everyone puts in the same amount. No more currency
+              choice, no more group-level gating — every wager stakes
+              dollars, escrowed until the event resolves. */}
           <div>
             <div className="section-head mb-4">
               <span className="eyebrow">Stakes</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setPaymentType('none')}
-                aria-pressed={paymentType === 'none'}
-                className={`press text-left rounded-control p-4 transition-all ${
-                  paymentType === 'none'
-                    ? 'tone-accent tone-surface border-2'
-                    : 'border border-hairline bg-surface text-foreground hover:bg-surface-elevated'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-foreground">Play with W</span>
-                  {paymentType === 'none' && <SelectedCheck />}
-                </div>
-                <div className="flex items-center gap-1 text-sm text-muted mt-0.5">
-                  Stakes <WMark className="h-3 w-3" />, no real money
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentType('cash')}
-                aria-pressed={paymentType === 'cash'}
-                className={`press text-left rounded-control p-4 transition-all ${
-                  paymentType === 'cash'
-                    ? 'tone-accent tone-surface border-2'
-                    : 'border border-hairline bg-surface text-foreground hover:bg-surface-elevated'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-foreground">Real money</span>
-                  {paymentType === 'cash' && <SelectedCheck />}
-                </div>
-                <div className="text-sm text-muted mt-0.5">Stakes are escrowed from wallets</div>
-              </button>
+            <label htmlFor="stake" className="field-label">Stake per bettor (optional)</label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-muted pointer-events-none">$</span>
+              <input
+                type="number"
+                id="stake"
+                value={stake}
+                onChange={(e) => setStake(e.target.value)}
+                min="0.01"
+                step="0.01"
+                max="500"
+                inputMode="decimal"
+                placeholder="Open — bettors choose their own amount"
+                className={`input font-mono pl-8 ${stakeAmountInvalid ? 'input-invalid' : ''}`}
+              />
             </div>
-
-            {paymentType === 'cash' && (
-              <div className="mt-5 space-y-4">
-                <div className="flex gap-2.5">
-                  {(['fixed', 'open'] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setStakeMode(mode)}
-                      aria-pressed={stakeMode === mode}
-                      className={`press inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-control transition-all ${
-                        stakeMode === mode
-                          ? 'tone-accent tone-surface border-2'
-                          : 'border border-hairline bg-surface text-foreground hover:bg-surface-elevated'
-                      }`}
-                    >
-                      {stakeMode === mode && <SelectedCheck className="h-3.5 w-3.5" />}
-                      {mode === 'fixed' ? 'Fixed stake' : 'Open stake'}
-                    </button>
-                  ))}
-                </div>
-
-                {stakeMode === 'fixed' ? (
-                  <div>
-                    <label htmlFor="stake" className="field-label">Stake per bettor</label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono text-muted pointer-events-none">$</span>
-                      <input
-                        type="number"
-                        id="stake"
-                        value={stake}
-                        onChange={(e) => setStake(e.target.value)}
-                        min="0.01"
-                        step="0.01"
-                        inputMode="decimal"
-                        placeholder="10.00"
-                        className={`input font-mono pl-8 ${stakeAmountInvalid ? 'input-invalid' : ''}`}
-                      />
-                    </div>
-                    {stakeAmountInvalid ? (
-                      <p className="tone-no tone-text field-hint mt-2">Stake must be between $0.01 and $500.</p>
-                    ) : (
-                      <p className="field-hint mt-2">
-                        Everyone puts in the same amount. Winners split the whole pot.
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="field-hint">
-                    Each bettor chooses their own stake. Winners split the pot in proportion to what they staked.
-                  </p>
-                )}
-
-                <p className="field-hint">
-                  We hold stakes in escrow until you resolve the event. Maximum $500 per bet.
-                </p>
-              </div>
+            {stakeAmountInvalid ? (
+              <p className="tone-no tone-text field-hint mt-2">Stake must be between $0.01 and $500.</p>
+            ) : (
+              <p className="field-hint mt-2">
+                Leave it blank for an open stake — each bettor chooses their own amount and winners split the
+                pot proportionally. Fill it in and everyone puts in the same amount. We hold every stake in
+                escrow until you resolve the event. Maximum $500 per bet.
+              </p>
             )}
           </div>
-          )}
 
           <button
             type="submit"

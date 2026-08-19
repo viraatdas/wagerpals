@@ -168,15 +168,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Group not found' }, { status: 404 });
   }
 
-  // The server is the gate, not the client: a group is either cash-enabled or
-  // it isn't, and that decides whether a cash event can be created in it —
-  // regardless of what the client sent or hid in its UI.
-  if (payment_type === 'cash' && !group.cash_enabled) {
-    return NextResponse.json(
-      { error: "Cash wagers aren't enabled for this group. The group creator can turn them on." },
-      { status: 403 }
-    );
-  }
+  // WagerPals is single-currency now — every bet stakes real usd through
+  // the same wallet/escrow engine regardless of payment_type (see
+  // lib/payments.ts). The group's cash_enabled flag no longer gates event
+  // creation; the column is kept (and still returned/settable via
+  // app/api/groups) but nothing in money code enforces it anymore.
 
   if (creator_user_id) {
     const isMember = await db.groupMembers.isMember(group_id, creator_user_id);

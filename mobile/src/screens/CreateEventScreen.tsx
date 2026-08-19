@@ -7,20 +7,18 @@ import { colors, font, spacing, tokens } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
-import { GroupMember, PaymentType } from '../types';
+import { GroupMember } from '../types';
 import { ApiError, toApiError } from '../utils/errors';
 import { tapMedium, success, error as hapticError } from '../utils/haptics';
 import {
   FormScreen,
   Field,
   AmountInput,
-  SegmentedControl,
   Toggle,
   UserPicker,
   Button,
   LoadingState,
   ErrorState,
-  type SegmentedOption,
 } from '../components';
 import type { UserPickerUser } from '../components/UserPicker';
 import { MentionSuggestions } from '../components/MentionSuggestions';
@@ -35,11 +33,6 @@ const MAX_STAKE_AMOUNT = 500;
 const MAX_TITLE_LENGTH = 100;
 const MAX_SIDE_LENGTH = 40;
 
-const PAYMENT_OPTIONS: SegmentedOption<PaymentType>[] = [
-  { value: 'none', label: 'Free' },
-  { value: 'cash', label: 'Cash', icon: 'cash-outline', tone: 'brand' },
-];
-
 interface FormErrors {
   title?: string;
   sideA?: string;
@@ -51,7 +44,6 @@ function validateForm(input: {
   title: string;
   sideA: string;
   sideB: string;
-  paymentType: PaymentType;
   stakeAmount: string;
 }): FormErrors {
   const errors: FormErrors = {};
@@ -81,9 +73,10 @@ function validateForm(input: {
     errors.sideB = 'Side B must be different from side A.';
   }
 
-  if (input.paymentType === 'cash') {
-    const stake = parseFloat(input.stakeAmount);
-    if (!input.stakeAmount || !Number.isFinite(stake) || stake <= 0) {
+  const trimmedStake = input.stakeAmount.trim();
+  if (trimmedStake) {
+    const stake = parseFloat(trimmedStake);
+    if (!Number.isFinite(stake) || stake <= 0) {
       errors.stake = 'Enter a stake amount.';
     } else if (stake > MAX_STAKE_AMOUNT) {
       errors.stake = `Max stake is $${MAX_STAKE_AMOUNT}.`;
@@ -118,7 +111,10 @@ export default function CreateEventScreen() {
   const [title, setTitle] = useState('');
   const [sideA, setSideA] = useState('');
   const [sideB, setSideB] = useState('');
-  const [paymentType, setPaymentType] = useState<PaymentType>('none');
+  // ONE optional $ stake field — no more "play with W" vs "real money"
+  // choice, and no more group-level cash_enabled gating (dollar
+  // consolidation). Left blank, bettors each choose their own amount when
+  // they bet; filled in, it's the fixed amount everyone puts in.
   const [stakeAmount, setStakeAmount] = useState('');
   const [subjectUserId, setSubjectUserId] = useState<string | null>(null);
   const [notifySubject, setNotifySubject] = useState(true);
@@ -213,35 +209,13 @@ export default function CreateEventScreen() {
 
   const titleMention = useMentionAutocomplete({ members: mentionMembers, value: title, onChange: setTitle });
 
-  // Group-level cash enablement — POST /api/events rejects payment_type:
-  // 'cash' for a group where it's false. A missing value (older cached
-  // payload) is treated as disabled, never as enabled.
-  const [cashEnabled, setCashEnabled] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiService
-      .getGroup(groupId)
-      .then((g) => {
-        if (cancelled) return;
-        setCashEnabled(g?.cash_enabled ?? false);
-      })
-      .catch(() => {
-        // Non-fatal: the cash option just stays hidden, same as a group
-        // with cash disabled.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [groupId]);
-
   const handleCreate = async () => {
     if (!user) {
       setSubmitError('You must be signed in to create an event.');
       return;
     }
 
-    const errors = validateForm({ title, sideA, sideB, paymentType, stakeAmount });
+    const errors = validateForm({ title, sideA, sideB, stakeAmount });
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
       return;
@@ -261,6 +235,7 @@ export default function CreateEventScreen() {
     setIsSubmitting(true);
 
     try {
+      const trimmedStake = stakeAmount.trim();
       const newEvent = await apiService.createEvent({
         title: title.trim(),
         side_a: sideA.trim(),
@@ -270,8 +245,12 @@ export default function CreateEventScreen() {
         group_id: groupId,
         creator_user_id: user.id,
         creator_username: creatorUsername,
-        payment_type: paymentType,
-        stake_amount: paymentType === 'cash' ? parseFloat(stakeAmount) : undefined,
+        // Dollar consolidation: every wager stakes dollars now — no more
+        // "play with W" vs "real money" choice, so this always sends
+        // 'cash'. stake_amount stays optional/undefined for an open stake,
+        // where each bettor picks their own amount when they bet.
+        payment_type: 'cash',
+        stake_amount: trimmedStake ? parseFloat(trimmedStake) : undefined,
         subject_user_id: subjectUserId ?? undefined,
         notify_subject: subjectUserId ? notifySubject : undefined,
       });
@@ -286,16 +265,6 @@ export default function CreateEventScreen() {
       setIsSubmitting(false);
     }
   };
-
-  // If cash gets disabled out from under a selection somehow (e.g. the
-  // group's cash_enabled flips while this screen is open), fall back to the
-  // free/points path instead of submitting a request the server will reject.
-  useEffect(() => {
-    if (!cashEnabled && paymentType === 'cash') {
-      setPaymentType('none');
-      setStakeAmount('');
-    }
-  }, [cashEnabled, paymentType]);
 
   const canSubmit = !isSubmitting && !loadingCreator;
 
@@ -392,32 +361,28 @@ export default function CreateEventScreen() {
           returnKeyType="done"
         />
 
-        {cashEnabled ? (
-          <>
-            <Text style={styles.sectionLabel}>Payment</Text>
-            <SegmentedControl options={PAYMENT_OPTIONS} value={paymentType} onChange={setPaymentType} />
-            {paymentType === 'cash' ? (
-              <View style={styles.stakeWrap}>
-                <AmountInput
-                  label="Stake Amount"
-                  value={stakeAmount}
-                  onChangeText={(v) => {
-                    setStakeAmount(v);
-                    if (formErrors.stake) setFormErrors((prev) => ({ ...prev, stake: undefined }));
-                  }}
-                  max={MAX_STAKE_AMOUNT}
-                  error={formErrors.stake}
-                />
-                <View style={styles.infoRow}>
-                  <Ionicons name="lock-closed-outline" size={14} color={colors.textFaint} />
-                  <Text style={styles.infoText}>
-                    Each participant's stake is escrowed from their wallet until the event resolves.
-                  </Text>
-                </View>
-              </View>
-            ) : null}
-          </>
-        ) : null}
+        {/* ONE optional $ stake field — leave it blank for an open stake
+            (each bettor chooses their own amount), or fill it in and
+            everyone puts in the same amount. */}
+        <Text style={styles.sectionLabel}>Stakes</Text>
+        <View style={styles.stakeWrap}>
+          <AmountInput
+            label="Stake Amount (optional)"
+            value={stakeAmount}
+            onChangeText={(v) => {
+              setStakeAmount(v);
+              if (formErrors.stake) setFormErrors((prev) => ({ ...prev, stake: undefined }));
+            }}
+            max={MAX_STAKE_AMOUNT}
+            error={formErrors.stake}
+          />
+          <View style={styles.infoRow}>
+            <Ionicons name="lock-closed-outline" size={14} color={colors.textFaint} />
+            <Text style={styles.infoText}>
+              Each participant's stake is escrowed from their wallet until the event resolves.
+            </Text>
+          </View>
+        </View>
 
         <View style={styles.subjectHeaderRow}>
           <Ionicons name="person-outline" size={14} color={colors.amber} />

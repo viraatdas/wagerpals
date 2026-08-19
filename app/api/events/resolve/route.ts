@@ -46,12 +46,11 @@ export async function POST(request: NextRequest) {
   }
 
   // Cancel refunds every held stake via settleCashEvent(eventId, null) below
-  // — that now works identically for a cash event's usd escrow and a play
-  // event's W escrow (see lib/payments.ts's currencyForEvent), so cancel is
-  // no longer restricted to payment_type === 'cash'. A legacy play event
-  // with no escrow at all (pre-W bets) is a harmless noop here — the same
-  // no_holds path settleCashEvent already returns for any event with
-  // nothing held.
+  // — every event stakes usd through the same escrow engine now, regardless
+  // of payment_type (see lib/payments.ts), so cancel is not restricted to
+  // payment_type === 'cash'. An event with no escrow at all is a harmless
+  // noop here — the same no_holds path settleCashEvent already returns for
+  // any event with nothing held.
 
   if (isCancel) {
     let settlement: SettleCashEventResult;
@@ -140,13 +139,12 @@ export async function POST(request: NextRequest) {
   // event that is still 'active', which a retry fixes (a second
   // settleCashEvent finds no held holds and returns a no_holds noop, so it
   // cannot double-pay).
-  // settleCashEvent now settles WHICHEVER currency the event's payment_type
-  // selects (usd for 'cash', the W for 'none') — see
-  // lib/payments.ts's currencyForEvent. It is called unconditionally: an
-  // event with no held escrow at all (a legacy play event whose bets predate
-  // the W, or one that genuinely has zero bets) finds nothing to settle and
-  // returns a no_holds noop, which is exactly the "pure bookkeeping, never
-  // touches a wallet" behavior those bets must keep.
+  // settleCashEvent now settles usd for every event, regardless of
+  // payment_type (see lib/payments.ts). It is called unconditionally: an
+  // event with no held escrow at all (bets that predate escrow entirely, or
+  // one that genuinely has zero bets) finds nothing to settle and returns a
+  // no_holds noop, which is exactly the "pure bookkeeping, never touches a
+  // wallet" behavior those bets must keep.
   let settlement: SettleCashEventResult;
   try {
     settlement = await settleCashEvent(event_id, winning_side);

@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { formatW } from '@/lib/odds';
-import WAmount, { WMark } from './WMark';
 
 interface BetFormProps {
   sides: string[];
@@ -11,7 +9,6 @@ interface BetFormProps {
   userId: string;
   username: string;
   onBetPlaced: () => void;
-  paymentType?: 'none' | 'cash';
   stakeAmount?: number | null;
   walletBalance?: number | null;
   onWalletChanged?: () => void;
@@ -23,7 +20,6 @@ export default function BetForm({
   userId,
   username,
   onBetPlaced,
-  paymentType = 'none',
   stakeAmount = null,
   walletBalance,
   onWalletChanged,
@@ -36,15 +32,10 @@ export default function BetForm({
   // Presentational only: shows a brief landed-stake confirmation after a successful submit.
   const [justPlaced, setJustPlaced] = useState<{ side: string; amount: number } | null>(null);
 
-  const isCash = paymentType === 'cash';
-  const isFixedStake = isCash && typeof stakeAmount === 'number' && stakeAmount > 0;
+  const isFixedStake = typeof stakeAmount === 'number' && stakeAmount > 0;
 
-  // Cash and W are separate ledgers (see W-CURRENCY-SPEC.md) — fetch both so
-  // insufficient-funds checks work on whichever currency this event stakes.
   const [fetchedBalance, setFetchedBalance] = useState<number | null>(null);
-  const [fetchedWpBalance, setFetchedWpBalance] = useState<number | null>(null);
   const balance = typeof walletBalance === 'number' ? walletBalance : fetchedBalance;
-  const wpBalance = fetchedWpBalance;
 
   const fetchBalance = async () => {
     try {
@@ -54,20 +45,17 @@ export default function BetForm({
       if (data && data.wallet && typeof data.wallet.balance === 'number') {
         setFetchedBalance(data.wallet.balance);
       }
-      if (data && data.wallet && typeof data.wallet.wp_balance === 'number') {
-        setFetchedWpBalance(data.wallet.wp_balance);
-      }
     } catch (err) {
       // Silently ignore — do not block betting on a wallet fetch failure.
     }
   };
 
   useEffect(() => {
-    if (!isCash || typeof walletBalance !== 'number') {
+    if (typeof walletBalance !== 'number') {
       fetchBalance();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCash, userId]);
+  }, [userId]);
 
   // Clear the transient confirmation a couple seconds after it lands.
   useEffect(() => {
@@ -77,9 +65,7 @@ export default function BetForm({
   }, [justPlaced]);
 
   const effectiveStake = isFixedStake ? (stakeAmount as number) : parseFloat(amount) || 0;
-  const insufficientFunds = isCash
-    ? typeof balance === 'number' && effectiveStake > 0 && balance < effectiveStake
-    : typeof wpBalance === 'number' && effectiveStake > 0 && wpBalance < effectiveStake;
+  const insufficientFunds = typeof balance === 'number' && effectiveStake > 0 && balance < effectiveStake;
 
   const clearError = () => {
     if (error) setError(null);
@@ -119,7 +105,6 @@ export default function BetForm({
         setError({ message, code: errorBody?.code, shortfall: errorBody?.shortfall });
         if (errorBody?.code === 'INSUFFICIENT_FUNDS') {
           if (typeof errorBody?.balance === 'number') setFetchedBalance(errorBody.balance);
-          if (typeof errorBody?.wp_balance === 'number') setFetchedWpBalance(errorBody.wp_balance);
         }
         return;
       }
@@ -139,12 +124,7 @@ export default function BetForm({
     }
   };
 
-  const submitLabelText =
-    effectiveStake > 0
-      ? isCash
-        ? `Place $${effectiveStake.toFixed(2)} Bet`
-        : `Place ${formatW(effectiveStake)} Bet`
-      : 'Place Bet';
+  const submitLabelText = effectiveStake > 0 ? `Place $${effectiveStake.toFixed(2)} Bet` : 'Place Bet';
   const submitLabel = loading ? 'Placing bet…' : submitLabelText;
 
   const submitDisabled =
@@ -206,26 +186,17 @@ export default function BetForm({
           </div>
         </div>
 
-        {isCash ? (
-          <div className="panel flex items-center justify-between text-sm px-4 py-3">
-            <span className="eyebrow">Wallet balance</span>
-            <div className="flex items-center gap-3">
-              {typeof balance === 'number' && (
-                <span className="numeral text-lg text-foreground">${balance.toFixed(2)}</span>
-              )}
-              <Link href="/profile" className="press text-accent hover:underline text-sm font-medium">
-                Add funds
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <div className="panel flex items-center justify-between text-sm px-4 py-3">
-            <span className="eyebrow">W balance</span>
-            {typeof wpBalance === 'number' && (
-              <WAmount value={wpBalance} className="text-lg text-foreground" />
+        <div className="panel flex items-center justify-between text-sm px-4 py-3">
+          <span className="eyebrow">Wallet balance</span>
+          <div className="flex items-center gap-3">
+            {typeof balance === 'number' && (
+              <span className="numeral text-lg text-foreground">${balance.toFixed(2)}</span>
             )}
+            <Link href="/profile" className="press text-accent hover:underline text-sm font-medium">
+              Add funds
+            </Link>
           </div>
-        )}
+        </div>
 
         {isFixedStake ? (
           <div>
@@ -238,14 +209,7 @@ export default function BetForm({
         ) : (
           <div>
             <label htmlFor="amount" className="field-label inline-flex items-center gap-1">
-              Amount
-              {isCash ? (
-                <span>($)</span>
-              ) : (
-                <span className="inline-flex items-center gap-0.5" aria-label="(W)">
-                  (<WMark className="h-2.5 w-2.5" />)
-                </span>
-              )}
+              Amount ($)
             </label>
             <input
               type="number"
@@ -257,17 +221,15 @@ export default function BetForm({
               }}
               min="0.01"
               step="0.01"
-              max={isCash ? '500' : undefined}
+              max="500"
               className={`input numeral text-2xl ${error && error.code !== 'INSUFFICIENT_FUNDS' ? 'input-invalid' : ''}`}
               inputMode="decimal"
               placeholder="10.00"
               required
             />
-            {isCash && (
-              <p className="field-hint mt-2">
-                We hold your stake in escrow until the event resolves.
-              </p>
-            )}
+            <p className="field-hint mt-2">
+              We hold your stake in escrow until the event resolves.
+            </p>
           </div>
         )}
 
@@ -292,38 +254,25 @@ export default function BetForm({
         )}
 
         {(insufficientFunds || error?.code === 'INSUFFICIENT_FUNDS') && (
-          isCash ? (
-            <div className="tone-pending tone-surface border rounded-xl p-3 text-sm tone-text flex items-center justify-between gap-3 flex-wrap">
-              <span>
-                You need $
-                {(
-                  error?.shortfall ?? Math.max(0, effectiveStake - (balance || 0))
-                ).toFixed(2)}{' '}
-                more to place this bet.
-              </span>
-              <Link href="/profile" className="btn-primary press px-4 py-2 text-sm">
-                Add funds
-              </Link>
-            </div>
-          ) : (
-            <div className="tone-pending tone-surface border rounded-xl p-3 text-sm tone-text space-y-1">
-              <p>
-                Not enough W. You have <WAmount value={wpBalance ?? 0} className="text-sm" />.
-              </p>
-              <p className="text-ink-muted">Out of W? You get W10 back every day.</p>
-            </div>
-          )
+          <div className="tone-pending tone-surface border rounded-xl p-3 text-sm tone-text flex items-center justify-between gap-3 flex-wrap">
+            <span>
+              You need $
+              {(
+                error?.shortfall ?? Math.max(0, effectiveStake - (balance || 0))
+              ).toFixed(2)}{' '}
+              more to place this bet.
+            </span>
+            <Link href="/profile" className="btn-primary press px-4 py-2 text-sm">
+              Add funds
+            </Link>
+          </div>
         )}
 
         {justPlaced && (
           <div className="tone-yes tone-surface border rounded-xl p-3 text-sm animate-bet-land flex items-center justify-between gap-3">
             <span className="tone-text font-medium">Bet placed on {justPlaced.side}</span>
             <span className="tone-text text-lg">
-              {isCash ? (
-                <span className="numeral">${justPlaced.amount.toFixed(2)}</span>
-              ) : (
-                <WAmount value={justPlaced.amount} />
-              )}
+              <span className="numeral">${justPlaced.amount.toFixed(2)}</span>
             </span>
           </div>
         )}

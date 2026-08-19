@@ -31,12 +31,11 @@ import { Card } from '../components/Card';
 import { Pill, PillTone } from '../components/Pill';
 import { Avatar } from '../components/Avatar';
 import { Money } from '../components/Money';
-import { WAmount } from '../components/WMark';
+import { TitleText } from '../components/TitleText';
 import { SplitBar } from '../components/ProgressBar';
 import { SectionHeader } from '../components/SectionHeader';
 import { BottomSheet } from '../components/BottomSheet';
 import { Field } from '../components/Field';
-import { Toggle } from '../components/Toggle';
 import { Button } from '../components/Button';
 import { tapMedium, tapLight, success, error as hapticError } from '../utils/haptics';
 import { ApiError, toApiError } from '../utils/errors';
@@ -90,7 +89,6 @@ const WagerCard = React.memo(function WagerCard({ item, onPress }: WagerCardProp
   const sideAStats = item.side_stats?.[item.side_a] ?? { count: 0, total: 0 };
   const sideBStats = item.side_stats?.[item.side_b] ?? { count: 0, total: 0 };
   const potTotal = sideAStats.total + sideBStats.total;
-  const isCash = item.payment_type === 'cash';
   const previewBettors = item.bettor_preview?.slice(0, 3) ?? [];
   const betCount = item.total_bets ?? 0;
 
@@ -111,9 +109,7 @@ const WagerCard = React.memo(function WagerCard({ item, onPress }: WagerCardProp
             ))}
           </View>
         ) : null}
-        <Text style={styles.wagerTitle} numberOfLines={2} ellipsizeMode="tail">
-          {item.title}
-        </Text>
+        <TitleText title={item.title} style={styles.wagerTitle} numberOfLines={2} ellipsizeMode="tail" />
         <Pill label={statusPill.label} tone={statusPill.tone} size="sm" />
       </View>
 
@@ -126,11 +122,7 @@ const WagerCard = React.memo(function WagerCard({ item, onPress }: WagerCardProp
           </Text>
         </View>
         <View style={styles.stakedWrap}>
-          {isCash ? (
-            <Money amount={potTotal} size="md" tone="neutral" />
-          ) : (
-            <WAmount value={potTotal} size="md" tone="neutral" />
-          )}
+          <Money amount={potTotal} size="md" tone="neutral" />
           <Text style={styles.stakedLabel}>staked</Text>
         </View>
       </View>
@@ -171,7 +163,6 @@ export default function HomeScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupCashEnabled, setNewGroupCashEnabled] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const insets = useSafeAreaInsets();
 
@@ -250,7 +241,6 @@ export default function HomeScreen() {
   const closeCreateModal = useCallback(() => {
     setShowCreateModal(false);
     setNewGroupName('');
-    setNewGroupCashEnabled(false);
   }, []);
 
   const handleCreateGroup = useCallback(async () => {
@@ -258,7 +248,7 @@ export default function HomeScreen() {
 
     setIsCreatingGroup(true);
     try {
-      const newGroup = await apiService.createGroup(newGroupName.trim(), user.id, newGroupCashEnabled);
+      const newGroup = await apiService.createGroup(newGroupName.trim(), user.id);
       success();
       closeCreateModal();
       navigation.navigate('GroupDetail' as never, { groupId: newGroup.id } as never);
@@ -269,7 +259,7 @@ export default function HomeScreen() {
     } finally {
       setIsCreatingGroup(false);
     }
-  }, [user, newGroupName, newGroupCashEnabled, isCreatingGroup, navigation, closeCreateModal]);
+  }, [user, newGroupName, isCreatingGroup, navigation, closeCreateModal]);
 
   // Joins by code are instantly active now (flat-groups model) — no more
   // "waiting for admin approval" queue, so this drops straight into the
@@ -493,12 +483,6 @@ export default function HomeScreen() {
           placeholder="e.g. Sunday Football"
           returnKeyType="done"
           autoCorrect={false}
-        />
-        <Toggle
-          label="Cash wagers"
-          description="Members can stake real money from their wallets."
-          value={newGroupCashEnabled}
-          onValueChange={setNewGroupCashEnabled}
         />
         <Button
           title="Create"

@@ -13,7 +13,6 @@ import { loadStripe } from '@stripe/stripe-js';
 import Toast, { ToastType } from '@/components/Toast';
 import CountUp from '@/components/CountUp';
 import EmptySlip from '@/components/EmptySlip';
-import WAmount from '@/components/WMark';
 
 function formatTxTimestamp(value?: string): string {
   if (!value) return '';
@@ -42,7 +41,7 @@ export interface WalletPanelProps {
 
 export default function WalletPanel({ className }: WalletPanelProps) {
   const user = useUser({ or: 'return-null' });
-  const [wallet, setWallet] = useState<{ balance: number; wp_balance?: number } | null>(null);
+  const [wallet, setWallet] = useState<{ balance: number } | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [walletDataLoading, setWalletDataLoading] = useState(true);
   const [depositAmount, setDepositAmount] = useState('');
@@ -141,13 +140,13 @@ export default function WalletPanel({ className }: WalletPanelProps) {
     setTimeout(fetchWallet, 1500);
   };
 
-  // Two separate ledgers, split by the payload's own currency field —
-  // never mixed W and $ in one list. A transaction from before `currency`
-  // existed on the row defaults to cash (undefined !== 'wp').
-  const isGrant = (tx: any) => typeof tx.idempotency_key === 'string' && tx.idempotency_key.startsWith('signup-grant:');
-  // The signup grant seeds the balance silently (owner: no "welcome bonus" row).
-  const wpTransactions = transactions.filter((tx: any) => tx.currency === 'wp' && !isGrant(tx));
-  const cashTransactions = transactions.filter((tx: any) => tx.currency !== 'wp');
+  // One ledger — every amount is a dollar now. The signup grant / seed
+  // transaction seeds the balance silently (owner: no "welcome bonus" row),
+  // so it's filtered out regardless of which prefix it shipped under.
+  const isSeed = (tx: any) =>
+    typeof tx.idempotency_key === 'string' &&
+    (tx.idempotency_key.startsWith('signup-grant:') || tx.idempotency_key.startsWith('usd-seed:'));
+  const visibleTransactions = transactions.filter((tx: any) => !isSeed(tx));
 
   return (
     <div id="wallet" className={`scroll-mt-24 ${className ?? ''}`}>
@@ -158,10 +157,9 @@ export default function WalletPanel({ className }: WalletPanelProps) {
         type={toast?.type || 'info'}
       />
 
-      {/* $ Cash — real money. Stripe deposits/withdrawals, kept a strictly
-          $-only affair, visually separate from the W panel below it. */}
+      {/* Wallet — one dollar balance. Stripe deposits/withdrawals. */}
       <div className="section-head mb-4">
-        <span className="eyebrow-accent eyebrow">$ Cash</span>
+        <span className="eyebrow-accent eyebrow">Wallet</span>
       </div>
       <div className="card p-5 sm:p-7">
         <div className="flex items-center justify-between gap-3 mb-2">
@@ -174,12 +172,13 @@ export default function WalletPanel({ className }: WalletPanelProps) {
           </span>
         </div>
         <div
-          className={`mb-5 text-4xl sm:text-5xl ${
+          className={`text-4xl sm:text-5xl ${
             (wallet?.balance ?? 0) < 0 ? 'text-crimson-ink' : 'text-emerald'
           }`}
         >
           <CountUp value={wallet?.balance ?? 0} formatter="currency" className="font-mono" />
         </div>
+        <p className="field-hint mb-5 mt-1">New accounts start with $10 on the house.</p>
         {!stripePromise && (
           <div className="tone-pending tone-surface border rounded-panel px-3 py-2 text-sm mb-4">
             <span className="tone-text">Card deposits aren&apos;t available right now.</span>
@@ -284,51 +283,7 @@ export default function WalletPanel({ className }: WalletPanelProps) {
         )}
       </div>
 
-      {/* W — WagerPals' play currency. Never Stripe, never withdrawable,
-          never interchangeable with $ — its own balance, its own recent
-          transactions (the payload distinguishes currency per-transaction),
-          and the faucet line. Amber never touches a money value, so this
-          stays on the same emerald/crimson number treatment as $. */}
-      <div className="section-head mb-4 mt-8">
-        <span className="eyebrow-accent eyebrow">W</span>
-      </div>
-      <div className="card p-5 sm:p-7">
-        <div className="mb-1 flex items-center justify-between gap-3">
-          <p className="eyebrow">W balance</p>
-        </div>
-        {/* Small and inline per the owner — the $ cash balance stays the hero;
-            W reads as a compact figure beside its label. */}
-        <div className="mb-3 flex items-baseline gap-2">
-          <span className="text-xl sm:text-2xl text-emerald">
-            <WAmount value={wallet?.wp_balance ?? 0} animate className="font-mono" />
-          </span>
-          <span className="text-xs text-ink-muted">to stake</span>
-        </div>
-        <p className="field-hint mb-4">Out of W? You get W10 back every day.</p>
-
-        {wpTransactions.length > 0 && (
-          <div className="card divide-y divide-line">
-            {wpTransactions.slice(0, 5).map((tx: any) => (
-              <div key={tx.id} className={`flex items-center gap-3 px-4 py-3 ${txTone(tx)}`}>
-                <span className="tone-dot" aria-hidden="true" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-ink truncate">{tx.description || tx.type}</p>
-                  {tx.created_at && (
-                    <p className="text-xs text-ink-muted">{formatTxTimestamp(tx.created_at)}</p>
-                  )}
-                </div>
-                <span className="tone-text text-base whitespace-nowrap inline-flex items-baseline gap-0.5">
-                  {tx.amount > 0 ? '+' : '-'}
-                  <WAmount value={Math.abs(tx.amount)} />
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* $ Transactions ledger — cash only; W's own recent activity is in
-          the panel above. */}
+      {/* Transactions ledger — one list, every amount a dollar. */}
       <div className="mt-8">
         <div className="section-head mb-4">
           <span className="eyebrow">Transactions</span>
@@ -345,7 +300,7 @@ export default function WalletPanel({ className }: WalletPanelProps) {
               </div>
             ))}
           </div>
-        ) : cashTransactions.length === 0 ? (
+        ) : visibleTransactions.length === 0 ? (
           <EmptySlip
             headline="Nothing in the ledger yet."
             body="Deposit to fund your wallet. Every bet, win, and payout lands here."
@@ -353,7 +308,7 @@ export default function WalletPanel({ className }: WalletPanelProps) {
           />
         ) : (
           <div className="card divide-y divide-line">
-            {cashTransactions.slice(0, 5).map((tx: any) => (
+            {visibleTransactions.slice(0, 5).map((tx: any) => (
               <div key={tx.id} className={`flex items-center gap-3 px-4 py-3 ${txTone(tx)}`}>
                 <span className="tone-dot" aria-hidden="true" />
                 <div className="min-w-0 flex-1">

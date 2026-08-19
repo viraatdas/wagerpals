@@ -52,7 +52,6 @@ export default function Home() {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [groupCode, setGroupCode] = useState('');
-  const [cashEnabled, setCashEnabled] = useState(false);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
@@ -148,7 +147,6 @@ export default function Home() {
         body: JSON.stringify({
           name: groupName.trim(),
           created_by: user.id,
-          cash_enabled: cashEnabled,
         }),
       });
 
@@ -156,7 +154,6 @@ export default function Home() {
         const newGroup = await response.json();
         setShowCreateModal(false);
         setGroupName('');
-        setCashEnabled(false);
         router.push(`/groups/${newGroup.id}`);
       } else {
         const data = await response.json().catch(() => ({}));
@@ -290,39 +287,11 @@ export default function Home() {
                 required
               />
 
-              <div className="mb-6 flex items-start justify-between gap-4 rounded-control border border-line bg-card px-4 py-3">
-                <div className="min-w-0">
-                  <label htmlFor="create-group-cash" className="font-sans text-sm font-medium text-ink">
-                    Cash wagers
-                  </label>
-                  <p className="mt-0.5 font-sans text-xs text-ink-secondary">
-                    Members can stake real money from their wallets.
-                  </p>
-                </div>
-                <button
-                  id="create-group-cash"
-                  type="button"
-                  role="switch"
-                  aria-checked={cashEnabled}
-                  onClick={() => setCashEnabled((v) => !v)}
-                  className={`press relative inline-flex h-6 w-11 shrink-0 items-center rounded-pill transition-colors duration-fast ${
-                    cashEnabled ? 'bg-emerald' : 'bg-line'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-pill bg-card shadow-elev-1 transition-transform duration-fast ${
-                      cashEnabled ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
               <div className="flex gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     setShowCreateModal(false);
-                    setCashEnabled(false);
                   }}
                   className="flex-1 rounded-control border border-line bg-card px-4 py-2 font-sans text-sm font-medium text-ink-secondary transition-colors duration-fast hover:border-ink-secondary"
                 >

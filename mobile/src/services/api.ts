@@ -327,10 +327,10 @@ class ApiService {
     );
   }
 
-  async createGroup(name: string, createdBy: string, cashEnabled?: boolean): Promise<Group> {
+  async createGroup(name: string, createdBy: string): Promise<Group> {
     const group = await this.request<Group>('/api/groups', {
       method: 'POST',
-      body: JSON.stringify({ name, created_by: createdBy, cash_enabled: cashEnabled }),
+      body: JSON.stringify({ name, created_by: createdBy }),
     });
     this.invalidate('/api/groups');
     return group;

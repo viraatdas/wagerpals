@@ -21,7 +21,7 @@ import { ActivityItem } from '../types';
 import { EmptyState, ErrorState } from '../components/ScreenState';
 import { SkeletonList } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
-import { formatRelativeTime, formatMoney, formatW, handle } from '../utils/format';
+import { formatRelativeTime, formatMoney, handle } from '../utils/format';
 import { ApiError, toApiError } from '../utils/errors';
 import { tapLight } from '../utils/haptics';
 import { colors, font, radius, spacing, tokens } from '../theme';
@@ -56,7 +56,7 @@ function getSentence(item: ActivityItem): string {
   const who = item.username ? handle(item.username) : 'Someone';
   switch (item.type) {
     case 'bet':
-      return `${who} bet ${item.payment_type === 'cash' ? formatMoney(item.amount ?? 0) : formatW(item.amount ?? 0)} on ${item.side ?? 'a side'}`;
+      return `${who} bet ${formatMoney(item.amount ?? 0)} on ${item.side ?? 'a side'}`;
     case 'resolution':
       return item.winning_side ? `${item.winning_side} won. Event resolved` : 'Event resolved';
     case 'event_created':
@@ -92,7 +92,7 @@ function SentenceRuns({ item }: { item: ActivityItem }) {
         <Text style={styles.sentenceActor}>{who}</Text>
         <Text> bet </Text>
         <Text style={styles.sentenceAmount}>
-          {item.payment_type === 'cash' ? formatMoney(item.amount ?? 0) : formatW(item.amount ?? 0)}
+          {formatMoney(item.amount ?? 0)}
         </Text>
         <Text> on {item.side ?? 'a side'}</Text>
       </Text>

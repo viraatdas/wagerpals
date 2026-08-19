@@ -6,6 +6,7 @@ import ConfidenceBar from './ConfidenceBar';
 import OddsLine from './OddsLine';
 import StatusPill, { StatusPillStatus } from './StatusPill';
 import CountUp from './CountUp';
+import TitleText from './TitleText';
 
 // The wager card — the design thesis in miniature. Top half (avatars, title,
 // status; the odds ratio; the confidence bar) is sportsbook-crisp. Bottom
@@ -85,7 +86,6 @@ export default function EventCard({ event, groupName, className }: EventCardProp
   const statsA = event.side_stats[event.side_a] || { count: 0, total: 0 };
   const statsB = event.side_stats[event.side_b] || { count: 0, total: 0 };
   const pool = statsA.total + statsB.total;
-  const paymentType = event.payment_type ?? 'cash';
 
   const isResolved = event.status === 'resolved';
   const winningSide = event.resolution?.winning_side;
@@ -136,7 +136,7 @@ export default function EventCard({ event, groupName, className }: EventCardProp
                 <div className="truncate font-sans text-xs text-ink-muted">{groupName}</div>
               )}
               <h3 className="min-w-0 line-clamp-2 break-words font-sans text-base font-medium text-ink">
-                {event.title}
+                <TitleText title={event.title} />
               </h3>
             </div>
           </div>
@@ -150,7 +150,6 @@ export default function EventCard({ event, groupName, className }: EventCardProp
           sideA={{ label: leftLabel, total: leftStats.total }}
           sideB={{ label: rightLabel, total: rightStats.total }}
           stakeAmount={pool}
-          paymentType={paymentType}
         />
 
         {/* Row 3 — the confidence bar, the signature element */}

@@ -153,24 +153,6 @@ export function formatMoney(amount: number): string {
 }
 
 /**
- * Plain-text form of a W (WagerPals play-currency) amount, e.g. `"W40"` /
- * `"W40.50"` — no space between the glyph letter and the digits. This is the
- * sibling of the visual mark rendered by components/WMark.tsx's `WMark` /
- * `WAmount`: use this helper anywhere a real DOM node can't carry the SVG
- * glyph — aria-labels, push notifications, activity feed strings, OG
- * content. See W-CURRENCY-SPEC.md.
- */
-export function formatW(amount: number): string {
-  const rounded = Math.round((amount || 0) * 100) / 100;
-  return Number.isInteger(rounded) ? `W${rounded.toFixed(0)}` : `W${rounded.toFixed(2)}`;
-}
-
-/** Picks {@link formatMoney} or the plain-text {@link formatW} form for a stake amount, based on the event's payment type. */
-export function formatStake(amount: number, paymentType: 'none' | 'cash' = 'cash'): string {
-  return paymentType === 'cash' ? formatMoney(amount) : formatW(amount);
-}
-
-/**
  * Formats a 0-100 split value as e.g. `"67%"`. Rounds defensively in case a
  * caller passes a raw fraction/percent rather than one already produced by
  * {@link splitPercent}.

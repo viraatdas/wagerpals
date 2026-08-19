@@ -14,7 +14,7 @@ import StatusPill from '@/components/StatusPill';
 import OddsLine from '@/components/OddsLine';
 import ConfidenceBar from '@/components/ConfidenceBar';
 import CountUp from '@/components/CountUp';
-import WAmount, { WMark } from '@/components/WMark';
+import TitleText from '@/components/TitleText';
 import { AvatarPerson } from '@/components/AvatarStack';
 import { splitPercent } from '@/lib/odds';
 import { EscrowHoldStatus, EventWithStats, NetResult } from '@/lib/types';
@@ -425,7 +425,7 @@ export default function EventPage() {
           </div>
 
           <h1 className="market-title text-2xl sm:text-3xl md:text-4xl mb-4 break-words">
-            {event.title}
+            <TitleText title={event.title} />
           </h1>
 
           <div className="flex flex-wrap items-center gap-2 mb-6">
@@ -473,7 +473,6 @@ export default function EventPage() {
               sideA={{ label: event.side_a, total: sideAStats?.total ?? 0 }}
               sideB={{ label: event.side_b, total: sideBStats?.total ?? 0 }}
               stakeAmount={poolTotal}
-              paymentType={isCash ? 'cash' : 'none'}
               size="large"
             />
             <ConfidenceBar
@@ -487,14 +486,7 @@ export default function EventPage() {
             <div className="min-w-0">
               <div className="eyebrow mb-1">Pool</div>
               <div className="stat-value truncate">
-                {isCash ? (
-                  <CountUp value={poolTotal} formatter="currency" />
-                ) : (
-                  <span className="inline-flex items-baseline gap-0.5">
-                    <WMark />
-                    <CountUp value={poolTotal} formatter="plain" />
-                  </span>
-                )}
+                <CountUp value={poolTotal} formatter="currency" />
               </div>
             </div>
             <div className="min-w-0">
@@ -581,7 +573,7 @@ export default function EventPage() {
                 <div className="mt-4 pt-3 border-t border-[var(--color-border)] flex items-center justify-between gap-2 text-sm">
                   <span className="eyebrow">{stats.count} {stats.count === 1 ? 'bet' : 'bets'}</span>
                   <span className="stat-value text-lg">
-                    {isCash ? `$${stats.total.toFixed(2)}` : <WAmount value={stats.total} />}
+                    ${stats.total.toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -597,7 +589,6 @@ export default function EventPage() {
               userId={user.id}
               username={username}
               onBetPlaced={fetchEvent}
-              paymentType={event.payment_type}
               stakeAmount={event.stake_amount}
               onWalletChanged={fetchEvent}
             />

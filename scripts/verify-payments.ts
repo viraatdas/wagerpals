@@ -233,12 +233,12 @@ async function walletBalance(userId: string): Promise<number> {
   return r.rows.length ? parseFloat(r.rows[0].balance) : 0;
 }
 
-// `currency` scopes the sum to one ledger (default 'usd', matching every
-// existing call site's behavior before the W existed). A user can now hold
-// both usd and wp transactions simultaneously (cash events + play events),
-// so an unscoped sum would silently mix two different currencies together —
-// every call site must say which ledger it means.
-async function ledgerSum(userId: string, currency: 'usd' | 'wp' = 'usd'): Promise<number> {
+// Scoped to usd — the only ledger any code path writes to anymore.
+// Historical 'wp' rows exist from before the single-currency consolidation
+// (see lib/payments.ts's header comment) but this suite never writes any
+// new ones, so there is nothing left to scope a currency argument against.
+async function ledgerSum(userId: string): Promise<number> {
+  const currency = 'usd';
   // Every transaction type except 'deposit' and 'withdrawal' moves the
   // wallet balance synchronously and is inserted as 'completed' — so
   // summing 'completed' rows alone matches the balance for those. Deposits
@@ -249,9 +249,7 @@ async function ledgerSum(userId: string, currency: 'usd' | 'wp' = 'usd'): Promis
   // inserted as 'pending' — no payout mechanism exists to ever flip it to
   // 'completed' — so pending withdrawals must be counted here too, or this
   // invariant would flag every real (gate-enabled) withdrawal as a $-amount
-  // leak instead of recognizing it moved the money out. (Withdrawals are
-  // usd-only — the W has no withdrawal path — but the clause is harmless
-  // for a wp query since it will simply never match.)
+  // leak instead of recognizing it moved the money out.
   const r = await sql`
     SELECT COALESCE(SUM(amount), 0)::numeric AS total
     FROM transactions
@@ -260,11 +258,6 @@ async function ledgerSum(userId: string, currency: 'usd' | 'wp' = 'usd'): Promis
       AND (status = 'completed' OR (type = 'withdrawal' AND status = 'pending'))
   `;
   return parseFloat(r.rows[0].total);
-}
-
-async function walletBalanceWp(userId: string): Promise<number> {
-  const r = await sql`SELECT wp_balance FROM wallets WHERE user_id = ${userId}`;
-  return r.rows.length ? parseFloat(r.rows[0].wp_balance) : 0;
 }
 
 async function eventLedgerSum(eventId: string): Promise<number> {
@@ -311,17 +304,9 @@ function assertSnapshotUnchanged(before: UserSnapshot, after: UserSnapshot, labe
 }
 
 async function checkInvariant1(userId: string, label: string): Promise<void> {
-  const sum = await ledgerSum(userId, 'usd');
+  const sum = await ledgerSum(userId);
   const bal = await walletBalance(userId);
   assertMoney(bal, sum, `invariant1: ${label} wallet balance === Σtransactions`);
-}
-
-// W counterpart of invariant1 — same property (wallet.wp_balance === Σ wp
-// transactions), scoped to the wp ledger.
-async function checkInvariant1Wp(userId: string, label: string): Promise<void> {
-  const sum = await ledgerSum(userId, 'wp');
-  const bal = await walletBalanceWp(userId);
-  assertMoney(bal, sum, `invariant1(W): ${label} wp_balance === Σ wp transactions`);
 }
 
 async function checkInvariant2(eventId: string, label: string): Promise<void> {
@@ -338,12 +323,6 @@ async function checkInvariant4(userIds: string[], label: string): Promise<void> 
   const r = await sql`SELECT MIN(balance)::numeric AS min_balance FROM wallets WHERE user_id = ANY(${userIds as any}::text[])`;
   const min = r.rows[0].min_balance === null ? 0 : parseFloat(r.rows[0].min_balance);
   assert(min >= 0, `invariant4: ${label} no negative balance across test users (min=${money(min)})`);
-}
-
-async function checkInvariant4Wp(userIds: string[], label: string): Promise<void> {
-  const r = await sql`SELECT MIN(wp_balance)::numeric AS min_balance FROM wallets WHERE user_id = ANY(${userIds as any}::text[])`;
-  const min = r.rows[0].min_balance === null ? 0 : parseFloat(r.rows[0].min_balance);
-  assert(min >= 0, `invariant4(W): ${label} no negative wp_balance across test users (min=${min})`);
 }
 
 // ---------------------------------------------------------------------------
@@ -479,9 +458,14 @@ async function main(): Promise<void> {
           VALUES (${uid}, ${usernames[uid]}, 0, 0, 0)
         `;
       }
+      // cash_enabled: false is deliberate — the gate that used to reject
+      // payment_type: 'cash' event creation for a non-cash-enabled group is
+      // gone (see app/api/events/route.ts). Step 3 below creates a 'cash'
+      // event in THIS group and asserts it succeeds, proving the column no
+      // longer enforces anything.
       await sql`
         INSERT INTO groups (id, name, created_by, resolver_user_id, is_public, cash_enabled)
-        VALUES (${groupId}, ${`Verify Payments ${RUN}`}, ${aliceId}, ${aliceId}, false, true)
+        VALUES (${groupId}, ${`Verify Payments ${RUN}`}, ${aliceId}, ${aliceId}, false, false)
       `;
       const roles: Array<[string, 'admin' | 'member']> = [
         [aliceId, 'admin'],
@@ -500,25 +484,48 @@ async function main(): Promise<void> {
       assert(gm.rows[0].n === 4, 'all 4 group_members inserted');
     });
 
+    // Pre-seed the $10 signup credit for all 4 users BEFORE Step 1's
+    // deposits. Every wallet touch (GET/POST /api/wallet, or a bet
+    // placement) lazily grants this seed exactly once
+    // (lib/payments.ts's applyUsdSeedIfNeeded). If the FIRST touch for
+    // these users happened inside Step 4's bet placement instead, each
+    // user's balance there would include a surprise +$10 on top of
+    // whatever Step 1 deposited, throwing off every hardcoded balance
+    // figure Steps 4-11 assert. Seeding here — deliberately BEFORE Step 1
+    // deposits $10 less than its headline total for each user — makes
+    // seed + deposit land on the same even totals ($100/$100/$100/$20)
+    // the rest of this script's arithmetic was written against.
+    await step('Setup: pre-seed the $10 signup credit for all 4 users', async () => {
+      for (const uid of testUserIds) {
+        const res = await callRoute(walletRoute.GET, `/api/wallet?userId=${uid}`, { method: 'GET', userId: uid });
+        assert(res.status === 200, `${labels[uid]}: pre-seed wallet read: 200 (got ${res.status})`);
+        assertMoney(await walletBalance(uid), 10, `${labels[uid]}: seeded to $10 before any deposit`);
+      }
+      await checkInvariant4(testUserIds, 'after pre-seed');
+    });
+
     console.log(
-      '\n  NOTE: carol is funded $100 (not the $50 mentioned in the task\'s Step 1 prose) so that the\n' +
-        "  balance arithmetic explicitly spelled out in Steps 6/8 (\"carol 100 - 25 = 75\") is internally\n" +
-        '  consistent with Step 10, where carol must still be able to place a $10 bet on ev3 after\n' +
-        '  losing stakes on ev1 and ev2. Funding carol $50 as literally written would leave her with\n' +
-        '  only $5 by Step 10 (below the $10 stake), which contradicts the Step 6/8 numbers and would\n' +
-        '  make the scenario internally inconsistent — see the final report for details.'
+      '\n  NOTE: carol is funded to a $100 total (not the $50 mentioned in the task\'s Step 1 prose) so\n' +
+        "  that the balance arithmetic explicitly spelled out in Steps 6/8 (\"carol 100 - 25 = 75\") is\n" +
+        '  internally consistent with Step 10, where carol must still be able to place a $10 bet on ev3\n' +
+        '  after losing stakes on ev1 and ev2. Funding carol to only $50 as literally written would leave\n' +
+        '  her with just $5 by Step 10 (below the $10 stake), which contradicts the Step 6/8 numbers and\n' +
+        '  would make the scenario internally inconsistent — see the final report for details.'
     );
 
     // -----------------------------------------------------------------
-    // Step 1 — deposit through the real Stripe webhook
+    // Step 1 — deposit through the real Stripe webhook. Each user deposits
+    // $10 LESS than the headline total below — they were already seeded
+    // $10 by the pre-seed step above, so seed + deposit sums to the
+    // headline figure exactly.
     // -----------------------------------------------------------------
     let aliceDeposit!: DepositRecord;
-    await step('Step 1: deposit through the real Stripe webhook (alice $100, bob $100, carol $100, dave $20)', async () => {
+    await step('Step 1: deposit through the real Stripe webhook (alice $100, bob $100, carol $100, dave $20 — including the $10 pre-seed)', async () => {
       const fundPlan: Array<[string, string, number]> = [
-        [aliceId, 'alice', 100],
-        [bobId, 'bob', 100],
-        [carolId, 'carol', 100],
-        [daveId, 'dave', 20],
+        [aliceId, 'alice', 90],
+        [bobId, 'bob', 90],
+        [carolId, 'carol', 90],
+        [daveId, 'dave', 10],
       ];
       for (const [uid, label, amount] of fundPlan) {
         const dep = await performDeposit(uid, label, amount);
@@ -527,7 +534,8 @@ async function main(): Promise<void> {
         assert(status === 200, `${label}: webhook returns 200 (got ${status})`);
         assert(body?.credited === true && body?.duplicate === false, `${label}: webhook reports credited=true, duplicate=false`);
         const bal = await walletBalance(uid);
-        assertMoney(bal, amount, `${label}: wallet balance equals deposited amount`);
+        // $10 already seeded above, so the post-deposit total is amount + 10.
+        assertMoney(bal, amount + 10, `${label}: wallet balance equals deposited amount plus the $10 pre-seed`);
         const txn = await sql`SELECT status FROM transactions WHERE stripe_payment_intent_id = ${dep.paymentIntentId}`;
         assert(txn.rows.length === 1 && txn.rows[0].status === 'completed', `${label}: pending deposit transaction is now completed`);
         await checkInvariant1(uid, label);
@@ -600,7 +608,10 @@ async function main(): Promise<void> {
         });
 
       const r1 = await makeEvent({ title: 'ev1-fixed25', payment_type: 'cash', stake_amount: 25 });
-      assert(r1.status === 200, `ev1 create: 200 (got ${r1.status})`);
+      assert(
+        r1.status === 200,
+        `ev1 (payment_type: 'cash') create in a cash_enabled: false group: 200, not 403 — the gate is dead (got ${r1.status})`
+      );
       ev1Id = r1.body?.id;
       if (ev1Id) {
         createdEventIds.push(ev1Id);
@@ -992,40 +1003,38 @@ async function main(): Promise<void> {
     });
 
     // -----------------------------------------------------------------
-    // Step 12 — play events (ev4) stake the W through the SAME escrow
-    // engine as cash, but never touch a usd wallet. Before the W, this step
-    // asserted zero escrow_holds rows at all for a 'none' event; that
-    // assumption is now wrong on purpose — a play event's bets are real W
-    // stakes with real escrow. What must still hold is currency isolation:
-    // alice/bob's usd `balance` never moves by a single cent, in either
-    // direction, while their wp_balance moves exactly like a cash bettor's
-    // usd balance would on an equivalent cash event.
+    // Step 12 — a payment_type: 'none' event (ev4) ALSO escrows real usd.
+    // This is the core proof of the single-currency consolidation:
+    // payment_type used to select a ledger (currencyForEvent: 'cash' -> usd,
+    // 'none' -> the W's own wp_balance, fully isolated from usd). That
+    // function is gone. Every event now stakes real usd through the exact
+    // same escrow engine regardless of payment_type — so a 'none' event's
+    // bets must debit `wallets.balance` (not some separate ledger), carry
+    // escrow_holds.currency = 'usd', and settle with settlement.currency
+    // === 'usd', exactly like a 'cash' event.
     // -----------------------------------------------------------------
-    await step('Step 12: play events (ev4) stake the W through escrow, never touch a usd wallet', async () => {
-      const beforeUsd: Record<string, number> = {};
-      for (const uid of testUserIds) beforeUsd[uid] = await walletBalance(uid);
+    await step("Step 12: payment_type: 'none' events ALSO escrow real usd (payment_type no longer selects a ledger)", async () => {
+      const preAlice = await walletBalance(aliceId);
+      const preBob = await walletBalance(bobId);
 
       const rA = await callRoute(betsRoute.POST, '/api/bets', {
         method: 'POST',
         userId: aliceId,
         body: { event_id: ev4Id, user_id: aliceId, username: usernames[aliceId], side: 'side_a', amount: 5 },
       });
-      assert(rA.status === 200, `alice W bet on ev4: 200 (got ${rA.status})`);
-      assertMoney(await walletBalanceWp(aliceId), 95, 'alice: W100 signup grant (first W touch) minus W5 stake = W95');
+      assert(rA.status === 200, `alice bets $5 on ev4 (payment_type 'none'): 200 (got ${rA.status})`);
+      assertMoney(await walletBalance(aliceId), preAlice - 5, 'alice: usd balance debited by exactly $5 on a payment_type=none event');
       const rB = await callRoute(betsRoute.POST, '/api/bets', {
         method: 'POST',
         userId: bobId,
         body: { event_id: ev4Id, user_id: bobId, username: usernames[bobId], side: 'side_b', amount: 5 },
       });
-      assert(rB.status === 200, `bob W bet on ev4: 200 (got ${rB.status})`);
-      assertMoney(await walletBalanceWp(bobId), 95, 'bob: W100 signup grant (first W touch) minus W5 stake = W95');
+      assert(rB.status === 200, `bob bets $5 on ev4: 200 (got ${rB.status})`);
+      assertMoney(await walletBalance(bobId), preBob - 5, 'bob: usd balance debited by exactly $5 on a payment_type=none event');
 
-      for (const uid of testUserIds) {
-        assertMoney(await walletBalance(uid), beforeUsd[uid], `${labels[uid]}: usd balance untouched by W bets`);
-      }
-      const holdsAfterBets = await sql`SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE currency = 'wp' AND status = 'held') AS wp_held FROM escrow_holds WHERE event_id = ${ev4Id}`;
-      assert(holdsAfterBets.rows[0].n === 2, `ev4: 2 escrow_holds rows created (one per W bettor) (got ${holdsAfterBets.rows[0].n})`);
-      assert(Number(holdsAfterBets.rows[0].wp_held) === 2, "ev4: both holds are currency='wp' and 'held'");
+      const holdsAfterBets = await sql`SELECT COUNT(*)::int AS n, COUNT(*) FILTER (WHERE currency = 'usd' AND status = 'held') AS usd_held FROM escrow_holds WHERE event_id = ${ev4Id}`;
+      assert(holdsAfterBets.rows[0].n === 2, `ev4: 2 escrow_holds rows created (got ${holdsAfterBets.rows[0].n})`);
+      assert(Number(holdsAfterBets.rows[0].usd_held) === 2, "ev4: both holds are currency='usd' and 'held' (not 'wp')");
 
       const res = await callRoute(resolveRoute.POST, '/api/events/resolve', {
         method: 'POST',
@@ -1033,30 +1042,23 @@ async function main(): Promise<void> {
         body: { event_id: ev4Id, winning_side: 'side_a' },
       });
       assert(res.status === 200, `resolve ev4: 200 (got ${res.status})`);
-      assert(res.body?.settlement?.currency === 'wp', `ev4 settlement.currency === 'wp' (got ${res.body?.settlement?.currency})`);
-      assertMoney(res.body?.settlement?.pot, 10, 'ev4 settlement.pot === W10');
+      assert(res.body?.settlement?.currency === 'usd', `ev4 settlement.currency === 'usd' (got ${res.body?.settlement?.currency})`);
+      assertMoney(res.body?.settlement?.pot, 10, 'ev4 settlement.pot === $10');
 
-      for (const uid of testUserIds) {
-        assertMoney(await walletBalance(uid), beforeUsd[uid], `${labels[uid]}: usd balance STILL untouched after resolving the W event`);
-      }
-      assertMoney(await walletBalanceWp(aliceId), 105, 'alice (winner): W95 + W5 (stake back) + W5 (winnings) = W105');
-      assertMoney(await walletBalanceWp(bobId), 95, 'bob (loser): unchanged at W95');
+      assertMoney(await walletBalance(aliceId), preAlice + 5, 'alice (winner): -$5 stake + $10 (stake back + winnings) = net +$5');
+      assertMoney(await walletBalance(bobId), preBob - 5, 'bob (loser): net -$5, unchanged since the bet');
 
       const holdsAfterResolve = await sql`SELECT COUNT(*)::int AS n FROM escrow_holds WHERE event_id = ${ev4Id} AND status = 'held'`;
       assert(holdsAfterResolve.rows[0].n === 0, 'ev4: no stranded held holds after resolve');
 
-      await checkInvariant1Wp(aliceId, 'alice');
-      await checkInvariant1Wp(bobId, 'bob');
-      await checkInvariant2(ev4Id, 'ev4 (W)');
-      await checkInvariant3(ev4Id, 'ev4 (W)');
+      await checkInvariant1(aliceId, 'alice');
+      await checkInvariant1(bobId, 'bob');
+      await checkInvariant2(ev4Id, 'ev4');
+      await checkInvariant3(ev4Id, 'ev4');
 
-      // potByEvent feeds Step 14's debug print table, which formats every
-      // entry with a `$` prefix — harmless for this one W-denominated row
-      // (money() is cosmetic only here, not a correctness assertion).
       potByEvent[ev4Id] = 10;
-      eventLabel[ev4Id] = 'ev4 (W, play event)';
-      await checkInvariant4(testUserIds, 'after Step 12 (usd)');
-      await checkInvariant4Wp([aliceId, bobId], 'after Step 12 (wp)');
+      eventLabel[ev4Id] = "ev4 (payment_type: 'none', real usd)";
+      await checkInvariant4(testUserIds, 'after Step 12');
     });
 
     // -----------------------------------------------------------------
@@ -1217,9 +1219,15 @@ async function main(): Promise<void> {
     });
 
     // ===================================================================
-    // The W — play currency coverage. Same harness style (RUN prefix, real
-    // routes, cleanup) as Steps 1-14, entirely separate test users so the
-    // usd invariants above are provably untouched by any of this.
+    // The signup seed & no-faucet coverage. Same harness style (RUN prefix,
+    // real routes, cleanup) as Steps 1-14, entirely separate test users so
+    // the cash-flow invariants above are provably untouched by any of this.
+    //
+    // Rewritten from the old "the W" play-currency suite: WagerPals is
+    // single-currency now (see lib/payments.ts) — there is no second ledger
+    // left to cover. What replaced it is the $10 signup seed (lazy,
+    // idempotent, granted exactly once per user) and the explicit absence
+    // of the old daily faucet.
     // ===================================================================
     const erinId = `${RUN}_erin`;
     const frankId = `${RUN}_frank`;
@@ -1228,37 +1236,57 @@ async function main(): Promise<void> {
     const jacksonId = `${RUN}_jackson`;
     const kellyId = `${RUN}_kelly`;
     const liamId = `${RUN}_liam`;
-    const wpUserIds = [erinId, frankId, graceId, ivyId, jacksonId, kellyId, liamId];
-    const wpLabels: Record<string, string> = {
+    const seedUserIds = [erinId, frankId, graceId, ivyId, jacksonId, kellyId, liamId];
+    const seedLabels: Record<string, string> = {
       [erinId]: 'erin', [frankId]: 'frank', [graceId]: 'grace',
       [ivyId]: 'ivy', [jacksonId]: 'jackson', [kellyId]: 'kelly', [liamId]: 'liam',
     };
-    const wpUsernames: Record<string, string> = Object.fromEntries(wpUserIds.map((id) => [id, id]));
+    const seedUsernames: Record<string, string> = Object.fromEntries(seedUserIds.map((id) => [id, id]));
 
-    let ev6Id = ''; // W bets: settle / unresolve / re-resolve idempotency
-    let ev7Id = ''; // W insufficient-funds probe
-    let ev8Id = ''; // legacy hold-less play bets (pure bookkeeping)
-    let ev9Id = ''; // DELETE /api/bets immutability probe (escrowed W bet)
+    let ev6Id = ''; // seed-funded bet + resolve (sanity pass over the same settle path Steps 6-8 already prove exhaustively)
+    let ev7Id = ''; // insufficient-funds probe ("$" message, not "W")
+    let ev8Id = ''; // legacy hold-less bets (pure bookkeeping)
+    let ev9Id = ''; // DELETE /api/bets immutability probe (escrowed seed-funded bet)
 
-    await step('Step 15: The W — users for the play-currency suite', async () => {
-      for (const uid of wpUserIds) {
-        await sql`INSERT INTO users (id, username, net_total, total_bet, streak) VALUES (${uid}, ${wpUsernames[uid]}, 0, 0, 0)`;
+    await step('Step 15: signup-seed suite — fresh users, no wallet yet', async () => {
+      for (const uid of seedUserIds) {
+        await sql`INSERT INTO users (id, username, net_total, total_bet, streak) VALUES (${uid}, ${seedUsernames[uid]}, 0, 0, 0)`;
       }
-      const u = await sql`SELECT COUNT(*)::int AS n FROM users WHERE id = ANY(${wpUserIds as any}::text[])`;
-      assert(u.rows[0].n === wpUserIds.length, 'all W test users inserted');
-      for (const uid of wpUserIds) {
+      const u = await sql`SELECT COUNT(*)::int AS n FROM users WHERE id = ANY(${seedUserIds as any}::text[])`;
+      assert(u.rows[0].n === seedUserIds.length, 'all signup-seed test users inserted');
+      for (const uid of seedUserIds) {
         const noWallet = await sql`SELECT 1 FROM wallets WHERE user_id = ${uid}`;
-        assert(noWallet.rows.length === 0, `${wpLabels[uid]}: no wallet row exists yet (nobody has touched W)`);
+        assert(noWallet.rows.length === 0, `${seedLabels[uid]}: no wallet row exists yet (nobody has touched their wallet)`);
       }
     });
 
-    await step('Step 16: The W — bet placement lazily grants the signup W100, then settle/unresolve/re-resolve', async () => {
+    await step('Step 16: the $10 signup seed grants exactly once — under concurrent wallet reads, and lazily on first bet touch', async () => {
+      // ---- concurrent GET /api/wallet reads: exactly one seed grant ----
+      const getWallet = () => callRoute(walletRoute.GET, `/api/wallet?userId=${ivyId}`, { method: 'GET', userId: ivyId });
+      const [r1, r2] = await Promise.all([getWallet(), getWallet()]);
+      assert(r1.status === 200 && r2.status === 200, `both concurrent GET /api/wallet calls: 200 (got ${r1.status}, ${r2.status})`);
+      assertMoney(await walletBalance(ivyId), 10, 'ivy: balance === $10 after two concurrent reads (not $20)');
+      const grants = await sql`SELECT COUNT(*)::int AS n FROM transactions WHERE idempotency_key = ${`usd-seed:${ivyId}`}`;
+      assert(grants.rows[0].n === 1, `ivy: exactly one usd-seed transaction exists (got ${grants.rows[0].n})`);
+      const grantRow = await sql`SELECT type, amount, status, currency, description FROM transactions WHERE idempotency_key = ${`usd-seed:${ivyId}`}`;
+      const g = grantRow.rows[0];
+      assert(
+        g?.type === 'deposit' && parseFloat(g?.amount) === 10 && g?.status === 'completed' &&
+          g?.currency === 'usd' && g?.description === 'Signup credit',
+        `ivy: seed transaction shape is deposit/$10/completed/usd/'Signup credit' (got ${JSON.stringify(g)})`
+      );
+      assert(
+        r1.body?.wallet?.balance === 10 && r2.body?.wallet?.balance === 10,
+        'ivy: both responses report balance === 10'
+      );
+
+      // ---- first touch via a bet (no prior GET /api/wallet) also lazily seeds ----
       const r6 = await callRoute(eventsRoute.POST, '/api/events', {
         method: 'POST',
         userId: aliceId,
         body: {
-          title: `${RUN} ev6-wp-open`,
-          description: 'verify-payments W test event',
+          title: `${RUN} ev6-seed-bet`,
+          description: 'verify-payments seed test event',
           side_a: 'side_a',
           side_b: 'side_b',
           end_time: oneHourOut,
@@ -1268,147 +1296,108 @@ async function main(): Promise<void> {
           payment_type: 'none',
         },
       });
-      assert(r6.status === 200, `ev6 (W) create: 200 (got ${r6.status})`);
+      assert(r6.status === 200, `ev6 create: 200 (got ${r6.status})`);
       ev6Id = r6.body?.id;
       if (ev6Id) {
         createdEventIds.push(ev6Id);
-        eventLabel[ev6Id] = 'ev6 (W)';
-      }
-      const row = await sql`SELECT payment_type FROM events WHERE id = ${ev6Id}`;
-      assert(row.rows[0]?.payment_type === 'none', 'ev6: payment_type === none');
-
-      const placeBet = (userId: string, side: string, amount: number) =>
-        callRoute(betsRoute.POST, '/api/bets', {
-          method: 'POST',
-          userId,
-          body: { event_id: ev6Id, user_id: userId, username: wpUsernames[userId], side, amount },
-        });
-
-      // Nobody has touched their wallet yet — the FIRST bet lazily grants
-      // W100 (lib/payments.ts's lockOrCreateWallet, wp branch), then debits
-      // the stake, inside the same transaction as the bet.
-      const rE = await placeBet(erinId, 'side_a', 20);
-      assert(rE.status === 200, `erin stakes W20 on side_a: 200 (got ${rE.status})`);
-      assertMoney(await walletBalanceWp(erinId), 80, 'erin: W100 signup grant minus W20 stake = W80');
-      const rF = await placeBet(frankId, 'side_a', 20);
-      assert(rF.status === 200, `frank stakes W20 on side_a: 200 (got ${rF.status})`);
-      assertMoney(await walletBalanceWp(frankId), 80, 'frank: W80 after signup grant + stake');
-      const rG = await placeBet(graceId, 'side_b', 20);
-      assert(rG.status === 200, `grace stakes W20 on side_b: 200 (got ${rG.status})`);
-      assertMoney(await walletBalanceWp(graceId), 80, 'grace: W80 after signup grant + stake');
-
-      for (const uid of [erinId, frankId, graceId]) {
-        const hold = await sql`SELECT status, currency FROM escrow_holds WHERE event_id = ${ev6Id} AND user_id = ${uid} ORDER BY created_at DESC LIMIT 1`;
-        assert(hold.rows.length === 1 && hold.rows[0].status === 'held' && hold.rows[0].currency === 'wp', `${wpLabels[uid]}: escrow_holds row 'held', currency='wp'`);
-        const txn = await sql`SELECT amount, currency FROM transactions WHERE event_id = ${ev6Id} AND user_id = ${uid} AND type = 'escrow_hold' ORDER BY created_at DESC LIMIT 1`;
-        assert(txn.rows.length === 1 && parseFloat(txn.rows[0].amount) === -20 && txn.rows[0].currency === 'wp', `${wpLabels[uid]}: escrow_hold transaction of -W20, currency='wp'`);
-        await checkInvariant1Wp(uid, wpLabels[uid]);
+        eventLabel[ev6Id] = 'ev6 (seed-funded bet)';
       }
 
-      const pot = await eventHeldTotal(ev6Id);
-      assertMoney(pot, 60, 'ev6 held total (pot) is W60');
+      const noWalletYet = await sql`SELECT 1 FROM wallets WHERE user_id = ${erinId}`;
+      assert(noWalletYet.rows.length === 0, 'erin: still no wallet row before her first bet');
 
-      // ---- resolve: side_a wins ----
-      const res = await callRoute(resolveRoute.POST, '/api/events/resolve', {
+      const rE = await callRoute(betsRoute.POST, '/api/bets', {
+        method: 'POST',
+        userId: erinId,
+        body: { event_id: ev6Id, user_id: erinId, username: seedUsernames[erinId], side: 'side_a', amount: 4 },
+      });
+      assert(rE.status === 200, `erin's first-ever bet ($4, no prior wallet touch): 200 (got ${rE.status})`);
+      assertMoney(await walletBalance(erinId), 6, 'erin: $10 signup seed (lazily granted on first bet touch) minus $4 stake = $6');
+      const erinSeed = await sql`SELECT COUNT(*)::int AS n FROM transactions WHERE idempotency_key = ${`usd-seed:${erinId}`}`;
+      assert(erinSeed.rows[0].n === 1, 'erin: exactly one usd-seed transaction from the lazy grant');
+      const hold = await sql`SELECT status, currency FROM escrow_holds WHERE event_id = ${ev6Id} AND user_id = ${erinId} ORDER BY created_at DESC LIMIT 1`;
+      assert(
+        hold.rows.length === 1 && hold.rows[0].status === 'held' && hold.rows[0].currency === 'usd',
+        "erin: escrow_holds row 'held', currency='usd'"
+      );
+
+      // Resolve cleanly so nothing is left held. Full settle/unresolve/
+      // re-resolve idempotency is already exhaustively proven for usd by
+      // Steps 6-8 above — this is the exact same code path (unconditionally
+      // usd now, no currency branch left), so it is not re-proven here.
+      const resolveRes = await callRoute(resolveRoute.POST, '/api/events/resolve', {
         method: 'POST',
         userId: aliceId,
         body: { event_id: ev6Id, winning_side: 'side_a' },
       });
-      assert(res.status === 200, `resolve ev6 (W): 200 (got ${res.status})`);
-      const settlement = res.body?.settlement;
-      assert(settlement?.currency === 'wp', `ev6 settlement.currency === 'wp' (got ${settlement?.currency})`);
-      assertMoney(settlement?.pot, 60, 'ev6 settlement.pot === W60');
-      assertMoney(await walletBalanceWp(erinId), 110, 'erin: W80 + W30 (stake back + winnings) = W110');
-      assertMoney(await walletBalanceWp(frankId), 110, 'frank: W80 + W30 = W110');
-      assertMoney(await walletBalanceWp(graceId), 80, 'grace unchanged (she lost) === W80');
-
-      for (const uid of [erinId, frankId, graceId]) await checkInvariant1Wp(uid, wpLabels[uid]);
-      await checkInvariant2(ev6Id, 'ev6 (W)');
-      await checkInvariant3(ev6Id, 'ev6 (W)');
-      await checkInvariant4Wp(wpUserIds, 'after ev6 resolve');
-
-      // ---- unresolve: refunds exactly once ----
-      const unres = await callRoute(unresolveRoute.POST, '/api/events/unresolve', {
-        method: 'POST',
-        userId: aliceId,
-        body: { event_id: ev6Id },
-      });
-      assert(unres.status === 200, `unresolve ev6 (W): 200 (got ${unres.status})`);
-      assertMoney(await walletBalanceWp(erinId), 80, 'erin back to W80 after unresolve');
-      assertMoney(await walletBalanceWp(frankId), 80, 'frank back to W80 after unresolve');
-      assertMoney(await walletBalanceWp(graceId), 80, 'grace unchanged at W80');
-      const holds = await sql`SELECT status FROM escrow_holds WHERE event_id = ${ev6Id}`;
-      assert(holds.rows.every((r: any) => r.status === 'held'), "all ev6 holds are back to 'held'");
-
-      // ---- re-resolve: must NOT collide with the first settlement's keys ----
-      const res2 = await callRoute(resolveRoute.POST, '/api/events/resolve', {
-        method: 'POST',
-        userId: aliceId,
-        body: { event_id: ev6Id, winning_side: 'side_a' },
-      });
-      assert(res2.status === 200, `re-resolve ev6 (W): 200 (got ${res2.status})`);
-      assertMoney(await walletBalanceWp(erinId), 110, 'erin back to W110 after re-resolve (settlement generation key did not collide)');
-      assertMoney(await walletBalanceWp(frankId), 110, 'frank back to W110 after re-resolve');
-      assertMoney(await walletBalanceWp(graceId), 80, 'grace still W80');
-
-      for (const uid of [erinId, frankId, graceId]) await checkInvariant1Wp(uid, wpLabels[uid]);
-      await checkInvariant2(ev6Id, 'ev6 (W) after re-resolve');
-      await checkInvariant3(ev6Id, 'ev6 (W) after re-resolve');
-      await checkInvariant4Wp(wpUserIds, 'after ev6 re-resolve');
+      assert(resolveRes.status === 200, `resolve ev6: 200 (got ${resolveRes.status})`);
+      assert(resolveRes.body?.settlement?.currency === 'usd', `ev6 settlement.currency === 'usd' (got ${resolveRes.body?.settlement?.currency})`);
+      assertMoney(await walletBalance(erinId), 10, 'erin: sole bettor, stake released with no winnings = back to $10');
+      await checkInvariant1(erinId, 'erin');
+      await checkInvariant2(ev6Id, 'ev6');
+      await checkInvariant3(ev6Id, 'ev6');
+      await checkInvariant4(seedUserIds, 'after Step 16');
     });
 
-    await step('Step 17: The W — guarded debit rejects an over-stake bet (insufficient W)', async () => {
+    await step('Step 17: guarded debit rejects an over-stake bet — the "$" message, not "W"', async () => {
       const r7 = await callRoute(eventsRoute.POST, '/api/events', {
         method: 'POST',
         userId: aliceId,
         body: {
-          title: `${RUN} ev7-wp-insufficient`,
+          title: `${RUN} ev7-insufficient`,
           side_a: 'side_a',
           side_b: 'side_b',
           end_time: oneHourOut,
           group_id: groupId,
           creator_user_id: aliceId,
           creator_username: usernames[aliceId],
-          payment_type: 'none',
+          payment_type: 'cash',
         },
       });
-      assert(r7.status === 200, `ev7 (W) create: 200 (got ${r7.status})`);
+      assert(r7.status === 200, `ev7 create: 200 (got ${r7.status})`);
       ev7Id = r7.body?.id;
       if (ev7Id) {
         createdEventIds.push(ev7Id);
-        eventLabel[ev7Id] = 'ev7 (W, insufficient-funds probe)';
+        eventLabel[ev7Id] = 'ev7 (insufficient-funds probe)';
       }
 
-      // grace currently has W80 (from Step 16) — a W150 stake exceeds it.
+      // Seed grace's wallet deliberately first: a rejected bet on a wallet
+      // that has NEVER been touched would roll back the lazy seed grant
+      // along with the bet itself (both happen inside the same
+      // withTransaction in lib/payments.ts), so this probe establishes her
+      // $10 balance first, then tests the guarded debit against it.
+      const seedRead = await callRoute(walletRoute.GET, `/api/wallet?userId=${graceId}`, { method: 'GET', userId: graceId });
+      assert(seedRead.status === 200, `grace: seed read: 200 (got ${seedRead.status})`);
+      assertMoney(await walletBalance(graceId), 10, 'grace: seeded to $10');
+
       const before = await snapshotUser(graceId);
-      const beforeWp = await walletBalanceWp(graceId);
       const res = await callRoute(betsRoute.POST, '/api/bets', {
         method: 'POST',
         userId: graceId,
-        body: { event_id: ev7Id, user_id: graceId, username: wpUsernames[graceId], side: 'side_a', amount: 150 },
+        body: { event_id: ev7Id, user_id: graceId, username: seedUsernames[graceId], side: 'side_a', amount: 15 },
       });
-      assert(res.status === 400, `grace: W150 stake on a W80 balance rejected 400 (got ${res.status})`);
+      assert(res.status === 400, `grace: $15 stake on a $10 balance rejected 400 (got ${res.status})`);
       assert(res.body?.code === 'INSUFFICIENT_FUNDS', `grace: rejected with code INSUFFICIENT_FUNDS (got ${res.body?.code})`);
       assert(
-        typeof res.body?.error === 'string' && res.body.error.startsWith('Not enough W'),
-        `grace: product-voice message ("Not enough W...") (got "${res.body?.error}")`
+        typeof res.body?.error === 'string' && res.body.error.startsWith('Insufficient balance.'),
+        `grace: product-voice message is the "$" version everywhere, not "Not enough W..." (got "${res.body?.error}")`
       );
-      assertMoney(res.body?.shortfall, 70, `grace: shortfall === W70 (got ${res.body?.shortfall})`);
+      assertMoney(res.body?.shortfall, 5, `grace: shortfall === $5 (got ${res.body?.shortfall})`);
       const after = await snapshotUser(graceId);
       assert(
         before.bets === after.bets && before.holds === after.holds && before.txns === after.txns,
         'grace: no bet/hold/transaction row was left behind'
       );
-      assertMoney(await walletBalanceWp(graceId), beforeWp, 'grace: wp_balance unchanged after the rejected bet');
-      await checkInvariant4Wp(wpUserIds, 'after Step 17');
+      assertMoney(await walletBalance(graceId), 10, 'grace: balance unchanged at $10 after the rejected bet');
+      await checkInvariant4(seedUserIds, 'after Step 17');
     });
 
-    await step('Step 17b: DELETE /api/bets rejects an escrowed W bet (same hazard as cash)', async () => {
+    await step('Step 17b: DELETE /api/bets rejects an escrowed seed-funded bet', async () => {
       const r9 = await callRoute(eventsRoute.POST, '/api/events', {
         method: 'POST',
         userId: aliceId,
         body: {
-          title: `${RUN} ev9-wp-delete-immutable`,
+          title: `${RUN} ev9-delete-immutable`,
           side_a: 'side_a',
           side_b: 'side_b',
           end_time: oneHourOut,
@@ -1418,144 +1407,97 @@ async function main(): Promise<void> {
           payment_type: 'none',
         },
       });
-      assert(r9.status === 200, `ev9 (W) create: 200 (got ${r9.status})`);
+      assert(r9.status === 200, `ev9 create: 200 (got ${r9.status})`);
       ev9Id = r9.body?.id;
       if (ev9Id) {
         createdEventIds.push(ev9Id);
-        eventLabel[ev9Id] = 'ev9 (W, delete-immutability probe)';
+        eventLabel[ev9Id] = 'ev9 (delete-immutability probe)';
       }
 
       const placed = await callRoute(betsRoute.POST, '/api/bets', {
         method: 'POST',
-        userId: erinId,
-        body: { event_id: ev9Id, user_id: erinId, username: wpUsernames[erinId], side: 'side_a', amount: 5 },
+        userId: jacksonId,
+        body: { event_id: ev9Id, user_id: jacksonId, username: seedUsernames[jacksonId], side: 'side_a', amount: 3 },
       });
-      assert(placed.status === 200, `erin stakes W5 on ev9: 200 (got ${placed.status})`);
+      assert(placed.status === 200, `jackson stakes $3 on ev9 (first touch, lazily seeded): 200 (got ${placed.status})`);
+      assertMoney(await walletBalance(jacksonId), 7, 'jackson: $10 seed minus $3 stake = $7');
       const betId = placed.body?.id;
-      assert(!!placed.body?.hold_id, 'erin: bet carries an escrow_hold_id (W bets are escrow-backed exactly like cash)');
+      assert(!!placed.body?.hold_id, 'jackson: bet carries an escrow_hold_id (every bet is escrow-backed now, regardless of payment_type)');
 
-      const beforeWp = await walletBalanceWp(erinId);
-      const before = await snapshotUser(erinId);
-      const del = await callRoute(betsRoute.DELETE, `/api/bets?id=${betId}`, { method: 'DELETE', userId: erinId });
-      assert(del.status === 400, `delete an escrowed W bet: rejected 400 (got ${del.status})`);
-      assert(del.body?.code === 'CASH_BET_IMMUTABLE', `delete an escrowed W bet: code CASH_BET_IMMUTABLE (got ${del.body?.code})`);
-      const after = await snapshotUser(erinId);
+      const beforeBal = await walletBalance(jacksonId);
+      const before = await snapshotUser(jacksonId);
+      const del = await callRoute(betsRoute.DELETE, `/api/bets?id=${betId}`, { method: 'DELETE', userId: jacksonId });
+      assert(del.status === 400, `delete an escrowed bet: rejected 400 (got ${del.status})`);
+      assert(del.body?.code === 'CASH_BET_IMMUTABLE', `delete an escrowed bet: code CASH_BET_IMMUTABLE (got ${del.body?.code})`);
+      const after = await snapshotUser(jacksonId);
       assert(
         before.bets === after.bets && before.holds === after.holds && before.txns === after.txns,
-        'delete an escrowed W bet: no row was removed (bets/holds/transactions counts unchanged)'
+        'delete an escrowed bet: no row was removed (bets/holds/transactions counts unchanged)'
       );
-      assertMoney(await walletBalanceWp(erinId), beforeWp, 'delete an escrowed W bet: wp_balance untouched');
+      assertMoney(await walletBalance(jacksonId), beforeBal, 'delete an escrowed bet: balance untouched');
     });
 
-    await step('Step 18: The W — signup grant applies exactly once under concurrent wallet reads', async () => {
-      const getWallet = () => callRoute(walletRoute.GET, `/api/wallet?userId=${ivyId}`, { method: 'GET', userId: ivyId });
-      const [r1, r2] = await Promise.all([getWallet(), getWallet()]);
-      assert(r1.status === 200 && r2.status === 200, `both concurrent GET /api/wallet calls: 200 (got ${r1.status}, ${r2.status})`);
-
-      assertMoney(await walletBalanceWp(ivyId), 100, 'ivy: wp_balance === W100 after two concurrent reads (not W200)');
-      const grants = await sql`SELECT COUNT(*)::int AS n FROM transactions WHERE idempotency_key = ${`signup-grant:${ivyId}`}`;
-      assert(grants.rows[0].n === 1, `ivy: exactly one signup-grant transaction exists (got ${grants.rows[0].n})`);
-      assert(
-        r1.body?.wallet?.wp_balance === 100 && r2.body?.wallet?.wp_balance === 100,
-        'ivy: both responses report wp_balance === 100'
-      );
-    });
-
-    await step('Step 19: The W — daily faucet fires once at zero balance, not again same day even after balance returns to zero', async () => {
-      const r8 = await callRoute(eventsRoute.POST, '/api/events', {
-        method: 'POST',
-        userId: aliceId,
-        body: {
-          title: `${RUN} ev-faucet-burn1`,
-          side_a: 'side_a',
-          side_b: 'side_b',
-          end_time: oneHourOut,
-          group_id: groupId,
-          creator_user_id: aliceId,
-          creator_username: usernames[aliceId],
-          payment_type: 'none',
-        },
-      });
-      assert(r8.status === 200, `faucet burn event 1 create: 200 (got ${r8.status})`);
-      const burn1Id = r8.body?.id;
-      if (burn1Id) {
-        createdEventIds.push(burn1Id);
-        eventLabel[burn1Id] = 'ev-faucet-burn1';
-      }
-
-      // jackson's very first touch: stake exactly the W100 signup grant down
-      // to zero (bet placement grants + debits in the same call).
-      const rBurn1 = await callRoute(betsRoute.POST, '/api/bets', {
-        method: 'POST',
-        userId: jacksonId,
-        body: { event_id: burn1Id, user_id: jacksonId, username: wpUsernames[jacksonId], side: 'side_a', amount: 100 },
-      });
-      assert(rBurn1.status === 200, `jackson stakes W100 (his whole signup grant): 200 (got ${rBurn1.status})`);
-      assertMoney(await walletBalanceWp(jacksonId), 0, 'jackson: wp_balance === 0 after staking the whole signup grant');
-
-      // First wallet read at zero balance: the daily faucet fires.
-      const read1 = await callRoute(walletRoute.GET, `/api/wallet?userId=${jacksonId}`, { method: 'GET', userId: jacksonId });
-      assert(read1.status === 200, `jackson: first wallet read at W0: 200 (got ${read1.status})`);
-      assertMoney(await walletBalanceWp(jacksonId), 10, 'jackson: faucet credited W10');
-      const faucetCount1 = await sql`
-        SELECT COUNT(*)::int AS n FROM transactions
-        WHERE user_id = ${jacksonId} AND type = 'deposit' AND currency = 'wp' AND idempotency_key LIKE ${'faucet:%'}
-      `;
-      assert(faucetCount1.rows[0].n === 1, `jackson: exactly one faucet transaction after the first zero-balance read (got ${faucetCount1.rows[0].n})`);
-
-      // Second wallet read the SAME day, balance now > 0: no second grant.
-      const read2 = await callRoute(walletRoute.GET, `/api/wallet?userId=${jacksonId}`, { method: 'GET', userId: jacksonId });
-      assert(read2.status === 200, `jackson: second wallet read: 200 (got ${read2.status})`);
-      assertMoney(await walletBalanceWp(jacksonId), 10, 'jackson: wp_balance still W10 (balance>0 => no grant)');
-
-      // Spend the faucet's W10 back down to exactly zero, same day.
-      const r9 = await callRoute(eventsRoute.POST, '/api/events', {
-        method: 'POST',
-        userId: aliceId,
-        body: {
-          title: `${RUN} ev-faucet-burn2`,
-          side_a: 'side_a',
-          side_b: 'side_b',
-          end_time: oneHourOut,
-          group_id: groupId,
-          creator_user_id: aliceId,
-          creator_username: usernames[aliceId],
-          payment_type: 'none',
-        },
-      });
-      assert(r9.status === 200, `faucet burn event 2 create: 200 (got ${r9.status})`);
-      const burn2Id = r9.body?.id;
-      if (burn2Id) {
-        createdEventIds.push(burn2Id);
-        eventLabel[burn2Id] = 'ev-faucet-burn2';
-      }
-
-      const rBurn2 = await callRoute(betsRoute.POST, '/api/bets', {
-        method: 'POST',
-        userId: jacksonId,
-        body: { event_id: burn2Id, user_id: jacksonId, username: wpUsernames[jacksonId], side: 'side_a', amount: 10 },
-      });
-      assert(rBurn2.status === 200, `jackson stakes W10 (his whole faucet grant): 200 (got ${rBurn2.status})`);
-      assertMoney(await walletBalanceWp(jacksonId), 0, 'jackson: wp_balance === 0 again, same day');
-
-      // Third wallet read, same day, balance is zero again: the day-bucketed
-      // idempotency key (not just the balance>0 shortcut) must still block a
-      // second grant.
-      const read3 = await callRoute(walletRoute.GET, `/api/wallet?userId=${jacksonId}`, { method: 'GET', userId: jacksonId });
-      assert(read3.status === 200, `jackson: third wallet read at W0 again: 200 (got ${read3.status})`);
-      assertMoney(await walletBalanceWp(jacksonId), 0, 'jackson: wp_balance still W0 — no second same-day faucet grant');
-      const faucetCount2 = await sql`
-        SELECT COUNT(*)::int AS n FROM transactions
-        WHERE user_id = ${jacksonId} AND type = 'deposit' AND currency = 'wp' AND idempotency_key LIKE ${'faucet:%'}
-      `;
-      assert(faucetCount2.rows[0].n === 1, `jackson: still exactly one faucet transaction total for today (got ${faucetCount2.rows[0].n})`);
-
-      await checkInvariant1Wp(jacksonId, 'jackson');
-      await checkInvariant4Wp(wpUserIds, 'after Step 19');
-    });
-
-    await step('Step 20: The W — legacy hold-less play bets settle as pure bookkeeping, never touching wp_balance', async () => {
+    await step('Step 18: NO faucet behavior remains — repeated zero-balance touches grant nothing further', async () => {
       const r10 = await callRoute(eventsRoute.POST, '/api/events', {
+        method: 'POST',
+        userId: aliceId,
+        body: {
+          title: `${RUN} ev-no-faucet`,
+          side_a: 'side_a',
+          side_b: 'side_b',
+          end_time: oneHourOut,
+          group_id: groupId,
+          creator_user_id: aliceId,
+          creator_username: usernames[aliceId],
+          payment_type: 'none',
+        },
+      });
+      assert(r10.status === 200, `no-faucet probe event create: 200 (got ${r10.status})`);
+      const noFaucetEvId = r10.body?.id;
+      if (noFaucetEvId) {
+        createdEventIds.push(noFaucetEvId);
+        eventLabel[noFaucetEvId] = 'ev-no-faucet';
+      }
+
+      // kelly's very first touch: stake her whole $10 signup seed down to
+      // zero in one bet (the debit happens at bet placement, independent of
+      // resolution).
+      const rBurn = await callRoute(betsRoute.POST, '/api/bets', {
+        method: 'POST',
+        userId: kellyId,
+        body: { event_id: noFaucetEvId, user_id: kellyId, username: seedUsernames[kellyId], side: 'side_a', amount: 10 },
+      });
+      assert(rBurn.status === 200, `kelly stakes her whole $10 seed: 200 (got ${rBurn.status})`);
+      assertMoney(await walletBalance(kellyId), 0, 'kelly: balance === $0 after staking the whole seed');
+
+      // Multiple reads at a zero balance. The old daily faucet used to grant
+      // W10 the first time it saw a zero balance; no equivalent exists
+      // anymore, so balance must stay exactly $0 across repeated reads.
+      for (let i = 0; i < 3; i++) {
+        const read = await callRoute(walletRoute.GET, `/api/wallet?userId=${kellyId}`, { method: 'GET', userId: kellyId });
+        assert(read.status === 200, `kelly: wallet read #${i + 1} at $0: 200 (got ${read.status})`);
+        assertMoney(await walletBalance(kellyId), 0, `kelly: balance still $0 after read #${i + 1} (no faucet grant)`);
+      }
+
+      const depositCount = await sql`
+        SELECT COUNT(*)::int AS n FROM transactions WHERE user_id = ${kellyId} AND type = 'deposit'
+      `;
+      assert(
+        depositCount.rows[0].n === 1,
+        `kelly: exactly one deposit transaction total — the original $10 seed, nothing else (got ${depositCount.rows[0].n})`
+      );
+      const faucetLike = await sql`
+        SELECT COUNT(*)::int AS n FROM transactions
+        WHERE user_id = ${kellyId} AND (idempotency_key LIKE ${'faucet:%'} OR description = 'Daily W faucet')
+      `;
+      assert(faucetLike.rows[0].n === 0, 'kelly: zero rows anywhere carry a faucet-shaped idempotency key or description');
+
+      await checkInvariant1(kellyId, 'kelly');
+      await checkInvariant4(seedUserIds, 'after Step 18');
+    });
+
+    await step('Step 19: legacy hold-less bets still settle as pure bookkeeping, never touching a wallet', async () => {
+      const r11 = await callRoute(eventsRoute.POST, '/api/events', {
         method: 'POST',
         userId: aliceId,
         body: {
@@ -1569,26 +1511,25 @@ async function main(): Promise<void> {
           payment_type: 'none',
         },
       });
-      assert(r10.status === 200, `ev8 (legacy play event) create: 200 (got ${r10.status})`);
-      ev8Id = r10.body?.id;
+      assert(r11.status === 200, `ev8 (legacy event) create: 200 (got ${r11.status})`);
+      ev8Id = r11.body?.id;
       if (ev8Id) {
         createdEventIds.push(ev8Id);
         eventLabel[ev8Id] = 'ev8 (legacy hold-less)';
       }
 
-      // Simulate a bet placed before the W existed: inserted directly with
-      // no escrow_hold_id — exactly the shape app/api/bets/route.ts used to
-      // write on its old (now-removed) free path.
+      // Simulate a bet placed before escrow existed: inserted directly with
+      // no escrow_hold_id — exactly the shape a pre-escrow row would have.
       await sql`
         INSERT INTO bets (id, event_id, user_id, username, side, amount, is_late, timestamp)
-        VALUES (${`${RUN}_bet_kelly`}, ${ev8Id}, ${kellyId}, ${wpUsernames[kellyId]}, 'side_a', 15, false, ${Date.now()})
+        VALUES (${`${RUN}_bet_frank`}, ${ev8Id}, ${frankId}, ${seedUsernames[frankId]}, 'side_a', 15, false, ${Date.now()})
       `;
       await sql`
         INSERT INTO bets (id, event_id, user_id, username, side, amount, is_late, timestamp)
-        VALUES (${`${RUN}_bet_liam`}, ${ev8Id}, ${liamId}, ${wpUsernames[liamId]}, 'side_b', 15, false, ${Date.now()})
+        VALUES (${`${RUN}_bet_liam`}, ${ev8Id}, ${liamId}, ${seedUsernames[liamId]}, 'side_b', 15, false, ${Date.now()})
       `;
 
-      const preKellyNet = parseFloat((await sql`SELECT net_total FROM users WHERE id = ${kellyId}`).rows[0].net_total);
+      const preFrankNet = parseFloat((await sql`SELECT net_total FROM users WHERE id = ${frankId}`).rows[0].net_total);
       const preLiamNet = parseFloat((await sql`SELECT net_total FROM users WHERE id = ${liamId}`).rows[0].net_total);
 
       const res = await callRoute(resolveRoute.POST, '/api/events/resolve', {
@@ -1602,46 +1543,50 @@ async function main(): Promise<void> {
         `ev8: settlement is a no_holds noop (got mode=${res.body?.settlement?.mode}, reason=${res.body?.settlement?.reason})`
       );
 
-      // Bookkeeping (net_total/streak) still happens — this is the part of
-      // resolving a free event that predates the W and must keep working.
-      const postKellyNet = parseFloat((await sql`SELECT net_total FROM users WHERE id = ${kellyId}`).rows[0].net_total);
+      // Bookkeeping (net_total/streak) still happens — independent of settlement.
+      const postFrankNet = parseFloat((await sql`SELECT net_total FROM users WHERE id = ${frankId}`).rows[0].net_total);
       const postLiamNet = parseFloat((await sql`SELECT net_total FROM users WHERE id = ${liamId}`).rows[0].net_total);
-      assert(postKellyNet !== preKellyNet, 'kelly (winner): net_total changed by ordinary bookkeeping, independent of settlement');
+      assert(postFrankNet !== preFrankNet, 'frank (winner): net_total changed by ordinary bookkeeping, independent of settlement');
       assert(postLiamNet !== preLiamNet, 'liam (loser): net_total changed by ordinary bookkeeping, independent of settlement');
 
       // But NO wallet/ledger activity: these bets never had an escrow hold,
-      // so settleCashEvent structurally never touches wp_balance for them.
-      const kellyWallet = await sql`SELECT 1 FROM wallets WHERE user_id = ${kellyId}`;
+      // so settleCashEvent structurally never touches a wallet for them.
+      const frankWallet = await sql`SELECT 1 FROM wallets WHERE user_id = ${frankId}`;
       const liamWallet = await sql`SELECT 1 FROM wallets WHERE user_id = ${liamId}`;
-      assert(kellyWallet.rows.length === 0, 'kelly: no wallet row was ever created (never touched)');
+      assert(frankWallet.rows.length === 0, 'frank: no wallet row was ever created (never touched)');
       assert(liamWallet.rows.length === 0, 'liam: no wallet row was ever created (never touched)');
-      const kellyTxns = await sql`SELECT COUNT(*)::int AS n FROM transactions WHERE user_id = ${kellyId}`;
+      const frankTxns = await sql`SELECT COUNT(*)::int AS n FROM transactions WHERE user_id = ${frankId}`;
       const liamTxns = await sql`SELECT COUNT(*)::int AS n FROM transactions WHERE user_id = ${liamId}`;
-      assert(kellyTxns.rows[0].n === 0, 'kelly: zero transactions');
+      assert(frankTxns.rows[0].n === 0, 'frank: zero transactions');
       assert(liamTxns.rows[0].n === 0, 'liam: zero transactions');
     });
 
-    await step('Step 21: The W — global invariant sweep (and proof the usd paths above are untouched)', async () => {
-      for (const uid of [erinId, frankId, graceId, ivyId, jacksonId]) await checkInvariant1Wp(uid, wpLabels[uid]);
+    await step('Step 20: signup-seed suite — global invariant sweep (and proof the main cash flows above are untouched)', async () => {
+      for (const uid of [erinId, graceId, ivyId, jacksonId, kellyId]) await checkInvariant1(uid, seedLabels[uid]);
+      // ev9 is deliberately excluded — Step 17b's whole point is that its
+      // escrowed bet can NEVER be deleted or released, so its hold stays
+      // 'held' forever by design (same reasoning the original script's
+      // Step 21 sweep used to exclude the equivalent probe event).
       for (const evId of [ev6Id, ev7Id]) {
         if (!evId) continue;
         await checkInvariant2(evId, eventLabel[evId] || evId);
         await checkInvariant3(evId, eventLabel[evId] || evId);
       }
-      await checkInvariant4Wp(wpUserIds, 'W final sweep');
+      await checkInvariant4(seedUserIds, 'signup-seed suite final sweep');
 
-      // usd paths remain completely untouched by any W activity above.
+      // The main cash-flow users (alice/bob/carol/dave) remain completely
+      // unaffected by anything in this suite.
       for (const uid of testUserIds) await checkInvariant1(uid, labels[uid]);
-      await checkInvariant4(testUserIds, 'usd unaffected by W activity');
+      await checkInvariant4(testUserIds, 'main cash flows unaffected by the signup-seed suite');
 
-      console.log('\n  --- per-user W ledger ---');
+      console.log('\n  --- per-user signup-seed ledger ---');
       const rows: string[][] = [];
-      for (const uid of [erinId, frankId, graceId, ivyId, jacksonId]) {
-        const bal = await walletBalanceWp(uid);
-        const sum = await ledgerSum(uid, 'wp');
-        rows.push([wpLabels[uid], `W${bal}`, `W${sum}`]);
+      for (const uid of [erinId, frankId, graceId, ivyId, jacksonId, kellyId, liamId]) {
+        const bal = await walletBalance(uid);
+        const sum = await ledgerSum(uid);
+        rows.push([seedLabels[uid], money(bal), money(sum)]);
       }
-      printTable(['user', 'wp_balance', 'Σ wp transactions'], rows);
+      printTable(['user', 'balance', 'Σ transactions'], rows);
     });
   } finally {
     // -----------------------------------------------------------------
