@@ -1059,3 +1059,17 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
 - **Still manual:** App Store review submission for build 9 (user, in ASC); mobile build 10
   (with redesign + W) held for later per the owner.
 - **By:** orchestrator (Fable) + 5 Sonnet subagents · 2026-08-19
+
+## App Store: 1.1.0 (build 10) submitted for review, auto-release on approval
+- **What:** The full redesign + W currency shipped as build 10 (EAS 6806300a) and was
+  submitted to App Review entirely via the ASC API (key AuthKey_7BM5WGWC32 from
+  ~/.appstoreconnect, issuer from ~/code/manas/ios/fastlane/.asc.env — same team). Version
+  1.1.0: build 10 attached, six screenshots (3× iPhone 6.7", 3× iPad 12.9", rendered from
+  the real design system + real OG-group data at exact device resolutions), price free,
+  encryption declared, releaseType AFTER_APPROVAL. reviewSubmission
+  45b21672-8798-4d80-a572-e557ae9e97c0, state WAITING_FOR_REVIEW at 2026-08-19T19:21Z.
+  Build 9 (old design) was superseded before review — the store version matches production.
+- **Why:** the listing had ZERO screenshots (never shipped), so a submission was never one
+  click away; screenshots must match the shipped UI, which made build 10 the honest choice
+  (owner approved).
+- **By:** orchestrator (Fable) · 2026-08-19
