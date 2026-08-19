@@ -111,7 +111,10 @@ export async function GET(request: NextRequest) {
       viewer_status: 'active',
       user_role: viewerMembership?.role || 'member',
       is_member: true,
-      is_admin: viewerMembership?.role === 'admin',
+      // R3: flat groups have no admin role for authorization purposes —
+      // moderation is creator-only. is_admin is kept in the payload for
+      // compatibility but now just means "is the group creator".
+      is_admin: group.created_by === callerId,
     });
   }
 
@@ -144,7 +147,9 @@ export async function GET(request: NextRequest) {
         member_count: activeMembers.length,
         admin_count: activeMembers.filter(m => m.role === 'admin').length,
         user_role: userMembership?.role || 'member',
-        is_admin: userMembership?.role === 'admin',
+        // R3: derived from creator identity, not the (now non-authoritative)
+        // role column — see the matching comment on the ?id= branch above.
+        is_admin: group.created_by === userId,
         is_member: !!userMembership && userMembership.status === 'active',
       };
     })
@@ -158,7 +163,7 @@ export async function POST(request: NextRequest) {
   if (authResult instanceof NextResponse) return authResult;
 
   const body = await request.json();
-  const { name, created_by, is_public } = body;
+  const { name, created_by, is_public, cash_enabled } = body;
 
   if (!name || !created_by) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -166,6 +171,12 @@ export async function POST(request: NextRequest) {
 
   const mismatch = verifyUserMatch(authResult.userId, created_by);
   if (mismatch) return mismatch;
+
+  // R3: the creator can turn cash wagers on for their own group at creation
+  // time, instead of always having to PATCH it on afterward.
+  if (cash_enabled !== undefined && typeof cash_enabled !== 'boolean') {
+    return NextResponse.json({ error: 'cash_enabled must be a boolean' }, { status: 400 });
+  }
 
   // Generate unique group ID
   let groupId = generateGroupId();
@@ -186,8 +197,9 @@ export async function POST(request: NextRequest) {
     name: name.trim(),
     created_by,
     is_public: is_public || false,
-    // No group is cash-enabled by default — an admin turns it on later via PATCH.
-    cash_enabled: false,
+    // Not cash-enabled by default; the creator can set it here or flip it
+    // on later via PATCH — either way, only the creator may (R3).
+    cash_enabled: cash_enabled === true,
   };
 
   await db.groups.create(newGroup);
@@ -208,15 +220,25 @@ export async function PATCH(request: NextRequest) {
   if (authResult instanceof NextResponse) return authResult;
 
   const body = await request.json();
-  const { id, resolver_user_id, is_public, cash_enabled } = body;
+  const { id, name, resolver_user_id, is_public, cash_enabled } = body;
 
   if (!id) {
     return NextResponse.json({ error: 'Missing group id' }, { status: 400 });
   }
 
-  const isAdmin = await db.groupMembers.isAdmin(id, authResult.userId);
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Only group admins can update group settings' }, { status: 403 });
+  const existingGroup = await db.groups.get(id);
+  if (!existingGroup) {
+    return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+  }
+
+  // R3: flat groups — moderation (renaming, toggling cash, reassigning the
+  // legacy resolver field) is creator-only, replacing the old is_admin gate.
+  if (existingGroup.created_by !== authResult.userId) {
+    return NextResponse.json({ error: 'Only the group creator can update group settings' }, { status: 403 });
+  }
+
+  if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
+    return NextResponse.json({ error: 'name cannot be empty' }, { status: 400 });
   }
 
   if (resolver_user_id) {
@@ -231,6 +253,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const group = await db.groups.update(id, {
+    name: name !== undefined ? name.trim() : undefined,
     resolver_user_id,
     is_public,
     cash_enabled,

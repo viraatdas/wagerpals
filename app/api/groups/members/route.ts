@@ -20,10 +20,15 @@ export async function POST(request: NextRequest) {
   const mismatch = verifyUserMatch(authResult.userId, admin_user_id);
   if (mismatch) return mismatch;
 
-  // Verify admin status
-  const isAdmin = await db.groupMembers.isAdmin(group_id, admin_user_id);
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Only admins can manage members' }, { status: 403 });
+  // R3: flat groups — moderation (approve/decline a legacy pending request,
+  // promote/demote, remove/kick) is creator-only, replacing the old
+  // role='admin' gate.
+  const group = await db.groups.get(group_id);
+  if (!group) {
+    return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+  }
+  if (group.created_by !== admin_user_id) {
+    return NextResponse.json({ error: 'Only the group creator can manage members' }, { status: 403 });
   }
 
   switch (action) {
@@ -32,10 +37,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Missing target_user_id' }, { status: 400 });
       }
       await db.groupMembers.update(group_id, target_user_id, { status: 'active' });
-      
+
       // Send push notification to approved user
       try {
-        const group = await db.groups.get(group_id);
         await sendPushToUser(target_user_id, {
           title: '✅ Approved!',
           body: `You've been accepted into ${group?.name || 'the group'}`,
@@ -60,10 +64,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Missing target_user_id' }, { status: 400 });
       }
       await db.groupMembers.update(group_id, target_user_id, { role: 'admin' });
-      
+
       // Send push notification to promoted user
       try {
-        const group = await db.groups.get(group_id);
         await sendPushToUser(target_user_id, {
           title: '🎉 Promoted to Admin!',
           body: `You're now an admin of ${group?.name || 'the group'}`,

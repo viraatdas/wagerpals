@@ -272,7 +272,32 @@ async function migrateComeback(): Promise<void> {
   console.log('\n17. groups: cash_enabled column');
   await step('groups.cash_enabled', () => columnExists('groups', 'cash_enabled'), () => sql`ALTER TABLE groups ADD COLUMN IF NOT EXISTS cash_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
 
-  console.log('\n18. backfill: notification_preferences for existing users');
+  console.log('\n18. events: created_by column, index & backfill');
+  await step('events.created_by', () => columnExists('events', 'created_by'), () => sql`ALTER TABLE events ADD COLUMN IF NOT EXISTS created_by TEXT REFERENCES users(id)`);
+  await step('idx_events_created_by', () => indexExists('idx_events_created_by'), () => sql`CREATE INDEX IF NOT EXISTS idx_events_created_by ON events(created_by) WHERE created_by IS NOT NULL`);
+
+  // R2: only the event's creator may resolve/unresolve/cancel/delete it, with
+  // the event's group.created_by as the fallback for legacy rows. Backfilling
+  // NULL created_by to the owning group's creator means every pre-existing
+  // event already has a well-defined resolver the moment this migration
+  // lands, instead of relying on every route remembering the NULL fallback.
+  // Idempotent: only touches rows still NULL, safe to re-run.
+  const createdByBackfilled = await sql`
+    UPDATE events e
+    SET created_by = g.created_by
+    FROM groups g
+    WHERE e.group_id = g.id AND e.created_by IS NULL
+    RETURNING e.id
+  `;
+  if (createdByBackfilled.rows.length > 0) {
+    console.log(`  ✅ events.created_by backfill — updated ${createdByBackfilled.rows.length} row(s) from their group's created_by`);
+    applied++;
+  } else {
+    console.log('  ⏭  events.created_by backfill — 0 rows needed, skipped');
+    skipped++;
+  }
+
+  console.log('\n19. backfill: notification_preferences for existing users');
   const backfilled = await sql`
     INSERT INTO notification_preferences (user_id)
     SELECT id FROM users

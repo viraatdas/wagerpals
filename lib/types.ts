@@ -50,6 +50,13 @@ export interface Event {
   stake_amount?: number | null;
   subject_user_id?: string | null;
   notify_subject?: boolean;
+  // R2: the only person who may resolve/unresolve/cancel/delete this event.
+  // NULL on rows created before this column existed — callers fall back to
+  // the event's group.created_by for those legacy rows (see
+  // app/api/events/resolve|unresolve|delete/route.ts). Set once, from the
+  // authenticated caller, at creation (POST /api/events) — never taken from
+  // the request body, and never changed afterward.
+  created_by?: string | null;
 }
 
 export interface Bet {
@@ -114,6 +121,12 @@ export interface EventWithStats extends Event {
   // trimmed server-side to ~140 chars. Same disclosure level as reading comments
   // directly for an event id today, just batched for the list.
   latest_comment?: EventLatestComment;
+  // Populated only by db.events.getAllWithStats (the list query) via a
+  // batched JOIN — cheap because it rides along on the same query, not a
+  // second round trip. Lets the UI show/hide resolve controls in list views
+  // without fetching every event's detail payload. Absent (not just null)
+  // when created_by is NULL (legacy row) or the creator user row is gone.
+  creator_username?: string | null;
 }
 
 export interface NetResult {

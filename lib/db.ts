@@ -23,6 +23,7 @@ import {
   DEFAULT_NOTIFICATION_CATEGORIES,
   EventNotificationMute,
 } from './types';
+import { isEventHiddenFromViewer } from './utils';
 
 // @vercel/postgres returns JSONB columns already parsed as a JS value, but
 // be defensive: null/undefined -> [], arrays pass through, strings get
@@ -71,6 +72,7 @@ function mapEvent(row: any): Event {
     stake_amount: row.stake_amount !== null && row.stake_amount !== undefined ? parseFloat(row.stake_amount) : null,
     subject_user_id: row.subject_user_id ?? null,
     notify_subject: row.notify_subject === null || row.notify_subject === undefined ? true : row.notify_subject,
+    created_by: row.created_by ?? null,
   };
 
   if (row.winning_side) {
@@ -315,10 +317,19 @@ export const db = {
   },
   
   events: {
-    get: async (id: string): Promise<Event | null> => {
+    // R4: `viewerId` (when passed) enforces the "quiet bet" visibility rule
+    // centrally — a hidden subject gets `null` back, exactly as if the event
+    // didn't exist, so every caller's existing "not found" handling (404,
+    // filtered out of a list, etc.) does the right thing for free. Omitting
+    // `viewerId` preserves the old unfiltered behavior for internal callers
+    // (settlement, notifications, activity text) that must see the real row
+    // regardless of who's asking.
+    get: async (id: string, viewerId?: string | null): Promise<Event | null> => {
       const result = await sql`SELECT * FROM events WHERE id = ${id}`;
       if (result.rows.length === 0) return null;
-      return mapEvent(result.rows[0]);
+      const event = mapEvent(result.rows[0]);
+      if (isEventHiddenFromViewer(event, viewerId)) return null;
+      return event;
     },
 
     getAll: async (): Promise<Event[]> => {
@@ -337,7 +348,7 @@ export const db = {
 
     create: async (event: Event): Promise<Event> => {
       await sql`
-        INSERT INTO events (id, title, description, side_a, side_b, end_time, group_id, status, payment_type, stake_amount, subject_user_id, notify_subject)
+        INSERT INTO events (id, title, description, side_a, side_b, end_time, group_id, status, payment_type, stake_amount, subject_user_id, notify_subject, created_by)
         VALUES (
           ${event.id},
           ${event.title},
@@ -350,7 +361,8 @@ export const db = {
           ${event.payment_type || 'none'},
           ${event.stake_amount ?? null},
           ${event.subject_user_id ?? null},
-          ${event.notify_subject ?? true}
+          ${event.notify_subject ?? true},
+          ${event.created_by ?? null}
         )
       `;
       return event;
@@ -395,12 +407,17 @@ export const db = {
       await sql`DELETE FROM events WHERE id = ${id}`;
     },
 
-    // Optimized: get all events with bet stats in a single query (fixes N+1)
-    getAllWithStats: async (groupId?: string): Promise<any[]> => {
+    // Optimized: get all events with bet stats in a single query (fixes N+1).
+    // `viewerId` (when passed) applies the R4 "quiet bet" visibility filter —
+    // see isEventHiddenFromViewer in lib/utils.ts — after the query, before
+    // any of the batched enrichment below runs, so a hidden event's preview
+    // data is never even looked up for that viewer.
+    getAllWithStats: async (groupId?: string, viewerId?: string | null): Promise<any[]> => {
       const result = groupId
         ? await sql`
             SELECT
               e.*,
+              cu.username AS creator_username,
               COALESCE(COUNT(b.id), 0)::int as total_bets,
               COALESCE(COUNT(DISTINCT b.user_id), 0)::int as total_participants,
               COALESCE(SUM(CASE WHEN b.side = e.side_a THEN 1 ELSE 0 END), 0)::int as side_a_count,
@@ -410,8 +427,9 @@ export const db = {
               (SELECT COUNT(*) FROM comments c WHERE c.event_id = e.id AND c.deleted_at IS NULL)::int AS comment_count
             FROM events e
             LEFT JOIN bets b ON e.id = b.event_id
+            LEFT JOIN users cu ON cu.id = e.created_by
             WHERE e.group_id = ${groupId}
-            GROUP BY e.id
+            GROUP BY e.id, cu.username
             ORDER BY
               CASE WHEN e.status = 'active' THEN 0 ELSE 1 END,
               e.end_time DESC
@@ -419,6 +437,7 @@ export const db = {
         : await sql`
             SELECT
               e.*,
+              cu.username AS creator_username,
               COALESCE(COUNT(b.id), 0)::int as total_bets,
               COALESCE(COUNT(DISTINCT b.user_id), 0)::int as total_participants,
               COALESCE(SUM(CASE WHEN b.side = e.side_a THEN 1 ELSE 0 END), 0)::int as side_a_count,
@@ -428,13 +447,14 @@ export const db = {
               (SELECT COUNT(*) FROM comments c WHERE c.event_id = e.id AND c.deleted_at IS NULL)::int AS comment_count
             FROM events e
             LEFT JOIN bets b ON e.id = b.event_id
-            GROUP BY e.id
+            LEFT JOIN users cu ON cu.id = e.created_by
+            GROUP BY e.id, cu.username
             ORDER BY
               CASE WHEN e.status = 'active' THEN 0 ELSE 1 END,
               e.end_time DESC
           `;
 
-      const events: any[] = result.rows.map(row => {
+      const allEvents: any[] = result.rows.map(row => {
         const event: any = {
           id: row.id,
           title: row.title,
@@ -448,6 +468,8 @@ export const db = {
           stake_amount: row.stake_amount !== null && row.stake_amount !== undefined ? parseFloat(row.stake_amount) : null,
           subject_user_id: row.subject_user_id ?? null,
           notify_subject: row.notify_subject === null || row.notify_subject === undefined ? true : row.notify_subject,
+          created_by: row.created_by ?? null,
+          creator_username: row.creator_username ?? null,
           side_stats: {
             [row.side_a]: { count: parseInt(row.side_a_count), total: Math.round(parseFloat(row.side_a_total) * 100) / 100 },
             [row.side_b]: { count: parseInt(row.side_b_count), total: Math.round(parseFloat(row.side_b_total) * 100) / 100 },
@@ -466,6 +488,12 @@ export const db = {
 
         return event;
       });
+
+      // R4: drop events hidden from this viewer before any further work
+      // (batched enrichment below, and the returned list itself) touches them.
+      const events: any[] = viewerId
+        ? allEvents.filter(e => !isEventHiddenFromViewer(e, viewerId))
+        : allEvents;
 
       // Batched (not N+1) enrichment: bettor_preview + latest_comment for every
       // event returned above, fetched in two queries keyed off the full id list
@@ -616,6 +644,11 @@ export const db = {
     },
 
     getByUserGroups: async (userId: string, limit: number = 50, offset: number = 0): Promise<ActivityItem[]> => {
+      // R4: an activity belonging to an event where `userId` is the hidden
+      // subject (subject_user_id = userId AND notify_subject = FALSE) is
+      // excluded outright — not just suppressed until resolution — same rule
+      // as isEventHiddenFromViewer in lib/utils.ts, applied here in SQL
+      // because this query already joins events for group scoping.
       const result = await sql`
         SELECT
           a.*,
@@ -627,6 +660,7 @@ export const db = {
         INNER JOIN group_members gm ON g.id = gm.group_id
         WHERE gm.user_id = ${userId}
           AND gm.status = 'active'
+          AND NOT (e.subject_user_id = ${userId} AND e.notify_subject = FALSE)
         ORDER BY a.timestamp DESC
         LIMIT ${limit} OFFSET ${offset}
       `;

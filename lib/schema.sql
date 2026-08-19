@@ -55,6 +55,9 @@ CREATE TABLE IF NOT EXISTS events (
   stake_amount DECIMAL(10,2),
   subject_user_id TEXT REFERENCES users(id),
   notify_subject BOOLEAN NOT NULL DEFAULT TRUE,
+  -- R2: only this user (fallback: the group's created_by, for legacy rows
+  -- where this is NULL) may resolve/unresolve/cancel/delete the event.
+  created_by TEXT REFERENCES users(id),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -211,6 +214,7 @@ CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
 CREATE INDEX IF NOT EXISTS idx_events_group_id ON events(group_id);
 CREATE INDEX IF NOT EXISTS idx_events_payment_type ON events(payment_type);
 CREATE INDEX IF NOT EXISTS idx_events_subject_user_id ON events(subject_user_id) WHERE subject_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_events_created_by ON events(created_by) WHERE created_by IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_escrow_holds_event_id ON escrow_holds(event_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_escrow_holds_bet_id ON escrow_holds(bet_id) WHERE bet_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_escrow_holds_user_id ON escrow_holds(user_id);

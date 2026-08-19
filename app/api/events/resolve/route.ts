@@ -4,7 +4,6 @@ import { db } from '@/lib/db';
 import { calculateNetResults } from '@/lib/utils';
 import { notifyEventAudience } from '@/lib/push';
 import { requireAuth } from '@/lib/auth';
-import { getGroupResolver } from '@/lib/group-resolver';
 import { settleCashEvent, isPaymentError, type SettleCashEventResult } from '@/lib/payments';
 
 export async function POST(request: NextRequest) {
@@ -32,23 +31,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Event already resolved' }, { status: 400 });
   }
 
+  // R2: only the event's creator may resolve/cancel it — regardless of
+  // payment_type or the group's is_public flag. group-resolver.ts's
+  // admin/chosen-resolver logic no longer has any say here (see that
+  // file's header comment). group.created_by is the fallback for legacy
+  // events created before the created_by column existed.
   const group = await db.groups.get(event.group_id);
-  const requiresResolver = event.payment_type === 'cash' || (group && !group.is_public);
-
-  if (requiresResolver) {
-    const resolver = await getGroupResolver(event.group_id);
-    if (!resolver || resolver.user_id !== authResult.userId) {
-      const message = isCancel
-        ? 'Only the chosen resolver can resolve or cancel paid group events'
-        : 'Only the chosen resolver can resolve paid group events';
-      return NextResponse.json({ error: message }, { status: 403 });
-    }
-  } else {
-    // Only group admins can resolve free/public events
-    const isAdmin = await db.groupMembers.isAdmin(event.group_id, authResult.userId);
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Only group admins can resolve events' }, { status: 403 });
-    }
+  const resolverUserId = event.created_by ?? group?.created_by ?? null;
+  if (!resolverUserId || resolverUserId !== authResult.userId) {
+    const message = isCancel
+      ? 'Only the event creator can resolve or cancel this event'
+      : 'Only the event creator can resolve this event';
+    return NextResponse.json({ error: message }, { status: 403 });
   }
 
   if (isCancel && event.payment_type !== 'cash') {

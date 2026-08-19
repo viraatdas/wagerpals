@@ -1,7 +1,37 @@
-import { Bet, NetResult, Payment } from './types';
+import { Bet, Event, NetResult, Payment } from './types';
 
 export function generateId(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
+}
+
+/**
+ * R4 "quiet bet" visibility rule: true when `viewerId` is the event's
+ * subject AND the event's creator chose not to notify them
+ * (`notify_subject === false`). When true the event must not exist for that
+ * viewer anywhere: excluded from `GET /api/events` lists, 404 on detail,
+ * absent from the activity feed, and unreachable through any other
+ * event-scoped endpoint that looks the event up on this viewer's behalf.
+ *
+ * Enforced centrally in lib/db.ts: `db.events.get`, `db.events.getAllWithStats`,
+ * and `db.activities.getByUserGroups` all call this before returning a row.
+ * `app/api/events/route.ts` derives the viewer id from the session (falling
+ * back to an anonymous/null viewer for the unauthenticated list/detail
+ * reads that already existed) and passes it through.
+ *
+ * NOTE for future work: `app/api/comments/route.ts` and `app/api/bets/route.ts`
+ * are outside this task's file scope. They still call `db.events.get(id)`
+ * with no viewer id, so a hidden subject who already knows/guesses an event
+ * id can still reach its comments/bets directly. Whoever owns those files
+ * next should thread the caller's id through to `db.events.get(id, callerId)`
+ * (or call this helper directly) and treat a hidden event as not found,
+ * the same way app/api/events/route.ts does.
+ */
+export function isEventHiddenFromViewer(
+  event: Pick<Event, 'subject_user_id' | 'notify_subject'> | null | undefined,
+  viewerId: string | null | undefined
+): boolean {
+  if (!event || !viewerId) return false;
+  return event.notify_subject === false && event.subject_user_id === viewerId;
 }
 
 export function calculateNetResults(bets: Bet[], winningSide: string): NetResult[] {

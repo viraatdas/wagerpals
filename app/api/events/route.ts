@@ -3,19 +3,34 @@ import { db } from '@/lib/db';
 import { generateId } from '@/lib/utils';
 import { EscrowHoldStatus, Event, PaymentType } from '@/lib/types';
 import { notifyEventAudience, applySubjectPrivacy } from '@/lib/push';
-import { requireAuth, verifyUserMatch } from '@/lib/auth';
-import { getGroupResolver } from '@/lib/group-resolver';
+import { requireAuth, verifyUserMatch, getAuthenticatedUserId } from '@/lib/auth';
 import { MAX_TRANSACTION_AMOUNT } from '@/lib/payments';
 
 export const dynamic = 'force-dynamic';
+
+// A fresh event's end_time is a meaningless placeholder now (R1: events are
+// LIVE until the creator resolves them, never by time), but the column is
+// still NOT NULL and lib/payments.ts's placeCashBet still rejects a cash bet
+// once Date.now() passes it — that gate lives in money-movement logic this
+// task does not touch. A ~100-year-out placeholder satisfies the column
+// without ever tripping that (or any other still-live end_time comparison
+// in app/api/bets/** and app/api/imessage/**, also outside this task's file
+// scope) — see the final report for the full cross-cutting flag.
+const NO_EXPIRY_PLACEHOLDER_MS = 100 * 365 * 24 * 60 * 60 * 1000;
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
   const groupId = searchParams.get('groupId');
 
+  // Both branches below are deliberately readable without a session (kept
+  // from the pre-existing behavior) — `viewerId` is only used to apply the
+  // R4 "quiet bet" visibility rule (lib/utils.ts: isEventHiddenFromViewer)
+  // when there IS a caller, never to gate the read itself.
+  const viewerId = await getAuthenticatedUserId(request);
+
   if (id) {
-    const event = await db.events.get(id);
+    const event = await db.events.get(id, viewerId);
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
@@ -41,7 +56,7 @@ export async function GET(request: NextRequest) {
       sideStats[bet.side].count++;
       sideStats[bet.side].total += bet.amount;
     });
-    
+
     // Round totals to 2 decimal places
     Object.keys(sideStats).forEach(side => {
       sideStats[side].total = Math.round(sideStats[side].total * 100) / 100;
@@ -49,11 +64,22 @@ export async function GET(request: NextRequest) {
 
     // Count unique participants
     const uniqueParticipants = new Set(bets.map(b => b.user_id)).size;
-    const resolver = group && !group.is_public ? await getGroupResolver(group.id) : null;
+
+    // R2: the creator resolves the event (fallback: the group's creator, for
+    // legacy rows with no created_by). group-resolver.ts's admin/resolver
+    // logic no longer decides who this is — see lib/group-resolver.ts's
+    // header comment. Kept under the `resolver` key for any existing caller
+    // of this field; `created_by`/`creator_username` are the explicit R2
+    // fields new code should read instead.
+    const creatorId = event.created_by ?? group?.created_by ?? null;
+    const creator = creatorId ? await db.users.get(creatorId) : null;
+    const resolver = creator ? { user_id: creator.id, username: creator.username } : null;
 
     return NextResponse.json({
       ...event,
       is_public: group?.is_public || false,
+      created_by: creatorId,
+      creator_username: creator?.username ?? null,
       resolver,
       bets,
       side_stats: sideStats,
@@ -65,7 +91,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Optimized: single query with JOINs instead of N+1
-  const eventsWithStats = await db.events.getAllWithStats(groupId || undefined);
+  const eventsWithStats = await db.events.getAllWithStats(groupId || undefined, viewerId);
   return NextResponse.json(eventsWithStats, {
     headers: {
       'Cache-Control': 'public, s-maxage=5, stale-while-revalidate=30',
@@ -83,8 +109,24 @@ export async function POST(request: NextRequest) {
     payment_type: rawPaymentType, stake_amount: rawStakeAmount, subject_user_id, notify_subject,
   } = body;
 
-  if (!title || !side_a || !side_b || !end_time || !group_id) {
+  if (!title || !side_a || !side_b || !group_id) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+
+  // R1: events have no expiry — LIVE until the creator resolves them, never
+  // by time. end_time is now optional; when omitted the server fills a
+  // meaningless far-future placeholder purely to satisfy the NOT NULL
+  // column (see NO_EXPIRY_PLACEHOLDER_MS above for why "far future" and not
+  // literally "now"). Nothing downstream in this route branches on it.
+  let resolvedEndTime: number;
+  if (end_time === undefined || end_time === null || end_time === '') {
+    resolvedEndTime = Date.now() + NO_EXPIRY_PLACEHOLDER_MS;
+  } else {
+    const parsedEndTime = parseInt(end_time);
+    if (!Number.isFinite(parsedEndTime)) {
+      return NextResponse.json({ error: 'end_time must be a timestamp' }, { status: 400 });
+    }
+    resolvedEndTime = parsedEndTime;
   }
 
   let payment_type: PaymentType = 'none';
@@ -129,7 +171,7 @@ export async function POST(request: NextRequest) {
   // regardless of what the client sent or hid in its UI.
   if (payment_type === 'cash' && !group.cash_enabled) {
     return NextResponse.json(
-      { error: "Cash wagers aren't enabled for this group — an admin can turn them on." },
+      { error: "Cash wagers aren't enabled for this group — the group creator can turn them on." },
       { status: 403 }
     );
   }
@@ -156,13 +198,16 @@ export async function POST(request: NextRequest) {
     description: description?.trim(),
     side_a: side_a.trim(),
     side_b: side_b.trim(),
-    end_time: parseInt(end_time),
+    end_time: resolvedEndTime,
     group_id,
     status: 'active',
     payment_type,
     stake_amount,
     subject_user_id: subjectUserId,
     notify_subject: notifySubject,
+    // R2: always the authenticated caller, never taken from the request
+    // body — this is the sole gate on who may later resolve this event.
+    created_by: authResult.userId,
   };
 
   await db.events.create(newEvent);

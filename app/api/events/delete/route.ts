@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
-import { getGroupResolver } from '@/lib/group-resolver';
 
 export async function POST(request: NextRequest) {
   const authResult = await requireAuth(request);
@@ -19,21 +18,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
-  // Same rule the resolve route uses: real-money events (and paid private
-  // groups) belong to the chosen resolver, everything else to group admins.
+  // R2/R3: same rule as resolve/unresolve — only the event's creator may
+  // delete it (fallback: the group's creator, for legacy events with no
+  // created_by). Admin-role gating retired along with group-resolver.ts's
+  // role in this decision — see that file's header comment.
   const group = await db.groups.get(event.group_id);
-  const requiresResolver = event.payment_type === 'cash' || (group !== null && !group.is_public);
-
-  if (requiresResolver) {
-    const resolver = await getGroupResolver(event.group_id);
-    if (!resolver || resolver.user_id !== authResult.userId) {
-      return NextResponse.json({ error: 'Only the chosen resolver can delete this event' }, { status: 403 });
-    }
-  } else {
-    const isAdmin = await db.groupMembers.isAdmin(event.group_id, authResult.userId);
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Only group admins can delete events' }, { status: 403 });
-    }
+  const resolverUserId = event.created_by ?? group?.created_by ?? null;
+  if (!resolverUserId || resolverUserId !== authResult.userId) {
+    return NextResponse.json({ error: 'Only the event creator can delete this event' }, { status: 403 });
   }
 
   // escrow_holds cascade-delete with the event, so deleting an event that

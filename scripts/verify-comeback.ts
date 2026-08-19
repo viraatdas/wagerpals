@@ -154,10 +154,14 @@ async function structuralChecks(): Promise<void> {
 
   console.log('\n12. groups: cash_enabled column');
   await checkColumn('groups', 'cash_enabled', { notNull: true, hasDefault: true });
+
+  console.log('\n13. events: created_by column & index (R2 — resolver is the event creator)');
+  await checkColumn('events', 'created_by');
+  await checkIndex('idx_events_created_by');
 }
 
 async function dataChecks(): Promise<void> {
-  console.log('\n13. data integrity');
+  console.log('\n14. data integrity');
 
   const orphans = await sql`
     SELECT COUNT(*)::int AS c FROM users u
@@ -185,11 +189,19 @@ async function dataChecks(): Promise<void> {
     WHERE u.merged_into IS NOT NULL AND NOT EXISTS (SELECT 1 FROM users t WHERE t.id = u.merged_into)
   `;
   record('users.merged_into points at a real user', danglingMerge.rows[0].c === 0, `${danglingMerge.rows[0].c} dangling pointer(s)`);
+
+  // R2: every event should have a resolver the moment this migration lands —
+  // either its own created_by or (pre-backfill safety net) its group's.
+  // groups.created_by is NOT NULL and events.group_id cascades on group
+  // delete, so a NULL here after the backfill step means the backfill
+  // itself didn't run, not a legitimately orphaned event.
+  const missingCreatedBy = await sql`SELECT COUNT(*)::int AS c FROM events WHERE created_by IS NULL`;
+  record('every event has created_by (post-backfill)', missingCreatedBy.rows[0].c === 0, `${missingCreatedBy.rows[0].c} event(s) still NULL`);
 }
 
 // Exercises the new schema against real writes, then rolls everything back. Nothing is persisted.
 async function functionalChecks(): Promise<void> {
-  console.log('\n14. functional checks (inside a transaction that is always rolled back)');
+  console.log('\n15. functional checks (inside a transaction that is always rolled back)');
 
   const client = createClient();
   await client.connect();
@@ -361,7 +373,7 @@ async function main(): Promise<void> {
   if (results.every((r) => r.ok)) {
     await functionalChecks();
   } else {
-    console.log('\n14. functional checks — skipped, schema is incomplete');
+    console.log('\n15. functional checks — skipped, schema is incomplete');
   }
 
   const failed = results.filter((r) => !r.ok);

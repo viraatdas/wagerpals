@@ -3,7 +3,6 @@ import { sql } from '@vercel/postgres';
 import { db } from '@/lib/db';
 import { calculateNetResults } from '@/lib/utils';
 import { requireAuth } from '@/lib/auth';
-import { getGroupResolver } from '@/lib/group-resolver';
 import { reverseCashSettlement, isPaymentError, type ReverseCashSettlementResult } from '@/lib/payments';
 
 export async function POST(request: NextRequest) {
@@ -22,20 +21,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
+  // R2: only the event's creator may unresolve it — see the matching
+  // comment in app/api/events/resolve/route.ts.
   const group = await db.groups.get(event.group_id);
-  const requiresResolver = event.payment_type === 'cash' || (group && !group.is_public);
-
-  if (requiresResolver) {
-    const resolver = await getGroupResolver(event.group_id);
-    if (!resolver || resolver.user_id !== authResult.userId) {
-      return NextResponse.json({ error: 'Only the chosen resolver can unresolve paid group events' }, { status: 403 });
-    }
-  } else {
-    // Only group admins can unresolve free/public events
-    const isAdmin = await db.groupMembers.isAdmin(event.group_id, authResult.userId);
-    if (!isAdmin) {
-      return NextResponse.json({ error: 'Only group admins can unresolve events' }, { status: 403 });
-    }
+  const resolverUserId = event.created_by ?? group?.created_by ?? null;
+  if (!resolverUserId || resolverUserId !== authResult.userId) {
+    return NextResponse.json({ error: 'Only the event creator can unresolve this event' }, { status: 403 });
   }
 
   // A cancelled event is `status === 'resolved'` with no `resolution` — that

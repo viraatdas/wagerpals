@@ -31,7 +31,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found. Please try again.' }, { status: 400 });
     }
 
-    // Check if user is already a member
+    // Check if user is already a member. A 'pending' row can still exist
+    // here from before R3 (joins used to require approval) — leave that
+    // legacy request alone rather than silently upgrading it, so the
+    // approve/decline endpoints (kept functional for exactly this case)
+    // remain the way to resolve it.
     const existingMembership = await db.groupMembers.get(group_id, user_id);
     if (existingMembership) {
       if (existingMembership.status === 'active') {
@@ -42,16 +46,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create pending membership request
+    // R3: flat groups, open invites — joining with a group code is
+    // immediate. No new membership is ever created 'pending'.
     const newMember = await db.groupMembers.create({
       group_id,
       user_id,
       role: 'member',
-      status: 'pending',
+      status: 'active',
     });
 
-    return NextResponse.json({ 
-      message: 'Join request submitted',
+    return NextResponse.json({
+      message: 'Joined group',
       membership: newMember,
     });
   } catch (error) {
