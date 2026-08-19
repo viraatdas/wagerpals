@@ -116,7 +116,10 @@ export const WAmount = React.memo(function WAmount({ value, size = 'md', signed 
       accessibilityLabel={formatW(value, { sign: signed })}
     >
       {sign ? <Text style={[styles.text, { fontSize, color }]}>{sign}</Text> : null}
-      <WMark size={fontSize} color={color} />
+      {/* The mark is deliberately SMALLER than the digits (0.68×) — a compact
+          currency prefix, the way a ticker sets "$", never a letter-sized
+          glyph competing with the amount. Mirrors components/WMark.tsx (web). */}
+      <WMark size={fontSize * 0.68} color={color} />
       <Text style={[styles.text, { fontSize, color }]} numberOfLines={1} ellipsizeMode="tail">
         {digits}
       </Text>

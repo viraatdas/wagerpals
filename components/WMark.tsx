@@ -28,7 +28,11 @@ export function WMark({ className }: WMarkProps) {
       viewBox="0 0 100 100"
       aria-hidden="true"
       focusable="false"
-      className={`inline-block h-[1em] w-[1em] shrink-0 align-[-0.08em] ${className ?? ''}`}
+      // Deliberately SMALLER than the digits (0.68em) and baseline-hugging —
+      // the mark reads as a compact currency prefix beside the number, the
+      // way a ticker sets "$", never as a letter-sized glyph competing with
+      // the amount. (Owner: "smaller and inline.")
+      className={`inline-block h-[0.68em] w-[0.68em] shrink-0 self-center ${className ?? ''}`}
     >
       <path
         d="M8 22 L28 78 L50 40 L72 78 L92 22"
