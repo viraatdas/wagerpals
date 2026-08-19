@@ -158,3 +158,29 @@ types live in sibling files).
   iMessage extension also reads). **Never set `baseUrl` on `StackServerApp`** — it's
   Stack's API server URL, not ours; setting it to our domain silently 401s every
   authenticated API (this took down the signed-in web app once).
+
+## 7. The release train is part of the work (agent protocol, not CI)
+
+There is no CI pipeline by choice. Shipping is something the AGENT DOES as part of
+finishing mobile work, every time, in the session where the work happened:
+
+**Definition of done for any change under `mobile/**`:**
+1. Gate: `npx tsc --noEmit` (root AND `-p mobile`), lint, the no-DB verify scripts, and
+   `swiftc -parse` on any touched Swift.
+2. Commit + push to `main`.
+3. **Cut the build immediately** (do not wait to be asked):
+   `cd mobile && node --max-old-space-size=512 $(readlink -f $(which eas)) build --platform ios --profile production --non-interactive --no-wait`
+4. When it finishes, submit it:
+   `... eas submit --platform ios --profile production --id <build-id> --non-interactive`
+5. Confirm via the ASC API that the build reached VALID (filter `expired=false` AND
+   today's `uploadedDate` — never trust version number alone, see §4's stale-record trap),
+   and that it appears for TestFlight: internal (owner) distribution is automatic;
+   external testers ride the beta-review queue (one submission per version-train — queue
+   the next when the previous clears).
+6. Report the build number to the owner in the same breath as the change itself. A mobile
+   change that hasn't produced a TestFlight build is NOT done.
+
+App Store releases stay deliberate: attaching a build to a store version and filing App
+Review is its own decision with the owner, never a side effect of the train.
+
+Web needs no train: pushing `main` deploys wagerpals.io automatically via Vercel.
