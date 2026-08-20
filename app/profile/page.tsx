@@ -415,7 +415,6 @@ export default function ProfilePage() {
                 />
               </div>
               <div className="min-w-0">
-                <p className="eyebrow mb-1 truncate">{user.primaryEmail}</p>
                 <h1 className="display-2 truncate">@{userData.username}</h1>
                 {isCustomAvatar(userData.avatar_url) && (
                   <button
@@ -563,24 +562,6 @@ export default function ProfilePage() {
           <WalletPanel />
         </div>
 
-        {/* Friends — reachable from here on mobile, where the bottom tab
-            bar only has room for Board/Live/History/Profile (see
-            IA-DECISIONS.md #5). */}
-        <div className="mb-8">
-          <Link
-            href="/users"
-            className="card card-interactive flex items-center justify-between gap-3 p-4 sm:p-5"
-          >
-            <div>
-              <p className="font-sans font-semibold text-ink">Friends</p>
-              <p className="field-hint mt-0.5">Records, streaks, and who&apos;s up</p>
-            </div>
-            <svg className="w-5 h-5 text-ink-muted flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-        </div>
-
         {/* Notifications */}
         <div className="mb-8">
           <div className="section-head mb-4">
@@ -662,22 +643,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Account */}
-        <div>
-          <div className="section-head mb-4">
-            <span className="eyebrow">Account</span>
-          </div>
-          <div className="card p-4 sm:p-6 space-y-3">
-            <div>
-              <p className="eyebrow mb-1">Email</p>
-              <p className="text-ink break-words">{user.primaryEmail}</p>
-            </div>
-            <div>
-              <p className="eyebrow mb-1">User ID</p>
-              <p className="text-ink-muted text-xs sm:text-sm font-mono break-all">{user.id}</p>
-            </div>
-          </div>
-        </div>
       </div>
     </>
   );

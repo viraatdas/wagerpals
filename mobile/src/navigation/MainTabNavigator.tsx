@@ -87,7 +87,7 @@ export default function MainTabNavigator() {
         options={{
           // "The Board" — see DESIGN-SPEC.md nav copy (Board / Live /
           // History / Wallet / Friends / Profile, not admin nouns).
-          title: 'Board',
+          title: 'Live',
         }}
       />
       <Tab.Screen

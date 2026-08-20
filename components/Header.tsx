@@ -11,8 +11,7 @@ import Logo from './Logo';
 // re-litigate). "Create" is deliberately not in this list: it's the primary
 // action button, not a nav item.
 const desktopLinks = [
-  { href: '/', label: 'Board' },
-  { href: '/all-events', label: 'Live' },
+  { href: '/', label: 'Live' },
   { href: '/activity', label: 'History' },
   { href: '/wallet', label: 'Wallet' },
   { href: '/users', label: 'Friends' },
@@ -25,19 +24,10 @@ const desktopLinks = [
 const mobileNavItems = [
   {
     href: '/',
-    label: 'Board',
-    icon: (
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m6-4a4 4 0 11-8 0 4 4 0 018 0zm6 1a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
-  {
-    href: '/all-events',
     label: 'Live',
     icon: (
       <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3M5 11h14M7 21h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m6-4a4 4 0 11-8 0 4 4 0 018 0zm6 1a3 3 0 11-6 0 3 3 0 016 0z" />
       </svg>
     ),
   },
