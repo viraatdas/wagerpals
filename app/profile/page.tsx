@@ -399,7 +399,7 @@ export default function ProfilePage() {
                   )}
                   <span
                     aria-hidden="true"
-                    className={`absolute inset-0 flex items-center justify-center bg-ink/60 px-1 text-center font-sans text-[10px] font-semibold uppercase tracking-wide text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 ${
+                    className={`absolute inset-0 flex items-center justify-center bg-ink/85 px-1 text-center font-sans text-xs font-semibold uppercase tracking-wide text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 ${
                       avatarStatus === 'uploading' ? 'opacity-100' : ''
                     }`}
                   >
