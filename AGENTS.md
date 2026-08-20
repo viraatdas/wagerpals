@@ -206,3 +206,14 @@ Where each lives:
 Protocol: whenever `mobile/app.json`'s version bumps its major or minor (a new store
 release train), bump root `package.json` to the same major.minor in the same commit, and
 vice versa. Patch bumps never require cross-surface sync.
+
+## 9. Google OAuth is on our own client
+
+Sign-in uses the project's own Google OAuth client (GCP project `wagerpals-oauth` on the
+exla account), so the consent screen says "to continue to Wager Pals". Configured in the
+Stack Auth dashboard (Auth Methods → Google → own credentials). GOTCHA: Stack Auth's
+infrastructure is rebranded "hexclave" — the authorized redirect URI on the Google client
+must be `https://api.hexclave.com/api/v1/auth/oauth/callback/google` (the documented
+api.stack-auth.com callback 400s with redirect_uri_mismatch). Verified headlessly with a
+WebKit run through the production chain (scratchpad oauthcheck.mjs pattern): assert Google
+receives our client_id and no redirect error renders.
