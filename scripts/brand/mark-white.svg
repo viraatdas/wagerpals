@@ -1,36 +1,25 @@
 <!--
-  WagerPals mark — solid white. The `tone="inverse"` treatment from components/Logo.tsx.
+  WagerPals mark — solid paper-white W, transparent background. The `tone="color"`
+  (and `tone="inverse"`-on-emerald) ink treatment from components/Logo.tsx, minus the
+  square tile — the square is composited separately by whichever surface uses this file.
 
-  THIS FILE AND components/Logo.tsx MUST DRAW THE SAME GLYPH.
+  THIS FILE AND components/Logo.tsx MUST DRAW THE SAME W GLYPH.
   Logo.tsx is the on-screen mark; this file is what scripts/generate-brand-assets.ts
-  rasterizes into every favicon, PWA icon, OG card and mobile app icon. The circle,
-  the half-disc path and the seam below are copied verbatim from LogoMark in
-  components/Logo.tsx — change one and you must change the other, or the header
-  and the installed app icon stop being the same logo.
+  rasterizes onto the emerald gradient tile for every favicon, PWA icon, OG card and
+  mobile app icon. The W below — a single 5-point polyline, thick round-capped stroke —
+  is copied verbatim from LogoMark's W_POINTS/W_STROKE_WIDTH in components/Logo.tsx:
+  change one and you must change the other, or the header and the installed app icon
+  stop being the same logo. scripts/verify-brand.ts fails the build if the point list,
+  stroke width, or line caps/joins drift apart, or if a <circle> reappears (the old coin
+  mark this design replaced).
 
-  The glyph: two sides of the same coin. One disc cut by a diagonal seam, the
-  near half solid and the far half an open ring. There is deliberately NO letter
-  W; scripts/verify-brand.ts fails if a second <path> ever reappears.
-
-  Ink spans 11..53 on both axes (a disc of r=21 about the centre), so the glyph
-  is already centred in the 64-unit viewBox and needs no wrapper offset. The
+  Ink spans roughly 10..54 on x and 14..51 on y (the polyline plus half the stroke width),
+  so the glyph is already centred in the 64-unit viewBox and needs no wrapper offset. The
   generator centres artwork by viewBox, not ink bounds.
 
-  This is the variant that sits on the green brand tile (favicons, PWA icons and
-  the mobile app icon), so the whole glyph goes solid white and the seam does the
-  work of separating the two halves.
+  This is the variant that sits on the green brand tile (favicons, PWA icons and the
+  mobile app icon), so the whole glyph goes flat paper-white.
 -->
 <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <mask id="wpMarkSeam" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
-      <rect x="0" y="0" width="64" height="64" fill="#fff"/>
-      <rect x="29.7" y="2" width="4.6" height="60" fill="#000"/>
-    </mask>
-  </defs>
-  <g transform="rotate(-20 32 32)">
-    <g mask="url(#wpMarkSeam)">
-      <circle cx="32" cy="32" r="17.5" fill="none" stroke="#ffffff" stroke-width="7"/>
-      <path d="M32,11 A21,21 0 0,0 32,53 Z" fill="#ffffff"/>
-    </g>
-  </g>
+  <polyline points="14,18 23,47 32,29 41,47 50,18" fill="none" stroke="#FAF7F0" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

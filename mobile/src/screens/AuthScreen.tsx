@@ -170,7 +170,11 @@ export default function AuthScreen() {
         contentContainerStyle={styles.formContent}
         keyboardOffset={0}
       >
-        {/* Logo & Header */}
+        {/* Logo & Header — matches the app icon: an emerald square with a
+            chunky paper-white "W". No react-native-svg in this project, so
+            the W is a Text glyph in the loaded Archivo Black display font
+            rather than drawn geometry (the web mark draws it as an SVG
+            polyline instead — see components/Logo.tsx). */}
         <View style={styles.header}>
           <LinearGradient
             colors={gradients.brand}
@@ -178,7 +182,7 @@ export default function AuthScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.logoContainer}
           >
-            <Ionicons name="trophy" size={40} color={colors.white} />
+            <Text style={styles.logoW}>W</Text>
           </LinearGradient>
           <Text style={styles.title}>
             <Text style={styles.titleWager}>Wager</Text>
@@ -346,6 +350,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.lg,
     ...tokens.shadow.accent,
+  },
+  // The paper-white "W" — matches components/Logo.tsx's tone="color" mark
+  // (emerald square, paper-white ink) using colors.white (#ffffff) rather
+  // than the web mark's --color-paper (#FAF7F0): at 40px on a small square
+  // the difference is imperceptible, and colors.white is what this screen's
+  // gradient/icon combo already used before this glyph replaced the trophy.
+  logoW: {
+    fontFamily: font.display,
+    fontSize: 34,
+    lineHeight: 40,
+    color: colors.white,
   },
   title: {
     fontSize: tokens.fontSize['3xl'],
