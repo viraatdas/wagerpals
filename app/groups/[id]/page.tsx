@@ -74,6 +74,22 @@ export default function GroupPage() {
 
   const handleCopyInviteLink = async () => {
     const inviteUrl = `${window.location.origin}/groups/join/${group.id}`;
+    // Phones get the native share sheet (Messages, WhatsApp, ...); everything
+    // else copies the link. Anyone opening it joins instantly if signed in,
+    // or signs in first and lands in the group (pendingGroupInvite handoff).
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: group.name,
+          text: `Join ${group.name} on WagerPals`,
+          url: inviteUrl,
+        });
+        return;
+      } catch {
+        // Dismissed the sheet or share unsupported mid-flight: fall through
+        // to the clipboard.
+      }
+    }
     try {
       await navigator.clipboard.writeText(inviteUrl);
       setCopied(true);
@@ -192,7 +208,7 @@ export default function GroupPage() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                   </svg>
-                  Share group
+                  Invite to group
                 </>
               )}
             </button>
@@ -318,8 +334,8 @@ export default function GroupPage() {
         ) : (
           <EmptySlip
             headline="No one's here yet."
-            body="Share the invite link so friends can join this group."
-            action={{ label: 'Share invite link', onClick: handleCopyInviteLink }}
+            body="Send the invite link and friends are in the moment they tap it."
+            action={{ label: 'Invite to group', onClick: handleCopyInviteLink }}
           />
         )}
       </section>
