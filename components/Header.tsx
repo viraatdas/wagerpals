@@ -13,7 +13,6 @@ import Logo from './Logo';
 const desktopLinks = [
   { href: '/', label: 'Live' },
   { href: '/activity', label: 'History' },
-  { href: '/wallet', label: 'Wallet' },
   { href: '/users', label: 'Friends' },
   { href: '/profile', label: 'Profile' },
 ];
