@@ -21,6 +21,7 @@ import { ActivityItem } from '../types';
 import { EmptyState, ErrorState } from '../components/ScreenState';
 import { SkeletonList } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
+import { TitleText } from '../components/TitleText';
 import { formatRelativeTime, formatMoney, handle } from '../utils/format';
 import { ApiError, toApiError } from '../utils/errors';
 import { tapLight } from '../utils/haptics';
@@ -37,30 +38,17 @@ function activityKey(item: ActivityItem, index: number): string {
   return `${item.type}-${item.event_id}-${item.user_id ?? ''}-${item.timestamp}-${index}`;
 }
 
-function getActivityIcon(type: ActivityItem['type']): { name: keyof typeof Ionicons.glyphMap; color: string; bg: string } {
-  switch (type) {
-    case 'bet':
-      return { name: 'cash-outline', color: colors.cyan, bg: colors.cyanFill };
-    case 'resolution':
-      return { name: 'trophy-outline', color: colors.mint, bg: colors.mintFill };
-    case 'event_created':
-      return { name: 'add-circle-outline', color: colors.violet, bg: colors.violetFill };
-    case 'comment':
-      return { name: 'chatbubble-outline', color: colors.amber, bg: colors.amberFill };
-    default:
-      return { name: 'ellipse', color: colors.textMuted, bg: colors.surfaceGlass };
-  }
-}
-
-function getSentence(item: ActivityItem): string {
+// Plain-text summary for the row's accessibilityLabel — the structured runs
+// below (activityLine) are what actually render.
+function getSentenceText(item: ActivityItem): string {
   const who = item.username ? handle(item.username) : 'Someone';
   switch (item.type) {
     case 'bet':
-      return `${who} bet ${formatMoney(item.amount ?? 0)} on ${item.side ?? 'a side'}`;
+      return `${who} bet on ${item.side ?? 'a side'}`;
     case 'resolution':
-      return item.winning_side ? `${item.winning_side} won. Event resolved` : 'Event resolved';
+      return item.winning_side ? `Settled, winner ${item.winning_side}` : 'Settled';
     case 'event_created':
-      return `${who} created a new event`;
+      return `${who} started the bet`;
     case 'comment':
       return `${who} commented`;
     default:
@@ -68,10 +56,76 @@ function getSentence(item: ActivityItem): string {
   }
 }
 
-function getDetail(item: ActivityItem): string | undefined {
-  if (item.type === 'bet') return item.note;
-  if (item.type === 'comment') return item.content;
-  return undefined;
+interface ActivityLine {
+  primary: React.ReactNode;
+  secondary?: string;
+}
+
+/** Row line 1: actor + verb, always in sans — actor semibold ink, verb
+ * ink-secondary, and any named side/outcome in medium ink (emerald for a
+ * settlement's winner). Mirrors app/activity/page.tsx's activityLine(). */
+function activityLine(item: ActivityItem): ActivityLine {
+  const who = item.username ? handle(item.username) : 'Someone';
+
+  if (item.type === 'bet') {
+    return {
+      primary: (
+        <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
+          <Text style={styles.sentenceActor}>{who}</Text>
+          <Text style={styles.sentenceVerb}> bet on </Text>
+          <Text style={styles.sentenceEmphasis}>{item.side ?? 'a side'}</Text>
+        </Text>
+      ),
+      secondary: item.note,
+    };
+  }
+
+  if (item.type === 'event_created') {
+    return {
+      primary: (
+        <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
+          <Text style={styles.sentenceActor}>{who}</Text>
+          <Text style={styles.sentenceVerb}> started the bet</Text>
+        </Text>
+      ),
+    };
+  }
+
+  if (item.type === 'resolution') {
+    return {
+      primary: (
+        <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
+          <Text style={styles.sentenceActor}>Settled</Text>
+          {item.winning_side ? (
+            <>
+              <Text style={styles.sentenceVerb}> winner </Text>
+              <Text style={styles.sentenceWin}>{item.winning_side}</Text>
+            </>
+          ) : null}
+        </Text>
+      ),
+    };
+  }
+
+  if (item.type === 'comment') {
+    return {
+      primary: (
+        <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
+          <Text style={styles.sentenceActor}>{who}</Text>
+          <Text style={styles.sentenceVerb}> commented</Text>
+        </Text>
+      ),
+      secondary: item.content || item.note,
+    };
+  }
+
+  return {
+    primary: (
+      <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
+        Activity update
+      </Text>
+    ),
+  };
 }
 
 interface ActivityRowProps {
@@ -79,54 +133,17 @@ interface ActivityRowProps {
   onPress: (item: ActivityItem) => void;
 }
 
-/** Renders the sentence as structured runs so the number reads in mono,
- * per DESIGN-SPEC's "actor avatar amber, action in sans, amounts in mono"
- * split — a bet's stake is a neutral figure (not yet won or lost), so it
- * stays ink-colored mono rather than emerald/crimson; a resolved event's
- * winning side reads emerald since it names the outcome that won. */
-function SentenceRuns({ item }: { item: ActivityItem }) {
-  const who = item.username ? handle(item.username) : 'Someone';
-  if (item.type === 'bet') {
-    return (
-      <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
-        <Text style={styles.sentenceActor}>{who}</Text>
-        <Text> bet </Text>
-        <Text style={styles.sentenceAmount}>
-          {formatMoney(item.amount ?? 0)}
-        </Text>
-        <Text> on {item.side ?? 'a side'}</Text>
-      </Text>
-    );
-  }
-  if (item.type === 'resolution') {
-    return (
-      <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
-        {item.winning_side ? (
-          <>
-            <Text style={styles.sentenceWin}>{item.winning_side}</Text>
-            <Text> won. Event resolved</Text>
-          </>
-        ) : (
-          <Text>Event resolved</Text>
-        )}
-      </Text>
-    );
-  }
-  return (
-    <Text style={styles.sentence} numberOfLines={1} ellipsizeMode="tail">
-      {getSentence(item)}
-    </Text>
-  );
-}
-
 const ActivityRow = React.memo(function ActivityRow({ item, onPress }: ActivityRowProps) {
-  const icon = getActivityIcon(item.type);
-  const detail = getDetail(item);
+  const { primary, secondary } = activityLine(item);
+  // Settlement rows (and any row missing an actor) have no human to show —
+  // a person avatar there reads as a mystery user, so they get a quiet
+  // emerald check instead. Mirrors app/activity/page.tsx's isSystemRow.
+  const isSystemRow = item.type === 'resolution' || !item.username;
 
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={getSentence(item)}
+      accessibilityLabel={getSentenceText(item)}
       onPress={() => {
         tapLight();
         onPress(item);
@@ -134,30 +151,38 @@ const ActivityRow = React.memo(function ActivityRow({ item, onPress }: ActivityR
       style={({ pressed }) => [styles.activityCardWrap, pressed && styles.activityCardPressed]}
     >
       <View style={styles.activityCard}>
-        <Avatar username={item.username} size="md" style={styles.avatar} />
-        <View style={styles.activityContent}>
-          <View style={styles.sentenceRow}>
-            <Ionicons name={icon.name} size={13} color={icon.color} style={styles.sentenceIcon} />
-            <SentenceRuns item={item} />
+        {isSystemRow ? (
+          <View style={styles.checkBadge} importantForAccessibility="no-hide-descendants">
+            <Ionicons name="checkmark" size={14} color={colors.mint} />
           </View>
-          {detail ? (
-            <Text style={styles.detail} numberOfLines={2} ellipsizeMode="tail">
-              "{detail}"
-            </Text>
-          ) : null}
-          <View style={styles.activityMeta}>
-            <Text style={styles.eventTitle} numberOfLines={1} ellipsizeMode="tail">
-              {item.event_title}
-            </Text>
+        ) : (
+          <Avatar username={item.username} size="md" style={styles.avatar} />
+        )}
+        <View style={styles.activityContent}>
+          {primary}
+          <View style={styles.titleRow}>
+            <TitleText
+              title={item.event_title}
+              style={styles.eventTitle}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            />
             {item.group_name ? (
-              <>
-                <Text style={styles.metaDot}>•</Text>
-                <Text style={styles.groupName} numberOfLines={1} ellipsizeMode="tail">
-                  {item.group_name}
-                </Text>
-              </>
+              <Text style={styles.groupTag} numberOfLines={1} ellipsizeMode="tail">
+                {item.group_name}
+              </Text>
             ) : null}
           </View>
+          {secondary ? (
+            <Text style={styles.detail} numberOfLines={1} ellipsizeMode="tail">
+              &ldquo;{secondary}&rdquo;
+            </Text>
+          ) : null}
+        </View>
+        <View style={styles.trailing}>
+          {item.type === 'bet' && typeof item.amount === 'number' ? (
+            <Text style={styles.amount}>{formatMoney(item.amount)}</Text>
+          ) : null}
           <Text style={styles.activityTime}>{formatRelativeTime(item.timestamp)}</Text>
         </View>
       </View>
@@ -399,68 +424,88 @@ const styles = StyleSheet.create({
     marginRight: 14,
     flexShrink: 0,
   },
+  // Settlement (and other actor-less) rows get this instead of Avatar — a
+  // small round emerald-tinted check, never a person's initial.
+  checkBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.pill,
+    backgroundColor: colors.mintFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+    marginTop: 6,
+    flexShrink: 0,
+  },
   activityContent: {
     flex: 1,
     minWidth: 0,
   },
-  sentenceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  sentenceIcon: {
-    marginRight: 6,
-    flexShrink: 0,
-  },
+  // Line 1 — actor + verb, sans.
   sentence: {
-    fontFamily: font.sansMedium,
+    fontFamily: font.sans,
     fontSize: tokens.fontSize.sm,
     color: colors.text,
+    marginBottom: 4,
     flexShrink: 1,
     minWidth: 0,
   },
   sentenceActor: {
     fontFamily: font.sansSemiBold,
+    color: colors.text,
   },
-  sentenceAmount: {
-    fontFamily: font.monoMedium,
+  sentenceVerb: {
+    fontFamily: font.sans,
+    color: colors.textMuted,
+  },
+  sentenceEmphasis: {
+    fontFamily: font.sansMedium,
     color: colors.text,
   },
   sentenceWin: {
-    fontFamily: font.monoMedium,
-    color: tokens.color.win,
+    fontFamily: font.sansMedium,
+    color: colors.mint,
   },
-  detail: {
-    fontFamily: font.sans,
-    fontSize: tokens.fontSize.sm,
-    color: colors.textMuted,
-    lineHeight: 20,
-    marginBottom: 6,
-  },
-  activityMeta: {
+  // Line 2 — wager title (TitleText) + group name tag.
+  titleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     marginBottom: 4,
   },
   eventTitle: {
     fontFamily: font.sansMedium,
-    fontSize: tokens.fontSize.xs,
-    color: colors.brand2,
+    fontSize: tokens.fontSize.sm,
+    color: colors.text,
     flexShrink: 1,
     minWidth: 0,
   },
-  metaDot: {
-    fontSize: tokens.fontSize.xs,
+  groupTag: {
+    fontFamily: font.mono,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
     color: colors.textFaint,
-    marginHorizontal: 6,
+    marginLeft: spacing.sm,
     flexShrink: 0,
   },
-  groupName: {
+  // Optional line 3 — the quoted note/comment.
+  detail: {
     fontFamily: font.sans,
+    fontStyle: 'italic',
     fontSize: tokens.fontSize.xs,
     color: colors.textFaint,
-    flexShrink: 1,
-    minWidth: 0,
+  },
+  trailing: {
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    marginLeft: spacing.sm,
+    flexShrink: 0,
+    gap: 2,
+  },
+  amount: {
+    fontFamily: font.monoMedium,
+    fontSize: tokens.fontSize.sm,
+    color: colors.text,
   },
   activityTime: {
     fontFamily: font.mono,

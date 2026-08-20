@@ -372,11 +372,6 @@ export default function ProfileScreen() {
           <Text style={styles.username} numberOfLines={1} ellipsizeMode="tail">
             @{displayUsername}
           </Text>
-          {authUser?.email ? (
-            <Text style={styles.email} numberOfLines={1} ellipsizeMode="tail">
-              {authUser.email}
-            </Text>
-          ) : null}
           {isCustomAvatar(userData?.avatar_url) && (
             <Pressable onPress={handleRemoveAvatar} disabled={avatarStatus !== 'idle'} hitSlop={8}>
               <Text style={styles.removePhotoText}>
@@ -567,12 +562,6 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize['2xl'],
     color: colors.text,
     marginBottom: 4,
-    maxWidth: '90%',
-  },
-  email: {
-    fontFamily: font.sans,
-    fontSize: tokens.fontSize.sm,
-    color: colors.textMuted,
     maxWidth: '90%',
   },
   statsRow: {
