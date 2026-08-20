@@ -10,10 +10,8 @@
  *      scripts/brand/*.svg (what every icon is rasterized from) are two
  *      hand-maintained copies of the same artwork. They have silently diverged
  *      before, leaving the site header showing a different logo from the
- *      installed app icon. Here the W's stroke geometry (5-point polyline),
- *      stroke width and line caps/joins are compared literally, and a
- *      reappearing <circle> (the earlier split-coin mark this design
- *      replaced) fails the build outright.
+ *      installed app icon. Here the path data, stroke width and coin geometry
+ *      are compared literally.
  *
  *   2. MISSING ARTIFACTS — manifest.json, app/layout.tsx, service-worker.js and
  *      mobile/app.json all reference asset paths by string. Nothing in the
@@ -70,81 +68,41 @@ function unique(values: string[]): string[] {
 
 // ---------------------------------------------------------------------------
 // 1. Glyph contract: Logo.tsx and the source marks must draw the same artwork
-//
-// The mark used to be a coin split by a seam (one <circle> + one <path>),
-// and this file enforced that a letter W never reappeared — the two-chevron
-// W that was explicitly rejected at the time. The owner has since reversed
-// that call: the in-app logo must now MATCH the app icon, which is a W. So
-// this check is repointed at the new geometry rather than removed outright —
-// it still exists to catch the mark and its rasterization sources drifting
-// apart, just against the new contract: a single 5-point <polyline> stroke
-// (not a filled font glyph, not a multi-path chevron pair), and a hard
-// rejection of any <circle> — the literal signal the old coin mark is back.
 // ---------------------------------------------------------------------------
 
+/** Collapse whitespace so `M6,13 L18,52` and `M6,13  L18,52` compare equal. */
+function normalizePath(d: string): string {
+  return d.trim().replace(/\s+/g, ' ');
+}
+
 interface Glyph {
-  /** Every <circle> in source order — the mark must have none; see checkGlyphContract. */
+  /** Every <circle> in source order, as "cx,cy,r@strokeWidth". */
   circles: string[];
-  /** Every W stroke element (<polyline> or <path>) as "points-or-d@strokeWidth@linecap@linejoin". */
-  strokes: string[];
-}
-
-/** Collapse whitespace so point lists compare equal regardless of formatting. */
-function normalizePoints(value: string): string {
-  return value.trim().replace(/\s+/g, ' ');
+  /** Any <path d="...">. The mark must have none — see checkGlyphContract. */
+  paths: string[];
 }
 
 /**
- * The W is a single stroked element — a <polyline points="..."> (preferred,
- * font-free by construction) or a <path d="M... L... L... L... L..."> using
- * the same 5-point shape. Geometry, stroke width AND line caps/joins are all
- * compared together — a file that kept the points but dropped the round caps
- * would still read as a different, more angular glyph.
+ * The mark is one <circle> (the open half's ring) plus one <path> (the solid
+ * half). Comparing the whole ordered list of each — geometry AND stroke width
+ * together — is what actually catches drift; a per-attribute comparison would
+ * pass a file that changed the radius but kept the stroke.
  */
-/**
- * Strip comments before scanning for tags. Several doc comments in this
- * repo — deliberately — spell out literal tag names like "<circle>" while
- * explaining what must never come back, and a bare tag-shaped regex would
- * "find" those mentions as real elements. Handles both JS/TS comments and
- * HTML/SVG comments since this is called on both file kinds.
- */
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/\/\/.*$/gm, '');
-}
-
-function extractGlyph(rawSource: string, label: string): Glyph {
-  const source = stripComments(rawSource);
-  const circles = allMatches(source, /<circle\b([^>]*)>/g);
-
-  const getAttr = (attrs: string, name: string, kebab: string): string => {
-    // Matches both JSX (strokeWidth="8") and plain SVG (stroke-width="8").
-    const m = attrs.match(new RegExp(`\\b${kebab}="([^"]+)"`)) ?? attrs.match(new RegExp(`\\b${name}="([^"]+)"`));
-    return m ? m[1].trim() : '-';
-  };
-
-  const strokeTags = [
-    ...allMatches(source, /<polyline\b([^>]*)>/g).map((attrs) => ({ attrs, geomAttr: 'points' })),
-    ...allMatches(source, /<path\b([^>]*)>/g)
-      .filter((attrs) => /\bd="/.test(attrs))
-      .map((attrs) => ({ attrs, geomAttr: 'd' })),
-  ];
-
-  const strokes = strokeTags.map(({ attrs, geomAttr }) => {
-    const geom = getAttr(attrs, geomAttr, geomAttr);
-    const strokeWidth = getAttr(attrs, 'strokeWidth', 'stroke-width');
-    const linecap = getAttr(attrs, 'strokeLinecap', 'stroke-linecap');
-    const linejoin = getAttr(attrs, 'strokeLinejoin', 'stroke-linejoin');
-    return `${normalizePoints(geom)}@${strokeWidth}@${linecap}@${linejoin}`;
+function extractGlyph(source: string, label: string): Glyph {
+  const circles = allMatches(source, /<circle\b([^>]*)>/g).map((attrs) => {
+    const get = (name: string): string => {
+      // Matches both JSX (strokeWidth="7") and plain SVG (stroke-width="7").
+      const m = attrs.match(new RegExp(`\\b${name}="([^"]+)"`));
+      return m ? m[1].trim() : '-';
+    };
+    const sw = get('stroke-width') !== '-' ? get('stroke-width') : get('strokeWidth');
+    return `${get('cx')},${get('cy')},${get('r')}@${sw}`;
   });
-
-  if (strokes.length === 0) fail(`${label}: could not find the W stroke (expected one <polyline> or <path>)`);
-  return { circles, strokes };
-}
-
-/** A stroke's geometry field is a 5-point polyline: "x1,y1 x2,y2 x3,y3 x4,y4 x5,y5". */
-function pointCount(stroke: string): number {
-  const geom = stroke.split('@')[0];
-  return geom.split(/\s+/).filter(Boolean).length;
+  if (circles.length === 0) fail(`${label}: could not find any coin <circle>`);
+  return {
+    circles,
+    paths: allMatches(source, /\bd="([^"]+)"/g).map(normalizePath),
+  };
 }
 
 const MARK_FILES = [
@@ -157,51 +115,48 @@ async function checkGlyphContract(): Promise<void> {
   const logoSource = await read('components/Logo.tsx');
   const logo = extractGlyph(logoSource, 'components/Logo.tsx');
 
-  // The old coin mark's defining feature was its <circle>. Zero tolerance for
-  // it coming back, in any tone branch.
-  if (logo.circles.length !== 0) {
-    fail(`components/Logo.tsx: found ${logo.circles.length} <circle> element(s) — the old split-coin mark must not return`);
-  } else {
-    pass('components/Logo.tsx has no <circle> (the old split-coin mark has not returned)');
+  if (logo.circles.length !== 1) {
+    fail(`components/Logo.tsx: expected exactly 1 <circle> (the open half's ring), found ${logo.circles.length}`);
   }
-
-  // Exactly one stroke element — the W. More than one is the signal someone
-  // is rebuilding the letter as a multi-path chevron pair instead of the
-  // single font-free polyline this design requires.
-  if (logo.strokes.length !== 1) {
+  // Exactly one path — the solid half. The rejected mark drew the two sides of a
+  // W as a PAIR of <path> chevrons, so a second path reappearing here is the
+  // signal that someone has started rebuilding it.
+  if (logo.paths.length !== 1) {
     fail(
-      `components/Logo.tsx: expected exactly 1 W stroke element (<polyline> or <path>), found ${logo.strokes.length}: ${logo.strokes.join('  ')}\n` +
-        `        The W must be one continuous stroke, not multiple chevron paths.`,
-    );
-  } else if (pointCount(logo.strokes[0]) !== 5) {
-    fail(
-      `components/Logo.tsx: the W stroke has ${pointCount(logo.strokes[0])} point(s), expected exactly 5 (the 5-point W shape)`,
+      `components/Logo.tsx: expected exactly 1 <path> (the solid half), found ${logo.paths.length}: ${logo.paths.join('  ')}\n` +
+        `        The two-chevron letter-W mark was explicitly rejected and must not return.`,
     );
   } else {
-    pass('components/Logo.tsx draws the W as a single 5-point stroke (not a two-chevron pair, not a filled font glyph)');
+    pass('components/Logo.tsx draws one coin split by a seam (not a two-chevron W)');
   }
 
   for (const file of MARK_FILES) {
     const mark = extractGlyph(await read(file), file);
 
-    if (mark.circles.length !== 0) {
-      fail(`${file}: found ${mark.circles.length} <circle> element(s) — the old split-coin mark must not return`);
-      continue;
-    }
-    if (mark.strokes.join('|') !== logo.strokes.join('|')) {
+    if (mark.circles.join('|') !== logo.circles.join('|')) {
       fail(
-        `${file}: the W stroke has drifted from components/Logo.tsx\n` +
-          `        Logo.tsx: ${logo.strokes.join('   ')}\n` +
-          `        ${file}: ${mark.strokes.join('   ')}`,
+        `${file}: coin geometry has drifted from components/Logo.tsx\n` +
+          `        Logo.tsx: ${logo.circles.join('   ')}\n` +
+          `        ${file}: ${mark.circles.join('   ')}`,
       );
       continue;
     }
-    pass(`${file} draws the same W glyph as components/Logo.tsx`);
+    if (mark.paths.join('|') !== logo.paths.join('|')) {
+      fail(
+        `${file}: the solid half's path has drifted from components/Logo.tsx\n` +
+          `        Logo.tsx: ${logo.paths.join('   ')}\n` +
+          `        ${file}: ${mark.paths.join('   ')}`,
+      );
+      continue;
+    }
+    pass(`${file} draws the same glyph as components/Logo.tsx`);
   }
 
   // The silhouette feeds Android's alpha-only notification icon, so it must not
-  // carry colour information that the OS would throw away. Strip any <mask>
-  // block before looking for colour, in case a future revision reintroduces one.
+  // carry colour information that the OS would throw away.
+  // The <mask> block legitimately uses black — that is the knockout that cuts the
+  // link gap, and it is exactly what makes this glyph survive alpha-only masking.
+  // Strip masks before looking for colour in the drawn artwork.
   const silhouette = (await read('scripts/brand/mark-silhouette.svg')).replace(/<mask\b[\s\S]*?<\/mask>/g, '');
   const nonWhite = allMatches(silhouette, /(?:stroke|fill|stop-color)="(#[0-9a-fA-F]{3,8})"/g)
     .map((color) => color.toLowerCase())

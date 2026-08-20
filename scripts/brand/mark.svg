@@ -1,30 +1,40 @@
 <!--
-  WagerPals mark — full colour W, transparent background.
+  WagerPals mark — full colour, transparent background.
 
-  THIS FILE AND components/Logo.tsx MUST DRAW THE SAME W GLYPH.
+  THIS FILE AND components/Logo.tsx MUST DRAW THE SAME GLYPH.
   Logo.tsx is the on-screen mark; this file is what scripts/generate-brand-assets.ts
-  rasterizes into assets that supply their own background separately (e.g. the mobile
-  splash icon). The W below — a single 5-point polyline, thick round-capped stroke — is
-  copied verbatim from LogoMark's W_POINTS/W_STROKE_WIDTH in components/Logo.tsx: change
-  one and you must change the other, or the header and the installed app icon stop being
-  the same logo. scripts/verify-brand.ts fails the build if the point list, stroke width,
-  or line caps/joins drift apart, or if a <circle> reappears (the old coin mark this
-  design replaced).
+  rasterizes into every favicon, PWA icon, OG card and mobile app icon. The circle,
+  the half-disc path and the seam below are copied verbatim from LogoMark in
+  components/Logo.tsx — change one and you must change the other, or the header
+  and the installed app icon stop being the same logo.
 
-  Ink spans roughly 10..54 on x and 14..51 on y (the polyline plus half the stroke width),
-  so the glyph is already centred in the 64-unit viewBox and needs no wrapper offset. The
+  The glyph: two sides of the same coin. One disc cut by a diagonal seam, the
+  near half solid and the far half an open ring. There is deliberately NO letter
+  W; scripts/verify-brand.ts fails if a second <path> ever reappears.
+
+  Ink spans 11..53 on both axes (a disc of r=21 about the centre), so the glyph
+  is already centred in the 64-unit viewBox and needs no wrapper offset. The
   generator centres artwork by viewBox, not ink bounds.
 
-  Contract relied on by the generator: square viewBox, no background fill, artwork
-  optically centred. Ids are prefixed `wpMark` so they cannot collide with the
-  `brandGrad`/`ogTileGrad` ids the generator injects around it.
+  Contract relied on by the generator: square viewBox, no background fill,
+  artwork optically centred. Ids are prefixed `wpMark` so they cannot collide
+  with the `brandGrad`/`ogTileGrad` ids the generator injects around it.
 -->
 <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="wpMarkInk" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#3FA073"/>
-      <stop offset="1" stop-color="#0C5F3B"/>
+    <linearGradient id="wpMarkRing" x1="11" y1="11" x2="53" y2="53" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6EF9A5"/>
+      <stop offset="1" stop-color="#0F9E56"/>
     </linearGradient>
+    <mask id="wpMarkSeam" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+      <rect x="0" y="0" width="64" height="64" fill="#fff"/>
+      <rect x="29.7" y="2" width="4.6" height="60" fill="#000"/>
+    </mask>
   </defs>
-  <polyline points="14,18 23,47 32,29 41,47 50,18" fill="none" stroke="url(#wpMarkInk)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="rotate(-20 32 32)">
+    <g mask="url(#wpMarkSeam)">
+      <circle cx="32" cy="32" r="17.5" fill="none" stroke="url(#wpMarkRing)" stroke-width="7"/>
+      <path d="M32,11 A21,21 0 0,0 32,53 Z" fill="url(#wpMarkRing)"/>
+    </g>
+  </g>
 </svg>

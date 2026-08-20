@@ -6,7 +6,7 @@ export type LogoTone = 'color' | 'mono' | 'inverse';
 export type LogoAnimate = 'none' | 'mount' | 'flip';
 
 export interface LogoProps {
-  /** 'mark' renders just the emerald square + W glyph; 'lockup' adds the "WagerPals" wordmark. */
+  /** 'mark' renders just the two-coin glyph; 'lockup' adds the "WagerPals" wordmark. */
   variant?: 'mark' | 'lockup';
   /** Color treatment of the mark. */
   tone?: LogoTone;
@@ -31,23 +31,22 @@ export interface LogoProps {
 const DEFAULT_TITLE = 'WagerPals';
 
 /**
- * The WagerPals mark: the app icon rebuilt for inline use — a rounded
- * emerald square with a chunky paper-white "W" stroked across it, and the
- * same W drawn stroke-only (no square) for `tone="mono"` contexts. This
- * replaces the earlier "split coin" mark (a circle cut by a seam) that this
- * file drew for a while; that mark and the in-app icon had drifted apart,
- * which is the whole reason this component now matches the icon exactly.
+ * The WagerPals mark: two sides of the same coin. One disc, cut by a diagonal
+ * seam — the near half solid, the far half an open ring. It is the literal
+ * phrase for a wager, and it echoes the tug-of-war bar that the bet detail page
+ * is built around, so the logo and the product's core visual are the same idea.
  *
- * tone="color": emerald-gradient square, paper-white W (the default — same
- * as the installed app icon).
- * tone="mono": no square, just the W stroke in `currentColor`, for contexts
- * that supply their own background (e.g. sitting inside an already-colored
- * button or badge).
- * tone="inverse": a paper-white square with an emerald W — the inverse of
- * "color" rather than a plain white silhouette, chosen deliberately: an
- * emerald square on top of an already-dark/emerald hero background reads as
- * a hole, not a mark, whereas a paper-white tile keeps the icon's silhouette
- * legible against any dark backdrop.
+ * The seam is a real gap in the alpha channel rather than a colour change,
+ * which is what lets this glyph survive being masked down to a single-colour
+ * Android notification icon.
+ *
+ * There is deliberately no letter W here. The previous mark drew one out of two
+ * chevrons; it was rejected, and no variant of this file may reintroduce it —
+ * scripts/verify-brand.ts fails the build if a second <path> reappears.
+ *
+ * Geometry is locked and validated down to 16px — do not adjust coordinates,
+ * radii, or the seam width. Ink spans 11..53 on both axes (a disc of r=21 about
+ * the centre), so the glyph is already centred in the 64-unit viewBox.
  */
 export function LogoMark({
   tone = 'color',
@@ -62,15 +61,19 @@ export function LogoMark({
   const uid = rawId.replace(/[^a-zA-Z0-9]/g, '');
 
   const titleId = `logo-title-${uid}`;
-  const squareGradientId = `logo-square-${uid}`;
+  const ringGradientId = `logo-ring-${uid}`;
+  const seamMaskId = `logo-seam-${uid}`;
 
   const accessibleTitle = title ?? DEFAULT_TITLE;
 
-  const showSquare = tone !== 'mono';
-  const squareFill =
-    tone === 'color' ? `url(#${squareGradientId})` : 'var(--color-paper, #FAF7F0)';
-  const strokeColor =
-    tone === 'mono' ? 'currentColor' : tone === 'inverse' ? 'var(--color-emerald, #0F7A4C)' : 'var(--color-paper, #FAF7F0)';
+  // One stroke for both coins, per tone. The mark is monochrome by design: the
+  // brand's single accent is the whole point, so there is no second colour to
+  // keep in sync with the palette.
+  // One colour for the whole glyph, per tone. The mark is monochrome by design:
+  // the brand's single accent is the point, so there is no second colour to keep
+  // in sync with the palette.
+  const ink =
+    tone === 'mono' ? 'currentColor' : tone === 'inverse' ? '#ffffff' : `url(#${ringGradientId})`;
 
   const animateSuffix = String(replayKey ?? '');
   const animKey = `${animate}-${animateSuffix}`;
@@ -89,19 +92,25 @@ export function LogoMark({
     >
       {!decorative && <title id={titleId}>{accessibleTitle}</title>}
       <defs>
-        {/* Gradient is only referenced by tone="color" (mono/inverse are solid). */}
+        {/* Ring gradient is only referenced in tone="color" (inverse/mono are solid) */}
         {tone === 'color' && (
-          <linearGradient id={squareGradientId} x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="var(--brand-1, #3FA073)" />
-            <stop offset="1" stopColor="var(--brand-3, #0C5F3B)" />
+          <linearGradient id={ringGradientId} x1="11" y1="11" x2="53" y2="53" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stopColor="var(--brand-1, #6EF9A5)" />
+            <stop offset="1" stopColor="var(--brand-3, #0F9E56)" />
           </linearGradient>
         )}
+        {/* The seam. Cuts a 4.6-unit channel straight down the middle of the
+            rotated group, separating the solid half from the open ring. */}
+        <mask id={seamMaskId} maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+          <rect x="0" y="0" width="64" height="64" fill="#fff" />
+          <rect x="29.7" y="2" width="4.6" height="60" fill="#000" />
+        </mask>
       </defs>
       {animate !== 'none' && (
         <style>{`
           @media (prefers-reduced-motion: no-preference) {
-            .logo-square-${uid},
-            .logo-w-${uid} {
+            .logo-coin-l-${uid},
+            .logo-coin-r-${uid} {
               transform-box: fill-box;
               transform-origin: center;
             }
@@ -109,81 +118,64 @@ export function LogoMark({
             ${
               animate === 'mount'
                 ? `
-            /* the tile fades and settles in first, the W follows a beat behind */
-            @keyframes logo-mount-square-${uid} {
-              from { opacity: 0; transform: scale(0.85); }
-              to   { opacity: 1; transform: scale(1); }
+            /* the two halves close on the seam */
+            @keyframes logo-mount-l-${uid} {
+              from { opacity: 0; transform: translateX(-7px); }
+              to   { opacity: 1; transform: translateX(0); }
             }
-            @keyframes logo-mount-w-${uid} {
-              from { opacity: 0; transform: translateY(4px) scale(0.9); }
-              to   { opacity: 1; transform: translateY(0) scale(1); }
+            @keyframes logo-mount-r-${uid} {
+              from { opacity: 0; transform: translateX(7px); }
+              to   { opacity: 1; transform: translateX(0); }
             }
-            .logo-square-${uid} {
-              animation: logo-mount-square-${uid} 380ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+            .logo-coin-l-${uid} {
+              animation: logo-mount-l-${uid} 460ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
             }
-            .logo-w-${uid} {
-              animation: logo-mount-w-${uid} 420ms 90ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
+            .logo-coin-r-${uid} {
+              animation: logo-mount-r-${uid} 460ms 60ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) backwards;
             }
             `
                 : `
-            /* the whole mark gives a quick confident flip on its vertical axis */
-            @keyframes logo-flip-${uid} {
+            /* the coin flips on its axis, the far half trailing */
+            @keyframes logo-flip-coin-${uid} {
               0%   { transform: scaleX(1); }
-              25%  { transform: scaleX(0.08); }
+              25%  { transform: scaleX(0.06); }
               50%  { transform: scaleX(1); }
-              75%  { transform: scaleX(0.08); }
+              75%  { transform: scaleX(0.06); }
               100% { transform: scaleX(1); }
             }
-            .logo-square-${uid},
-            .logo-w-${uid} {
-              animation: logo-flip-${uid} 700ms var(--ease-in-out, cubic-bezier(0.65, 0, 0.35, 1)) backwards;
+            .logo-coin-r-${uid} {
+              animation: logo-flip-coin-${uid} 700ms var(--ease-in-out, cubic-bezier(0.65, 0, 0.35, 1)) backwards;
+            }
+            .logo-coin-l-${uid} {
+              animation: logo-flip-coin-${uid} 700ms 90ms var(--ease-in-out, cubic-bezier(0.65, 0, 0.35, 1)) backwards;
             }
             `
             }
           }
 
           @media (prefers-reduced-motion: reduce) {
-            .logo-square-${uid},
-            .logo-w-${uid} {
+            .logo-coin-l-${uid},
+            .logo-coin-r-${uid} {
               animation: none;
             }
           }
         `}</style>
       )}
-      <g key={animKey}>
-        {showSquare && (
-          <rect
-            className={`logo-square-${uid}`}
-            x="0"
-            y="0"
-            width="64"
-            height="64"
-            rx="14"
-            ry="14"
-            fill={squareFill}
+      <g key={animKey} transform="rotate(-20 32 32)">
+        <g mask={`url(#${seamMaskId})`}>
+          {/* the open half — drawn first so the solid half sits over its edge */}
+          <circle
+            className={`logo-coin-r-${uid}`}
+            cx="32"
+            cy="32"
+            r="17.5"
+            fill="none"
+            stroke={ink}
+            strokeWidth="7"
           />
-        )}
-        {/*
-          The W — a single 5-point polyline (top-left, bottom-left valley,
-          centre peak, bottom-right valley, top-right), thick round-capped
-          stroke. The points/strokeWidth/strokeLinecap/strokeLinejoin values
-          below must stay byte-identical to the matching <polyline> in every
-          scripts/brand/*.svg source file (they're written as literal
-          attribute values, not a shared constant, so scripts/verify-brand.ts
-          can read both as plain text and catch drift). Font-free on purpose:
-          a <text> glyph (even with the Archivo Black webfont loaded) won't
-          render in a bare SVG context like a favicon or a notification-icon
-          silhouette, so the letterform is drawn as geometry instead.
-        */}
-        <polyline
-          className={`logo-w-${uid}`}
-          points="14,18 23,47 32,29 41,47 50,18"
-          fill="none"
-          stroke={strokeColor}
-          strokeWidth="8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+          {/* the solid half */}
+          <path className={`logo-coin-l-${uid}`} d="M32,11 A21,21 0 0,0 32,53 Z" fill={ink} />
+        </g>
       </g>
     </svg>
   );
