@@ -36,6 +36,11 @@ struct WagerQuickStripView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
         }
+        // A horizontal ScrollView only sizes to its content's height unless
+        // told otherwise — fill the compact sheet first, then paint, so any
+        // extra vertical space below the cards is paper, not the hosting
+        // view showing through.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.wagerPaper)
     }
 

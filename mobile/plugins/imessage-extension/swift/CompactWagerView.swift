@@ -219,27 +219,31 @@ struct WagerSignedOutView: View {
 
     var body: some View {
         if compact {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    wordmark(size: 13)
-                    if let preview = preview {
-                        Text("\(preview.title) — sign in to take a side.")
-                            .font(.caption2)
-                            .foregroundColor(.wagerInkSecondary)
-                            .lineLimit(1)
-                    } else {
-                        Text("Sign in to start a wager.")
-                            .font(.caption2)
-                            .foregroundColor(.wagerInkSecondary)
-                            .lineLimit(1)
-                    }
+            // Fills the whole compact strip (not just a thin content-sized
+            // row at the top of it) and centers the wordmark / copy / button
+            // vertically within it, with comfortable padding — see the
+            // signed-out sheet fix in MessagesViewController.swift for the
+            // matching root-level background pass.
+            VStack(spacing: 8) {
+                wordmark(size: 15)
+                if let preview = preview {
+                    Text("\(preview.title) — sign in to take a side.")
+                        .font(.caption)
+                        .foregroundColor(.wagerInkSecondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                } else {
+                    Text("Sign in to start a wager.")
+                        .font(.caption)
+                        .foregroundColor(.wagerInkSecondary)
+                        .lineLimit(1)
                 }
-                Spacer(minLength: 8)
                 Button("Open App", action: onOpenApp)
                     .buttonStyle(WagerPrimaryButtonStyle(compact: true))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.wagerPaper)
         } else {
             VStack(spacing: 18) {
@@ -261,10 +265,12 @@ struct WagerSignedOutView: View {
                 Button("Open WagerPals to sign in", action: onOpenApp)
                     .buttonStyle(WagerPrimaryButtonStyle(compact: false))
             }
-            .padding(.top, 36)
             .padding(.horizontal, 20)
-            .padding(.bottom, 24)
-            .frame(maxWidth: .infinity)
+            .padding(.vertical, 28)
+            // Fills the whole expanded sheet (not just the height its
+            // content needs) so nothing but paper ever shows below the
+            // button.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.wagerPaper)
         }
     }
@@ -389,6 +395,11 @@ struct CompactWagerView: View {
                 WagerQuickStripView(state: state, onInsert: onInsertExisting, onNewWager: onRequestExpand)
             }
         }
+        // Size first (fill the compact sheet), then paint — this is what
+        // keeps `existingWagerStrip` (a content-sized HStack) and the
+        // signed-out view from leaving black gaps around themselves; the
+        // quick strip's ScrollView already fills on its own.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.wagerPaper)
         .onAppear { draft.seedDefaultGroupIfNeeded(groups: state.groups) }
         .onChange(of: state.groups) { groups in draft.seedDefaultGroupIfNeeded(groups: groups) }

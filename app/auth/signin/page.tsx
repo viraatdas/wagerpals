@@ -4,6 +4,7 @@ import { useStackApp, useUser } from "@stackframe/stack";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import Logo from '@/components/Logo';
+import { savePendingMobileOAuthCallback } from '@/lib/stack-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,11 +53,21 @@ function SignInContent() {
     } catch {
       // sessionStorage unavailable: still attempt, just without the guard.
     }
+    // signInWithOAuth's own redirect chain lands the signed-in user on "/"
+    // (see lib/stack-client.ts's comment) — it never returns to this page,
+    // so mobile_callback has to survive some other way. ClientProviders
+    // picks this back up once `user` is set, wherever that redirect lands.
+    if (mobileCallback) {
+      savePendingMobileOAuthCallback(mobileCallback);
+    }
     app.signInWithOAuth('google');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, autoProvider]);
 
   const handleGoogleSignIn = async () => {
+    if (mobileCallback) {
+      savePendingMobileOAuthCallback(mobileCallback);
+    }
     await app.signInWithOAuth("google");
   };
 

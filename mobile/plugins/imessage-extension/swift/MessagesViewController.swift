@@ -32,6 +32,22 @@ class MessagesViewController: MSMessagesAppViewController {
 
     // MARK: - Lifecycle
 
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        // The root hosting view's own background must be paper, in both
+        // compact and expanded presentation styles, before any SwiftUI
+        // content is embedded. Without this, Messages' own (often black in
+        // dark mode) hosting chrome shows through any gap the SwiftUI
+        // content doesn't cover — see `embed(_:)` below for the matching
+        // belt-and-braces fix on the UIHostingController's own view.
+        view.backgroundColor = UIColor(Color.wagerPaper)
+        // This extension renders one fixed "paper" brand regardless of
+        // system appearance (see WagerTheme.swift) — forcing light here
+        // keeps every UIKit-bridged control (TextField, Picker, ProgressView,
+        // etc.) from picking up Messages' dark host chrome instead.
+        overrideUserInterfaceStyle = .light
+    }
+
     override func willBecomeActive(with conversation: MSConversation) {
         super.willBecomeActive(with: conversation)
 
@@ -156,6 +172,20 @@ class MessagesViewController: MSMessagesAppViewController {
         conversation: MSConversation,
         decoded: (preview: WagerPreview, shareToken: String?)?
     ) -> some View {
+        // SwiftUI-level belt-and-braces alongside the two UIKit-level
+        // `overrideUserInterfaceStyle = .light` calls above: pins every
+        // screen to the fixed light "paper" brand regardless of system dark
+        // mode.
+        styledRootView(for: style, conversation: conversation, decoded: decoded)
+            .preferredColorScheme(.light)
+    }
+
+    @ViewBuilder
+    private func styledRootView(
+        for style: MSMessagesAppPresentationStyle,
+        conversation: MSConversation,
+        decoded: (preview: WagerPreview, shareToken: String?)?
+    ) -> some View {
         switch style {
         case .compact, .transcript:
             // `.transcript` (the static rendering shown in Messages history)
@@ -205,6 +235,13 @@ class MessagesViewController: MSMessagesAppViewController {
     private func embed<Content: View>(_ hosting: UIHostingController<Content>) {
         addChild(hosting)
         hosting.view.translatesAutoresizingMaskIntoConstraints = false
+        // Paper, not whatever the hosting view defaults to (systemBackground,
+        // which reads black under Messages' dark host) — belt-and-braces
+        // with `view.backgroundColor` in `viewDidLoad()`: whichever layer
+        // ends up showing through a gap in the SwiftUI content is still
+        // paper, never black.
+        hosting.view.backgroundColor = UIColor(Color.wagerPaper)
+        hosting.overrideUserInterfaceStyle = .light
         view.addSubview(hosting.view)
         NSLayoutConstraint.activate([
             hosting.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
