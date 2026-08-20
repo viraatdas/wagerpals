@@ -50,22 +50,14 @@ function dayKey(timestamp: number): string {
 }
 
 function activityLine(activity: ActivityItem): { primary: ReactNode; secondary?: string } {
-  const name = <span className="font-medium text-foreground">{handle(activity.username || 'Unknown')}</span>;
-  const title = (
-    <span className="text-muted">
-      &ldquo;<TitleText title={activity.event_title} />&rdquo;
-    </span>
-  );
-  const groupSuffix = activity.group_name ? (
-    <span className="text-muted"> &middot; {activity.group_name}</span>
-  ) : null;
+  const name = <span className="font-semibold text-ink">{handle(activity.username || 'Unknown')}</span>;
 
   if (activity.type === 'bet') {
     return {
       primary: (
         <>
-          {name} bet on <span className="font-medium text-foreground">{activity.side}</span> in {title}
-          {groupSuffix}
+          {name} <span className="text-ink-secondary">bet on</span>{' '}
+          <span className="font-medium text-ink">{activity.side}</span>
         </>
       ),
       secondary: activity.note,
@@ -73,23 +65,16 @@ function activityLine(activity: ActivityItem): { primary: ReactNode; secondary?:
   }
 
   if (activity.type === 'event_created') {
-    return {
-      primary: (
-        <>
-          {name} created {title}
-          {groupSuffix}
-        </>
-      ),
-    };
+    return { primary: <>{name} <span className="text-ink-secondary">started the bet</span></> };
   }
 
   if (activity.type === 'resolution') {
     return {
       primary: (
         <>
-          <span className="font-medium text-foreground">Resolved</span> {title} &mdash; winner{' '}
+          <span className="font-semibold text-ink">Settled</span>{' '}
+          <span className="text-ink-secondary">winner</span>{' '}
           <span className="tone-text font-medium">{activity.winning_side}</span>
-          {groupSuffix}
         </>
       ),
     };
@@ -97,12 +82,7 @@ function activityLine(activity: ActivityItem): { primary: ReactNode; secondary?:
 
   if (activity.type === 'comment') {
     return {
-      primary: (
-        <>
-          {name} commented on {title}
-          {groupSuffix}
-        </>
-      ),
+      primary: <>{name} <span className="text-ink-secondary">commented</span></>,
       secondary: activity.content || activity.note,
     };
   }
@@ -113,18 +93,41 @@ function activityLine(activity: ActivityItem): { primary: ReactNode; secondary?:
 function ActivityRow({ activity }: { activity: ActivityItem }) {
   const tone = toneForActivity(activity.type);
   const { primary, secondary } = activityLine(activity);
-  const actor = { username: activity.username || 'Unknown' };
+  // System rows (settlements) have no human actor: a person-circle there
+  // reads as a mystery user, so they get a quiet emerald check instead.
+  const isSystemRow = activity.type === 'resolution' || !activity.username;
 
   return (
     <Link
       href={`/events/${activity.event_id}`}
       className={`${tone} press flex items-start gap-3 border-b border-[var(--color-border)] px-3 py-3 transition-colors last:border-b-0 hover:bg-[var(--color-surface-sunken)] sm:px-4`}
     >
-      <AvatarStack people={[actor]} size="sm" className="mt-0.5 flex-none" />
+      {isSystemRow ? (
+        <span
+          aria-hidden="true"
+          className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-pill bg-emerald/10 text-emerald"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+          </svg>
+        </span>
+      ) : (
+        <AvatarStack people={[{ username: activity.username || 'Unknown' }]} size="sm" className="mt-0.5 flex-none" />
+      )}
       <div className="min-w-0 flex-1">
-        <p className="font-sans text-sm leading-snug text-foreground break-words">{primary}</p>
+        <p className="font-sans text-sm leading-snug break-words">{primary}</p>
+        <p className="mt-0.5 flex items-baseline gap-2 min-w-0">
+          <span className="truncate font-sans text-sm font-medium text-ink">
+            <TitleText title={activity.event_title} />
+          </span>
+          {activity.group_name && (
+            <span className="flex-none font-mono text-[11px] uppercase tracking-wide text-ink-muted">
+              {activity.group_name}
+            </span>
+          )}
+        </p>
         {secondary && (
-          <p className="mt-0.5 truncate font-sans text-xs italic text-muted">&ldquo;{secondary}&rdquo;</p>
+          <p className="mt-0.5 truncate font-sans text-xs italic text-ink-muted">&ldquo;{secondary}&rdquo;</p>
         )}
       </div>
       <div className="flex flex-none flex-col items-end gap-0.5 pl-1 text-right">
@@ -219,12 +222,6 @@ export default function ActivityPage() {
     <div className="page-shell-narrow mobile-page animate-rise">
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="eyebrow">Ledger</p>
-        <Link
-          href="/calendar"
-          className="press font-sans text-xs font-medium text-ink-muted transition-colors hover:text-ink"
-        >
-          View calendar →
-        </Link>
       </div>
       <h1 className="display-1 mb-2">History</h1>
       <p className="lede mb-8">
