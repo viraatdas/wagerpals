@@ -181,8 +181,20 @@ finishing mobile work, every time, in the session where the work happened:
    flows to external testers + the public link
    (https://testflight.apple.com/join/SS2XwXNF) as reviews clear. Internal (owner)
    distribution is automatic.
-6. Report the build number to the owner in the same breath as the change itself. A mobile
+6. **The delivery proof** (imported from manas' release playbook, learned there the hard
+   way): after the chain, query ASC and report the actual end-state facts — build
+   processing=VALID, attached to the Friends external group, and the beta review state.
+   A build can be VALID, live to internal testers, and still sit unreachable by every
+   external tester with nothing anywhere reporting a problem — external groups are created
+   `hasAccessToAllBuilds: false`, so unlike the internal group they NEVER inherit new
+   builds; each one must be attached and beta-submitted explicitly.
+7. Report the build number to the owner in the same breath as the change itself. A mobile
    change that hasn't produced a TestFlight build is NOT done.
+
+**Never pipe a release command into `tail`/`grep` bare.** `eas submit … | tail -1` returns
+tail's exit status, so a failed submit reports success and everything after it runs on a
+lie (manas shipped a release with no appcast this way). Capture status explicitly
+(`st=$(eas build:view … | grep Status)`) or check PIPESTATUS.
 
 App Store releases stay deliberate: attaching a build to a store version and filing App
 Review is its own decision with the owner, never a side effect of the train.
@@ -206,6 +218,11 @@ Where each lives:
 Protocol: whenever `mobile/app.json`'s version bumps its major or minor (a new store
 release train), bump root `package.json` to the same major.minor in the same commit, and
 vice versa. Patch bumps never require cross-surface sync.
+
+When the two are out of step, RAISE the trailing one to match — never lower the leading
+one: App Store Connect refuses any upload whose marketing version is not higher than the
+last approved version, so the iOS version can only ever go up (manas closed exactly this
+gap by jumping the trailing platform straight to the leading one's version).
 
 ## 9. Google OAuth is on our own client
 
