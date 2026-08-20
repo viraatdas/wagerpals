@@ -519,6 +519,46 @@ test('display name and avatar changes propagate on re-sync', async () => {
   assertEqual(user.avatar_url, 'https://cdn.example.com/new.png', 'avatar_url follows Stack Auth');
 });
 
+test('a custom-uploaded avatar is never clobbered by the next Google sync', async () => {
+  // Mirrors what POST /api/users/avatar writes: a URL on our blob host.
+  seed({
+    id: UUID_A,
+    username: 'ada',
+    avatar_url: 'https://abc123.public.blob.vercel-storage.com/avatars/ada-deadbeef.jpg',
+  });
+
+  const user = expectOk(
+    await syncUser(
+      stackUser({ id: UUID_A, profileImageUrl: 'https://lh3.googleusercontent.com/new-google-photo.png' })
+    ),
+    'sync after a custom upload'
+  );
+
+  assertEqual(
+    user.avatar_url,
+    'https://abc123.public.blob.vercel-storage.com/avatars/ada-deadbeef.jpg',
+    'the custom upload survives a Stack Auth sync carrying a Google photo'
+  );
+});
+
+test('a Google-sourced avatar still refreshes normally once no custom upload is set', async () => {
+  seed({ id: UUID_A, username: 'ada', avatar_url: null });
+
+  const user = expectOk(
+    await syncUser(stackUser({ id: UUID_A, profileImageUrl: 'https://lh3.googleusercontent.com/photo.png' })),
+    'first sync with no avatar yet'
+  );
+
+  assertEqual(user.avatar_url, 'https://lh3.googleusercontent.com/photo.png', 'Google photo is adopted');
+
+  const resynced = expectOk(
+    await syncUser(stackUser({ id: UUID_A, profileImageUrl: 'https://lh3.googleusercontent.com/photo-v2.png' })),
+    'Google rotates the photo'
+  );
+
+  assertEqual(resynced.avatar_url, 'https://lh3.googleusercontent.com/photo-v2.png', 'the new Google photo still follows Stack Auth');
+});
+
 test('last_seen_at is bumped on every sync', async () => {
   seed({ id: UUID_A, username: 'ada', last_seen_at: '2020-01-01T00:00:00.000Z' });
 

@@ -101,9 +101,14 @@ const WagerCard = React.memo(function WagerCard({ item, onPress }: WagerCardProp
               <Avatar
                 key={`${b.username}-${i}`}
                 username={b.username}
+                avatarUrl={b.avatar_url}
                 size="sm"
-                // Overlap only (no border override) — Avatar's own Amber
-                // ring must stay intact, never overridden by a later style.
+                // Once there's more than one avatar to overlap, every circle
+                // (not just the later ones) swaps its ring for the card's own
+                // background — a cutout separator, not a second amber ring
+                // mushing into the one behind it. A lone bettor keeps the
+                // amber identity ring.
+                ringColor={previewBettors.length > 1 ? colors.surface : undefined}
                 style={i > 0 ? styles.avatarClusterOverlap : undefined}
               />
             ))}
@@ -617,8 +622,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexShrink: 0,
   },
+  // ~35% of the "sm" avatar's 28px diameter — loose enough that two
+  // initials never collide, snug enough to still read as one cluster.
   avatarClusterOverlap: {
-    marginLeft: -12,
+    marginLeft: -10,
   },
   wagerTitle: {
     flex: 1,

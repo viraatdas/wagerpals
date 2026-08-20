@@ -293,7 +293,7 @@ export default function UsersPage() {
                 <div className="tone-gold card-focal hero-field rail-top relative overflow-hidden p-5 sm:p-7">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                      <AvatarStack people={[{ username: first.username }]} size="lg" className="flex-none" />
+                      <AvatarStack people={[{ username: first.username, avatar_url: first.avatar_url }]} size="lg" className="flex-none" />
                       <div className="min-w-0">
                         <p className="eyebrow tone-text mb-1">Rank 1</p>
                         <p className="market-title truncate text-xl text-foreground sm:text-2xl">
@@ -329,7 +329,7 @@ export default function UsersPage() {
                     u ? (
                       <div key={u.id} className={`${netTone(u.net_total)} card flex items-center justify-between gap-3 p-4`}>
                         <div className="flex min-w-0 items-center gap-3">
-                          <AvatarStack people={[{ username: u.username }]} size="md" className="flex-none" />
+                          <AvatarStack people={[{ username: u.username, avatar_url: u.avatar_url }]} size="md" className="flex-none" />
                           <div className="min-w-0">
                             <p className="eyebrow mb-0.5">Rank {i + 2}</p>
                             <p className="truncate font-medium text-foreground">{handle(u.username)}</p>
@@ -356,7 +356,7 @@ export default function UsersPage() {
                         className={`${netTone(u.net_total)} flex items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 transition-colors last:border-b-0 hover:bg-[var(--color-surface-sunken)]`}
                       >
                         <span className="numeral w-6 flex-none text-sm text-muted">{rank}</span>
-                        <AvatarStack people={[{ username: u.username }]} size="sm" className="flex-none" />
+                        <AvatarStack people={[{ username: u.username, avatar_url: u.avatar_url }]} size="sm" className="flex-none" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-foreground">
                             {handle(u.username)}

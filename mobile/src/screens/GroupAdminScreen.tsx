@@ -407,7 +407,7 @@ export default function GroupAdminScreen() {
           if (section.key === 'pending') {
             return (
               <View style={styles.memberRow}>
-                <Avatar username={item.username} size="md" />
+                <Avatar username={item.username} avatarUrl={item.avatar_url} size="md" />
                 <View style={styles.memberTextCol}>
                   <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">
                     {handle(username)}
@@ -445,7 +445,7 @@ export default function GroupAdminScreen() {
           const isRowCreator = item.user_id === group?.created_by;
           return (
             <View style={styles.memberRow}>
-              <Avatar username={item.username} size="md" />
+              <Avatar username={item.username} avatarUrl={item.avatar_url} size="md" />
               <View style={styles.memberTextCol}>
                 <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">
                   {handle(username)}

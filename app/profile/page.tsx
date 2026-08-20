@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useUser } from '@stackframe/stack';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -11,6 +11,22 @@ import Toast, { ToastType } from '@/components/Toast';
 import { validateUsername } from '@/lib/utils';
 import { subscribeToWebPush } from '@/components/PushNotificationPrompt';
 import WalletPanel from '@/components/WalletPanel';
+
+// Same host check as app/api/users/avatar/route.ts's BLOB_HOST_SUFFIX and
+// lib/sync-user.ts's AVATAR_BLOB_HOST_SUFFIX — decides whether the current
+// avatar_url is one of our uploads (so "Remove photo" makes sense to offer)
+// or something else (an OAuth photo, or nothing).
+function isCustomAvatar(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    return new URL(url).hostname.endsWith('.public.blob.vercel-storage.com');
+  } catch {
+    return false;
+  }
+}
+
+const ACCEPTED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const MAX_AVATAR_BYTES = 4 * 1024 * 1024;
 
 type NotificationCategoryKey =
   | 'bets'
@@ -53,6 +69,9 @@ export default function ProfilePage() {
   const [notifSavingKeys, setNotifSavingKeys] = useState<Set<string>>(new Set());
   const [deviceEnabled, setDeviceEnabled] = useState<boolean | null>(null);
   const [deviceEnabling, setDeviceEnabling] = useState(false);
+  const [avatarStatus, setAvatarStatus] = useState<'idle' | 'uploading' | 'removing'>('idle');
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user) {
@@ -262,6 +281,66 @@ export default function ProfilePage() {
     }
   };
 
+  const handleAvatarClick = () => {
+    if (avatarStatus !== 'idle') return;
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Always clear the input value so picking the same file twice in a row
+    // still fires a change event.
+    if (avatarInputRef.current) avatarInputRef.current.value = '';
+    if (!file) return;
+
+    setAvatarError(null);
+
+    if (!ACCEPTED_AVATAR_TYPES.includes(file.type)) {
+      setAvatarError('That file type is not supported. Use a JPEG, PNG, WEBP, or HEIC photo.');
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      setAvatarError('That image is too big. 4MB max.');
+      return;
+    }
+
+    setAvatarStatus('uploading');
+    try {
+      const formData = new FormData();
+      formData.append('avatar', file);
+      const response = await fetch('/api/users/avatar', { method: 'POST', body: formData });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Couldn't upload that photo. Try again.");
+      }
+      setUserData((prev: any) => (prev ? { ...prev, avatar_url: data.avatar_url } : prev));
+      setToast({ message: 'Photo updated.', type: 'success' });
+    } catch (error: any) {
+      setAvatarError(error?.message || "Couldn't upload that photo. Try again.");
+    } finally {
+      setAvatarStatus('idle');
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (avatarStatus !== 'idle') return;
+    setAvatarStatus('removing');
+    setAvatarError(null);
+    try {
+      const response = await fetch('/api/users/avatar', { method: 'DELETE' });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Couldn't remove that photo. Try again.");
+      }
+      setUserData((prev: any) => (prev ? { ...prev, avatar_url: data.avatar_url } : prev));
+      setToast({ message: 'Photo removed.', type: 'success' });
+    } catch (error: any) {
+      setAvatarError(error?.message || "Couldn't remove that photo. Try again.");
+    } finally {
+      setAvatarStatus('idle');
+    }
+  };
+
   if (loading) {
     return (
       <div className="page-shell mobile-page">
@@ -303,12 +382,52 @@ export default function ProfilePage() {
         <div className="card-focal hero-field p-6 sm:p-8 mb-8 overflow-hidden">
           <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-16 w-16 sm:h-20 sm:w-20 flex-none items-center justify-center rounded-pill bg-amber/15 border-2 border-amber text-2xl sm:text-3xl font-display font-bold text-amber-ink">
-                {userData.username?.charAt(0)?.toUpperCase() || '?'}
+              <div className="relative flex-none">
+                <button
+                  type="button"
+                  onClick={handleAvatarClick}
+                  disabled={avatarStatus !== 'idle'}
+                  aria-label={userData.avatar_url ? 'Change photo' : 'Add a photo'}
+                  title={avatarStatus === 'uploading' ? 'Uploading…' : 'Change photo'}
+                  className="group press relative flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center overflow-hidden rounded-pill border-2 border-amber bg-amber/15 text-2xl sm:text-3xl font-display font-bold text-amber-ink disabled:cursor-wait"
+                >
+                  {userData.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={userData.avatar_url} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    userData.username?.charAt(0)?.toUpperCase() || '?'
+                  )}
+                  <span
+                    aria-hidden="true"
+                    className={`absolute inset-0 flex items-center justify-center bg-ink/60 px-1 text-center font-sans text-[10px] font-semibold uppercase tracking-wide text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 ${
+                      avatarStatus === 'uploading' ? 'opacity-100' : ''
+                    }`}
+                  >
+                    {avatarStatus === 'uploading' ? 'Uploading…' : 'Change photo'}
+                  </span>
+                </button>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarFileChange}
+                />
               </div>
               <div className="min-w-0">
                 <p className="eyebrow mb-1 truncate">{user.primaryEmail}</p>
                 <h1 className="display-2 truncate">@{userData.username}</h1>
+                {isCustomAvatar(userData.avatar_url) && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveAvatar}
+                    disabled={avatarStatus !== 'idle'}
+                    className="press mt-1 text-xs font-medium text-muted hover:text-crimson-ink disabled:cursor-wait disabled:opacity-50"
+                  >
+                    {avatarStatus === 'removing' ? 'Removing…' : 'Remove photo'}
+                  </button>
+                )}
+                {avatarError && <p className="tone-no tone-text mt-1 break-words text-xs">{avatarError}</p>}
               </div>
             </div>
             <div className="sm:text-right">

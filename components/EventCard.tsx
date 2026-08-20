@@ -175,14 +175,13 @@ export default function EventCard({ event, groupName, className }: EventCardProp
               <span className="text-ink-secondary">&ldquo;{quote.note}&rdquo;</span> &middot; {handle(quote.username)}
             </p>
           ) : event.total_bets > 0 ? (
-            <div className="flex items-center gap-2">
-              {participants.length > 0 && (
-                <AvatarStack people={participants} size="sm" max={4} />
-              )}
-              <span className="font-sans text-sm text-ink-muted">
-                <CountUp value={event.total_bets} formatter="plain" /> {betWord}
-              </span>
-            </div>
+            // No avatar cluster here — row 1 already shows one, and the
+            // per-side clusters under the confidence bar show another (they
+            // carry real info: who's on which side). A third copy of the
+            // same faces was pure repetition; plain count reads cleaner.
+            <span className="font-sans text-sm text-ink-muted">
+              <CountUp value={event.total_bets} formatter="plain" /> {betWord}
+            </span>
           ) : (
             <p className="font-sans text-sm text-ink-muted">No bets yet</p>
           )}

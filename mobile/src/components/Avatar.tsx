@@ -1,17 +1,27 @@
-// Avatar — the "human" primitive. Every avatar carries an Amber ring (the
-// people accent — never used for money) around an Amber-tinted fill, with a
-// single-letter initial. No per-person hue palette anymore: Amber is THE
-// avatar color, consistently, everywhere — see DESIGN-SPEC.md's color rule
-// ("if it describes a person, it is Amber").
-import React from 'react';
-import { View, Text, StyleSheet, StyleProp, ViewStyle } from 'react-native';
+// Avatar — the "human" primitive. A standalone avatar carries an Amber ring
+// (the people accent — never used for money) around an Amber-tinted fill,
+// with a single-letter initial. Amber still identifies "this is a person"
+// everywhere via that fill/initial — see DESIGN-SPEC.md's color rule ("if
+// it describes a person, it is Amber") — but once an avatar sits inside an
+// overlapping cluster, its ring switches to `ringColor` (a card/surface
+// cutout separator between circles) so two heavy amber rings don't mush
+// together; pass `ringColor` from the cluster's own background color.
+import React, { useState } from 'react';
+import { View, Text, Image, StyleSheet, StyleProp, ViewStyle } from 'react-native';
 import { font, tokens } from '../theme';
 
 export type AvatarSize = 'sm' | 'md' | 'lg';
 
 export interface AvatarProps {
   username?: string | null;
+  /** Real photo (Google's, or a custom upload) — falls back to the amber
+   * initial on load failure or when absent. */
+  avatarUrl?: string | null;
   size?: AvatarSize;
+  /** Ring color override — pass the surrounding surface's color (e.g.
+   * colors.surface) when this avatar overlaps another one in a cluster.
+   * Defaults to the amber identity ring for a standalone avatar. */
+  ringColor?: string;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -27,10 +37,15 @@ function getInitial(username?: string | null): string {
   return trimmed ? trimmed.charAt(0).toUpperCase() : '?';
 }
 
-export const Avatar = React.memo(function Avatar({ username, size = 'md', style }: AvatarProps) {
+export const Avatar = React.memo(function Avatar({ username, avatarUrl, size = 'md', ringColor, style }: AvatarProps) {
   const px = SIZE_PX[size];
   const hasName = !!username && username.trim().length > 0;
   const initial = getInitial(username);
+  // A load failure (bad URL, network hiccup, revoked Google photo) falls
+  // back to the initial rather than an empty/broken image — reset whenever
+  // the source URL itself changes so a fixed avatar_url gets a fresh try.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const showImage = !!avatarUrl && !loadFailed;
 
   return (
     <View
@@ -42,15 +57,24 @@ export const Avatar = React.memo(function Avatar({ username, size = 'md', style 
           borderRadius: px / 2,
           backgroundColor: tokens.color.amberFill,
           borderWidth: SIZE_RING[size],
-          borderColor: tokens.color.amber,
+          borderColor: ringColor ?? tokens.color.amber,
         },
         style,
       ]}
       accessibilityLabel={hasName ? `${username} avatar` : 'Avatar'}
     >
-      <Text style={[styles.initials, { fontSize: SIZE_FONT[size] }]} numberOfLines={1}>
-        {initial}
-      </Text>
+      {showImage ? (
+        <Image
+          source={{ uri: avatarUrl as string }}
+          style={{ width: px, height: px, borderRadius: px / 2 }}
+          onError={() => setLoadFailed(true)}
+          key={avatarUrl}
+        />
+      ) : (
+        <Text style={[styles.initials, { fontSize: SIZE_FONT[size] }]} numberOfLines={1}>
+          {initial}
+        </Text>
+      )}
     </View>
   );
 });

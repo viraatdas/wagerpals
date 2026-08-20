@@ -7,6 +7,10 @@ export interface User {
   total_bet: number;
   streak: number;
   username_selected?: boolean;
+  // Google's OAuth photo, or a custom upload via POST /api/users/avatar —
+  // mirrors lib/types.ts User.avatar_url. Falls back to the amber initial
+  // (mobile/src/components/Avatar.tsx) when absent or on load failure.
+  avatar_url?: string | null;
 }
 
 // Mirrors lib/types.ts PaymentType exactly. 'none' events stake W (WagerPals'
@@ -68,6 +72,9 @@ export interface Bet {
   // not render a "Late" pill off this anymore.
   is_late: boolean;
   escrow_hold_id?: string | null;
+  // Mirrors lib/types.ts Bet.avatar_url — populated by db.bets.getByEvent's
+  // JOIN onto users. Absent from other endpoints that don't join users.
+  avatar_url?: string | null;
 }
 
 export interface ActivityItem {
@@ -149,6 +156,9 @@ export interface GroupMember {
   group_id: string;
   user_id: string;
   username?: string;
+  // Mirrors lib/types.ts GroupMember.avatar_url — populated by
+  // db.groupMembers.getByGroup / getPendingByGroup's JOIN onto users.
+  avatar_url?: string | null;
   // Flat-groups model: 'admin' only ever describes the creator now (see
   // Group.is_admin) — nobody else can hold it, so promote/demote no longer
   // exist as member actions.
@@ -166,6 +176,10 @@ export interface Comment {
   username: string;
   content: string;
   timestamp: number;
+  // Mirrors lib/types.ts Comment.avatar_url — populated by db.comments.get /
+  // getByEvent / getReplies's JOIN onto users. Never set on a scrubbed
+  // tombstone (content/username are blanked too).
+  avatar_url?: string | null;
 }
 
 export interface GroupWithMembers extends Group {

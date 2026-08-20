@@ -311,7 +311,7 @@ export default function Ledger({ bets, currentUserId, onBetDeleted, paymentType 
                 className="flex flex-col gap-1.5 px-4 py-3 border-b border-hairline last:border-b-0 hover:bg-surface-sunken/60 transition-colors"
               >
                 <div className="flex items-center gap-2.5">
-                  <AvatarStack people={[{ username: bet.username }]} size="sm" className="shrink-0" />
+                  <AvatarStack people={[{ username: bet.username, avatar_url: bet.avatar_url }]} size="sm" className="shrink-0" />
                   <div className="flex items-center gap-1.5 min-w-0 flex-1">
                     <span className="font-sans font-semibold text-foreground truncate max-w-[45%] shrink-0">{handle(bet.username)}</span>
                     <span className="text-muted shrink-0 text-xs">on</span>

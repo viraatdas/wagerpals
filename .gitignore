@@ -46,3 +46,4 @@ RUDDER.md
 RUDDER_SHARED.md
 .claude/skills/rudder-*/
 .rudder-workspaces/
+.env*

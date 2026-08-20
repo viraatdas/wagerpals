@@ -11,6 +11,27 @@ export type SyncUserResult =
   | { ok: true; user: User }
   | { ok: false; status: number; error: string };
 
+// Same hostname suffix app/api/users/avatar/route.ts checks (BLOB_HOST_SUFFIX
+// there) to decide whether a URL is one of our uploaded blobs. Duplicated
+// rather than imported: that route is a Next.js route module and this file
+// is deliberately kept importable outside a Next.js server bundle (see the
+// note above), so the two checks are kept in sync by comment instead of by
+// a shared import.
+const AVATAR_BLOB_HOST_SUFFIX = '.public.blob.vercel-storage.com';
+
+/**
+ * True when `url` is a photo the user uploaded through POST
+ * /api/users/avatar (rather than an OAuth provider's photo, or nothing).
+ */
+function isCustomUploadedAvatar(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    return new URL(url).hostname.endsWith(AVATAR_BLOB_HOST_SUFFIX);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Deterministic, always-available fallback username derived from a Stack
  * Auth user id (a UUID). Guaranteed to satisfy validateUsername's 2-20 char
@@ -220,8 +241,13 @@ async function syncExistingUser(
     patch.display_name = displayName;
   }
 
+  // A custom-uploaded avatar (POST /api/users/avatar) must never be
+  // clobbered by Stack's Google photo on the next sign-in — only refresh
+  // avatar_url from Stack when there's nothing there yet, or what's there
+  // isn't one of our uploads. See the DECISIONS/spec: "if they signed in
+  // with Google use that... allow people to change it with a file picker".
   const avatarUrl = stackUser.profileImageUrl?.trim();
-  if (avatarUrl && avatarUrl !== target.avatar_url) {
+  if (avatarUrl && avatarUrl !== target.avatar_url && !isCustomUploadedAvatar(target.avatar_url)) {
     patch.avatar_url = avatarUrl;
   }
 

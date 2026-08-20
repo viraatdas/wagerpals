@@ -14,25 +14,19 @@ import { tapLight, tapMedium, selectionTick, success, error as hapticError } fro
 import {
   FormScreen,
   Field,
-  AmountInput,
-  Toggle,
-  UserPicker,
   BottomSheet,
   Button,
   LoadingState,
   EmptyState,
   ErrorState,
 } from '../components';
-import type { UserPickerUser } from '../components/UserPicker';
 import { MentionSuggestions } from '../components/MentionSuggestions';
+import { MentionHidePanel } from '../components/MentionHidePanel';
 import { useMentionAutocomplete } from '../utils/useMentionAutocomplete';
-import type { MentionMember } from '../utils/mentions';
+import { getMentionedMembers, type MentionMember } from '../utils/mentions';
 
 type InviteRouteProps = RouteProp<RootStackParamList, 'CreateEventFromInvite'>;
 
-// Mirrors lib/payments.ts MAX_TRANSACTION_AMOUNT — kept in sync by hand since
-// this mobile bundle can't import from the Next.js server package.
-const MAX_STAKE_AMOUNT = 500;
 const MAX_TITLE_LENGTH = 100;
 const MAX_SIDE_LENGTH = 40;
 
@@ -41,7 +35,6 @@ interface FormErrors {
   sideA?: string;
   sideB?: string;
   group?: string;
-  stake?: string;
 }
 
 function validateForm(input: {
@@ -49,7 +42,6 @@ function validateForm(input: {
   sideA: string;
   sideB: string;
   selectedGroup: Group | null;
-  stakeAmount: string;
 }): FormErrors {
   const errors: FormErrors = {};
   const trimmedTitle = input.title.trim();
@@ -80,16 +72,6 @@ function validateForm(input: {
 
   if (!input.selectedGroup) {
     errors.group = 'Choose a group for this wager.';
-  }
-
-  const trimmedStake = input.stakeAmount.trim();
-  if (trimmedStake) {
-    const stake = parseFloat(trimmedStake);
-    if (!Number.isFinite(stake) || stake <= 0) {
-      errors.stake = 'Enter a stake amount.';
-    } else if (stake > MAX_STAKE_AMOUNT) {
-      errors.stake = `Max stake is $${MAX_STAKE_AMOUNT}.`;
-    }
   }
 
   return errors;
@@ -154,11 +136,10 @@ export default function CreateEventFromInviteScreen() {
   const [title, setTitle] = useState(inviteTitle);
   const [sideA, setSideA] = useState(inviteSideA);
   const [sideB, setSideB] = useState(inviteSideB);
-  // ONE optional $ stake field — see CreateEventScreen.tsx for the same
-  // dollar-consolidation change.
-  const [stakeAmount, setStakeAmount] = useState('');
-  const [subjectUserId, setSubjectUserId] = useState<string | null>(null);
-  const [notifySubject, setNotifySubject] = useState(true);
+  // Who this bet is hidden from, if anyone — see CreateEventScreen.tsx for
+  // the same @mention-detection change. Always a member currently
+  // @mentioned in the title; there is no standalone subject picker.
+  const [hideFromId, setHideFromId] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [isCreating, setIsCreating] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -240,61 +221,41 @@ export default function CreateEventFromInviteScreen() {
     };
   }, [user, creatorReloadKey]);
 
-  // Subject-tagging candidates depend on which group is selected, so they
-  // reload whenever that changes. Its own loading/error state so a slow or
-  // failing members fetch never blocks the rest of the form.
+  // Group members, used only to rank @mention candidates for the title
+  // field now (the old standalone subject picker is gone). Reloads whenever
+  // the selected group changes; a failed fetch just leaves the mention list
+  // empty rather than blocking the rest of the form.
   const [members, setMembers] = useState<GroupMember[]>([]);
-  const [membersLoading, setMembersLoading] = useState(false);
-  const [membersError, setMembersError] = useState<string | null>(null);
-  const [membersReloadKey, setMembersReloadKey] = useState(0);
 
   useEffect(() => {
     if (!selectedGroup) {
       setMembers([]);
-      setMembersError(null);
-      setMembersLoading(false);
       return;
     }
     let cancelled = false;
-    setMembersLoading(true);
-    setMembersError(null);
     apiService
       .getGroupMembers(selectedGroup.id)
       .then((data) => {
         if (cancelled) return;
         setMembers(data);
-        setMembersLoading(false);
       })
       .catch((err) => {
         if (cancelled) return;
-        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups/members');
-        setMembersError(apiErr.userMessage);
-        setMembersLoading(false);
+        console.warn('[CreateEventFromInvite] failed to load group members for @mentions:', err);
       });
     return () => {
       cancelled = true;
     };
-  }, [selectedGroup, membersReloadKey]);
+  }, [selectedGroup]);
 
-  // Changing groups can invalidate a previously tagged subject who isn't a
-  // member of the newly-selected group.
+  // Changing groups can invalidate a previously tagged "hide from" selection
+  // (they might not be in the new group's title anymore either way).
   useEffect(() => {
-    setSubjectUserId(null);
-    setNotifySubject(true);
+    setHideFromId(null);
   }, [selectedGroup?.id]);
 
-  const subjectCandidates: UserPickerUser[] = useMemo(
-    () =>
-      members
-        .filter((m) => m.status === 'active' && m.user_id !== user?.id)
-        .map((m) => ({ id: m.user_id, username: m.username || 'Member' })),
-    [members, user?.id]
-  );
-
-  const subjectUsername = subjectCandidates.find((u) => u.id === subjectUserId)?.username;
-
-  // @mention candidates for the title field — same active-members-minus-self
-  // set as the subject picker above, just kept in MentionMember shape.
+  // @mention candidates for the title field — active members of the
+  // selected group, minus the creator (you can't tag yourself).
   const mentionMembers: MentionMember[] = useMemo(
     () =>
       members
@@ -304,6 +265,20 @@ export default function CreateEventFromInviteScreen() {
   );
 
   const titleMention = useMentionAutocomplete({ members: mentionMembers, value: title, onChange: setTitle });
+
+  // Who's actually mentioned in the title right now — the sole source of
+  // "who can this bet be hidden from" (see MentionHidePanel).
+  const mentionedMembers = useMemo(() => getMentionedMembers(title, mentionMembers), [title, mentionMembers]);
+
+  // If a mention is deleted from the title, a previously-picked "hide from"
+  // selection can point at someone no longer mentioned — clear it rather
+  // than silently keep hiding the bet from someone the title no longer
+  // names.
+  useEffect(() => {
+    if (hideFromId && !mentionedMembers.some((m) => m.user_id === hideFromId)) {
+      setHideFromId(null);
+    }
+  }, [hideFromId, mentionedMembers]);
 
   const handleStartFromScratch = () => {
     tapLight();
@@ -316,7 +291,7 @@ export default function CreateEventFromInviteScreen() {
       return;
     }
 
-    const errors = validateForm({ title, sideA, sideB, selectedGroup, stakeAmount });
+    const errors = validateForm({ title, sideA, sideB, selectedGroup });
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
       return;
@@ -347,11 +322,14 @@ export default function CreateEventFromInviteScreen() {
         creator_username: creatorUsername,
         // Dollar consolidation: every wager stakes dollars now — no more
         // "play with W" vs "real money" choice, so this always sends
-        // 'cash'. stake_amount stays optional/undefined for an open stake.
+        // 'cash'. There is no stake input at creation — stake_amount is
+        // omitted entirely; each bettor picks their own amount when they
+        // place a bet.
         payment_type: 'cash',
-        stake_amount: stakeAmount.trim() ? parseFloat(stakeAmount.trim()) : undefined,
-        subject_user_id: subjectUserId ?? undefined,
-        notify_subject: subjectUserId ? notifySubject : undefined,
+        // subject_user_id/notify_subject are sent only when the "Hide this
+        // bet from @x" panel is actually on — a mention alone is just text.
+        subject_user_id: hideFromId ?? undefined,
+        notify_subject: hideFromId ? false : undefined,
       });
 
       // The suggested iMessage bet (pick + amount) is a separate, best-effort
@@ -458,7 +436,7 @@ export default function CreateEventFromInviteScreen() {
         ) : null}
 
         <Field
-          label="Event Title"
+          label="Event"
           value={title}
           onChangeText={(t) => {
             setTitle(t);
@@ -475,6 +453,7 @@ export default function CreateEventFromInviteScreen() {
         {titleMention.isOpen ? (
           <MentionSuggestions candidates={titleMention.candidates} onPick={titleMention.acceptMention} />
         ) : null}
+        <MentionHidePanel mentionedMembers={mentionedMembers} hideFromId={hideFromId} onChange={setHideFromId} />
 
         {/* Side A/B are visually pre-bound to Emerald/Crimson from the start
             — the same convention the bet form, side cards and confidence
@@ -570,69 +549,6 @@ export default function CreateEventFromInviteScreen() {
           </>
         )}
 
-        {selectedGroup ? (
-          <>
-            {/* ONE optional $ stake field — leave it blank for an open
-                stake (each bettor chooses their own amount), or fill it in
-                and everyone puts in the same amount. */}
-            <Text style={styles.sectionLabel}>Stakes</Text>
-            <View style={styles.stakeWrap}>
-              <AmountInput
-                label="Stake Amount (optional)"
-                value={stakeAmount}
-                onChangeText={(v) => {
-                  setStakeAmount(v);
-                  if (formErrors.stake) setFormErrors((prev) => ({ ...prev, stake: undefined }));
-                }}
-                max={MAX_STAKE_AMOUNT}
-                error={formErrors.stake}
-              />
-              <View style={styles.infoRow}>
-                <Ionicons name="lock-closed-outline" size={14} color={colors.textFaint} />
-                <Text style={styles.infoText}>
-                  Each participant's stake is escrowed from their wallet until the event resolves.
-                </Text>
-              </View>
-            </View>
-          </>
-        ) : null}
-
-        {selectedGroup ? (
-          <>
-            <View style={styles.subjectHeaderRow}>
-              <Ionicons name="person-outline" size={14} color={colors.amber} />
-              <Text style={styles.sectionLabel}>This bet is about someone (optional)</Text>
-            </View>
-            {membersLoading ? (
-              <LoadingState compact label="Loading group members…" />
-            ) : membersError ? (
-              <ErrorState compact message={membersError} onRetry={() => setMembersReloadKey((k) => k + 1)} />
-            ) : (
-              <>
-                <UserPicker
-                  users={subjectCandidates}
-                  value={subjectUserId}
-                  onChange={setSubjectUserId}
-                  placeholder="No one, general bet"
-                  hint="Pick who this wager is about."
-                />
-                {subjectUserId ? (
-                  <Toggle
-                    label="Keep it secret from them"
-                    value={!notifySubject}
-                    onValueChange={(secret) => setNotifySubject(!secret)}
-                    description={
-                      notifySubject
-                        ? `${subjectUsername ?? 'They'} will be notified about this bet.`
-                        : `Quiet bet: ${subjectUsername ?? 'they'} won't be notified.`
-                    }
-                  />
-                ) : null}
-              </>
-            )}
-          </>
-        ) : null}
-
         {/* Fallback: bail out to the app without creating anything */}
         <Pressable
           style={styles.secondaryButton}
@@ -710,11 +626,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textMuted,
     marginBottom: spacing.sm,
-  },
-  subjectHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
   },
   sideLabelRow: {
     flexDirection: 'row',
@@ -841,23 +752,6 @@ const styles = StyleSheet.create({
   selectedGroupMeta: {
     fontSize: tokens.fontSize.xs,
     color: colors.textMuted,
-  },
-
-  stakeWrap: {
-    marginTop: spacing.sm,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.xs,
-    marginTop: -spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: tokens.fontSize.xs,
-    color: colors.textFaint,
-    lineHeight: tokens.lineHeight.xs,
   },
 
   errorBanner: {

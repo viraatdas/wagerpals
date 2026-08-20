@@ -134,7 +134,7 @@ function BetRow({
   const stakeColor = bet.side === sideAName ? tokens.color.emerald : tokens.color.crimsonInk;
   return (
     <View style={styles.rowItem}>
-      <Avatar username={bet.username} size="sm" />
+      <Avatar username={bet.username} avatarUrl={bet.avatar_url} size="sm" />
       <View style={styles.rowContent}>
         <Text style={styles.rowText} numberOfLines={3}>
           <Text style={styles.rowBold}>{handle(truncate(bet.username, 20))}</Text>
@@ -178,7 +178,7 @@ function BetRow({
 function CommentRow({ comment }: { comment: Comment }) {
   return (
     <View style={styles.rowItem}>
-      <Avatar username={comment.username} size="sm" />
+      <Avatar username={comment.username} avatarUrl={comment.avatar_url} size="sm" />
       <View style={styles.rowContent}>
         <View style={styles.commentHeaderRow}>
           <Text style={styles.rowBold} numberOfLines={1}>

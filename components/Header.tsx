@@ -67,18 +67,23 @@ export default function Header() {
   const user = useUser({ or: "return-null" });
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [username, setUsername] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
       setWalletBalance(null);
+      setAvatarUrl(null);
       return;
     }
 
     // The account row's chosen username (the header shows @handle, not the
-    // OAuth display name).
+    // OAuth display name) and avatar — same payload carries both.
     fetch(`/api/users?id=${user.id}`)
       .then((response) => (response.ok ? response.json() : null))
-      .then((data) => setUsername(data?.username ?? null))
+      .then((data) => {
+        setUsername(data?.username ?? null);
+        setAvatarUrl(data?.avatar_url ?? null);
+      })
       .catch(() => {});
 
     fetch(`/api/wallet?userId=${user.id}`)
@@ -182,11 +187,16 @@ export default function Header() {
                 <div className="md:hidden flex items-center min-w-0">
                   <button
                     onClick={handleLogout}
-                    className="press inline-flex h-10 w-10 items-center justify-center rounded-control border border-line bg-card text-xs font-semibold text-crimson-ink hover:border-hairline-strong transition-colors"
+                    className="press inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-control border border-line bg-card text-xs font-semibold text-crimson-ink hover:border-hairline-strong transition-colors"
                     title={`${username ? handle(username) : user.displayName || user.primaryEmail} - Sign Out`}
                     aria-label="Account sign out"
                   >
-                    {(username || user.displayName || user.primaryEmail || 'U').slice(0, 1).toUpperCase()}
+                    {avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      (username || user.displayName || user.primaryEmail || 'U').slice(0, 1).toUpperCase()
+                    )}
                   </button>
                 </div>
               )}

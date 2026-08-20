@@ -73,6 +73,14 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "WagerPals uses your photo library so you can set a profile photo.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
         "./plugins/imessage-extension/withIMessageExtension",
         {
           "teamId": "3C4383262W",

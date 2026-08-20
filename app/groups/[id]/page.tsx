@@ -304,7 +304,7 @@ export default function GroupPage() {
             <ul className="divide-y divide-hairline">
               {members.map((member: any) => (
                 <li key={member.user_id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-                  <AvatarStack people={[{ username: member.username }]} size="sm" className="flex-none" />
+                  <AvatarStack people={[{ username: member.username, avatar_url: member.avatar_url }]} size="sm" className="flex-none" />
                   <span className="min-w-0 flex-1 truncate font-sans text-sm font-medium text-foreground">
                     {handle(member.username)}
                   </span>

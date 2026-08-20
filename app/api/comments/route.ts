@@ -75,15 +75,23 @@ async function loadAuthedEventContext(
   return { userId: authResult.userId, event, group, membership };
 }
 
-// Re-derive the canonical display username server-side rather than trusting
-// the request body — closes the audit finding that comments.username was
-// writable by whoever sent the POST. Falls back to a body-supplied username
+// Re-derive the canonical display username (and avatar) server-side rather
+// than trusting the request body — closes the audit finding that
+// comments.username was writable by whoever sent the POST, and, the same
+// way, lets a freshly-posted comment show the real avatar immediately
+// rather than waiting for a refetch. Falls back to a body-supplied username
 // only when there is genuinely no user row yet (should not normally happen
 // for an authenticated caller, but fails soft rather than 500ing).
-async function resolveCanonicalUsername(userId: string, bodyUsername: unknown): Promise<string> {
+async function resolveCanonicalAuthor(
+  userId: string,
+  bodyUsername: unknown
+): Promise<{ username: string; avatar_url: string | null }> {
   const user = await db.users.get(userId);
-  if (user) return user.username;
-  return typeof bodyUsername === 'string' && bodyUsername.trim() ? bodyUsername.trim() : 'Unknown';
+  if (user) return { username: user.username, avatar_url: user.avatar_url ?? null };
+  return {
+    username: typeof bodyUsername === 'string' && bodyUsername.trim() ? bodyUsername.trim() : 'Unknown',
+    avatar_url: null,
+  };
 }
 
 // Resolve the subset of mentioned usernames that belong to ACTIVE group
@@ -206,7 +214,7 @@ export async function GET(request: NextRequest) {
         if (c.deleted_at) {
           // Tombstones are included so replies keep a valid parent, but leak
           // nothing about who wrote the deleted content or what it said.
-          return { ...c, content: '', username: '' };
+          return { ...c, content: '', username: '', avatar_url: null };
         }
         return c;
       });
@@ -283,7 +291,7 @@ export async function POST(request: NextRequest) {
       resolvedParentId = resolveParentId(parent_id, parentById);
     }
 
-    const canonicalUsername = await resolveCanonicalUsername(userId, bodyUsername);
+    const { username: canonicalUsername, avatar_url: canonicalAvatarUrl } = await resolveCanonicalAuthor(userId, bodyUsername);
     const timestamp = Date.now();
     const commentId = generateId();
 
@@ -292,6 +300,7 @@ export async function POST(request: NextRequest) {
       event_id,
       user_id: userId,
       username: canonicalUsername,
+      avatar_url: canonicalAvatarUrl,
       content: validation.value!,
       timestamp,
       parent_id: resolvedParentId,
@@ -501,7 +510,7 @@ export async function DELETE(request: NextRequest) {
     if (comment.deleted_at) {
       return NextResponse.json({
         message: 'Comment deleted',
-        comment: { ...comment, content: '', username: '' },
+        comment: { ...comment, content: '', username: '', avatar_url: null },
       });
     }
 
@@ -513,7 +522,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({
       message: 'Comment deleted',
-      comment: { ...(tombstone as Comment), content: '', username: '' },
+      comment: { ...(tombstone as Comment), content: '', username: '', avatar_url: null },
     });
   } catch (error) {
     console.error('[Comments API] DELETE failed:', error);

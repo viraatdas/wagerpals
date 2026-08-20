@@ -97,6 +97,9 @@ function mapBet(row: any): Bet {
     is_late: row.is_late,
     timestamp: parseInt(row.timestamp),
     escrow_hold_id: row.escrow_hold_id ?? null,
+    // Only present when the query joined users (getByEvent); absent (not
+    // null) from queries that select bare `bets.*`.
+    avatar_url: row.avatar_url !== undefined ? (row.avatar_url || null) : undefined,
   };
 }
 
@@ -158,6 +161,9 @@ function mapComment(row: any): Comment {
     username: row.username,
     content: row.content,
     timestamp: parseInt(row.timestamp),
+    // Only present when the query joined users (get / getByEvent /
+    // getReplies); absent (not null) from a bare `comments.*` select.
+    avatar_url: row.avatar_url !== undefined ? (row.avatar_url || null) : undefined,
     parent_id: row.parent_id ?? null,
     edited_at: row.edited_at ?? null,
     deleted_at: row.deleted_at ?? null,
@@ -325,8 +331,19 @@ export const db = {
 
       return await db.users.get(id);
     },
+
+    // Narrow setter for the avatar upload/remove endpoint
+    // (app/api/users/avatar/route.ts) — deliberately not routed through the
+    // general-purpose `update` above, which lib/sync-user.ts also calls with
+    // a broader patch; keeping this one narrow makes it obvious at the call
+    // site that it touches nothing but avatar_url. Pass null to clear back
+    // to initials.
+    setAvatarUrl: async (id: string, avatarUrl: string | null): Promise<User | null> => {
+      await sql`UPDATE users SET avatar_url = ${avatarUrl} WHERE id = ${id}`;
+      return await db.users.get(id);
+    },
   },
-  
+
   events: {
     // R4: `viewerId` (when passed) enforces the "quiet bet" visibility rule
     // centrally — a hidden subject gets `null` back, exactly as if the event
@@ -584,11 +601,17 @@ export const db = {
       return mapBet(result.rows[0]);
     },
 
+    // LEFT JOIN (not INNER): a bet must still render if its user row is
+    // somehow gone — avatar_url just comes back null, same as any user
+    // without a custom avatar. `b.*` keeps every bets column so mapBet's
+    // existing field reads are unaffected; `u.avatar_url` rides along.
     getByEvent: async (event_id: string): Promise<Bet[]> => {
       const result = await sql`
-        SELECT * FROM bets
-        WHERE event_id = ${event_id}
-        ORDER BY timestamp ASC
+        SELECT b.*, u.avatar_url
+        FROM bets b
+        LEFT JOIN users u ON u.id = b.user_id
+        WHERE b.event_id = ${event_id}
+        ORDER BY b.timestamp ASC
       `;
       return result.rows.map(mapBet);
     },
@@ -913,10 +936,14 @@ export const db = {
   },
 
   groupMembers: {
+    // LEFT JOIN (not INNER): a membership row must still resolve if its user
+    // row is somehow gone — username/avatar_url just come back undefined.
     get: async (groupId: string, userId: string): Promise<GroupMember | null> => {
       const result = await sql`
-        SELECT * FROM group_members 
-        WHERE group_id = ${groupId} AND user_id = ${userId}
+        SELECT gm.*, u.username, u.avatar_url
+        FROM group_members gm
+        LEFT JOIN users u ON gm.user_id = u.id
+        WHERE gm.group_id = ${groupId} AND gm.user_id = ${userId}
       `;
       if (result.rows.length === 0) return null;
       const row = result.rows[0];
@@ -924,6 +951,8 @@ export const db = {
         id: row.id,
         group_id: row.group_id,
         user_id: row.user_id,
+        username: row.username,
+        avatar_url: row.avatar_url ?? null,
         role: row.role,
         status: row.status,
         joined_at: row.joined_at,
@@ -932,10 +961,10 @@ export const db = {
 
     getByGroup: async (groupId: string): Promise<GroupMember[]> => {
       const result = await sql`
-        SELECT gm.*, u.username FROM group_members gm
+        SELECT gm.*, u.username, u.avatar_url FROM group_members gm
         INNER JOIN users u ON gm.user_id = u.id
         WHERE gm.group_id = ${groupId}
-        ORDER BY 
+        ORDER BY
           CASE WHEN gm.role = 'admin' THEN 0 ELSE 1 END,
           gm.joined_at ASC
       `;
@@ -944,6 +973,7 @@ export const db = {
         group_id: row.group_id,
         user_id: row.user_id,
         username: row.username,
+        avatar_url: row.avatar_url ?? null,
         role: row.role,
         status: row.status,
         joined_at: row.joined_at,
@@ -952,7 +982,7 @@ export const db = {
 
     getPendingByGroup: async (groupId: string): Promise<GroupMember[]> => {
       const result = await sql`
-        SELECT gm.*, u.username FROM group_members gm
+        SELECT gm.*, u.username, u.avatar_url FROM group_members gm
         INNER JOIN users u ON gm.user_id = u.id
         WHERE gm.group_id = ${groupId} AND gm.status = 'pending'
         ORDER BY gm.joined_at ASC
@@ -962,6 +992,7 @@ export const db = {
         group_id: row.group_id,
         user_id: row.user_id,
         username: row.username,
+        avatar_url: row.avatar_url ?? null,
         role: row.role,
         status: row.status,
         joined_at: row.joined_at,
@@ -1028,8 +1059,15 @@ export const db = {
   },
 
   comments: {
+    // LEFT JOIN (not INNER): a comment must still render if its user row is
+    // somehow gone — avatar_url just comes back null.
     get: async (id: string): Promise<Comment | null> => {
-      const result = await sql`SELECT * FROM comments WHERE id = ${id}`;
+      const result = await sql`
+        SELECT c.*, u.avatar_url
+        FROM comments c
+        LEFT JOIN users u ON u.id = c.user_id
+        WHERE c.id = ${id}
+      `;
       if (result.rows.length === 0) return null;
       return mapComment(result.rows[0]);
     },
@@ -1039,23 +1077,29 @@ export const db = {
     getByEvent: async (eventId: string, opts?: { includeDeleted?: boolean }): Promise<Comment[]> => {
       const result = opts?.includeDeleted
         ? await sql`
-            SELECT * FROM comments
-            WHERE event_id = ${eventId}
-            ORDER BY timestamp ASC
+            SELECT c.*, u.avatar_url
+            FROM comments c
+            LEFT JOIN users u ON u.id = c.user_id
+            WHERE c.event_id = ${eventId}
+            ORDER BY c.timestamp ASC
           `
         : await sql`
-            SELECT * FROM comments
-            WHERE event_id = ${eventId} AND deleted_at IS NULL
-            ORDER BY timestamp ASC
+            SELECT c.*, u.avatar_url
+            FROM comments c
+            LEFT JOIN users u ON u.id = c.user_id
+            WHERE c.event_id = ${eventId} AND c.deleted_at IS NULL
+            ORDER BY c.timestamp ASC
           `;
       return result.rows.map(mapComment);
     },
 
     getReplies: async (parentId: string): Promise<Comment[]> => {
       const result = await sql`
-        SELECT * FROM comments
-        WHERE parent_id = ${parentId} AND deleted_at IS NULL
-        ORDER BY timestamp ASC
+        SELECT c.*, u.avatar_url
+        FROM comments c
+        LEFT JOIN users u ON u.id = c.user_id
+        WHERE c.parent_id = ${parentId} AND c.deleted_at IS NULL
+        ORDER BY c.timestamp ASC
       `;
       return result.rows.map(mapComment);
     },

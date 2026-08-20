@@ -26,6 +26,16 @@ const SIZE_CLASSES: Record<AvatarStackSize, { box: string; text: string }> = {
   lg: { box: 'h-10 w-10', text: 'text-base' },
 };
 
+// ~35% of each size's diameter (24/32/40px) — loose enough that two
+// initials never collide, snug enough to still read as one cluster.
+// Arbitrary-value classes rather than the space-* scale because the scale's
+// steps (8/12/16px) don't land on 35% of every diameter.
+const OVERLAP_CLASSES: Record<AvatarStackSize, string> = {
+  sm: '-ml-[8px]',
+  md: '-ml-[11px]',
+  lg: '-ml-[14px]',
+};
+
 function initials(username: string): string {
   const trimmed = username.trim();
   if (!trimmed) return '?';
@@ -57,7 +67,16 @@ export default function AvatarStack({ people, max = 4, size = 'md', className }:
   const visible = people.slice(0, max);
   const overflowCount = people.length - visible.length;
   const sizeClasses = SIZE_CLASSES[size];
+  const overlapClass = OVERLAP_CLASSES[size];
   const label = describePeople(people, max);
+  // A single avatar (nothing overlapping it) keeps the amber identity ring.
+  // Once a second circle (a real avatar, or the "+N" chip) sits behind it,
+  // the ring switches to card-colored — a cutout separator between circles
+  // instead of a second heavy amber ring mushing into the first. Amber
+  // still carries "this is a person" via the initial's fill/tint; it's just
+  // not doubled up as a border once circles start overlapping.
+  const isStack = visible.length > 1 || overflowCount > 0;
+  const ringClass = isStack ? 'border-2 border-card' : 'border-2 border-amber';
 
   return (
     <div
@@ -71,7 +90,7 @@ export default function AvatarStack({ people, max = 4, size = 'md', className }:
           aria-hidden="true"
           title={person.username}
           style={{ zIndex: visible.length - idx }}
-          className={`relative inline-flex items-center justify-center overflow-hidden rounded-pill border-2 border-amber bg-amber/15 font-sans font-semibold text-amber-ink ${sizeClasses.box} ${sizeClasses.text} ${idx > 0 ? '-ml-2' : ''}`}
+          className={`relative inline-flex items-center justify-center overflow-hidden rounded-pill bg-amber/15 font-sans font-semibold text-amber-ink ${ringClass} ${sizeClasses.box} ${sizeClasses.text} ${idx > 0 ? overlapClass : ''}`}
         >
           {person.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -82,10 +101,13 @@ export default function AvatarStack({ people, max = 4, size = 'md', className }:
         </span>
       ))}
       {overflowCount > 0 && (
+        // A count, not a person: quieter than the avatars it follows —
+        // sunken fill, hairline border, mono ink-secondary text, never the
+        // amber person-identity treatment.
         <span
           aria-hidden="true"
           style={{ zIndex: 0 }}
-          className={`relative -ml-2 inline-flex items-center justify-center rounded-pill border-2 border-amber bg-amber/15 font-sans font-semibold text-amber-ink ${sizeClasses.box} ${sizeClasses.text}`}
+          className={`relative inline-flex items-center justify-center rounded-pill border border-hairline bg-surface-sunken font-mono font-semibold text-ink-secondary ${overlapClass} ${sizeClasses.box} ${sizeClasses.text}`}
         >
           +{overflowCount}
         </span>

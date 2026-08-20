@@ -66,6 +66,22 @@ export function getMentionCandidates(members: MentionMember[], query: string): M
 }
 
 /**
+ * Which of `members` are actually @mentioned anywhere in `text` right now —
+ * used to detect who a "Hide this bet from @x" panel can offer, without a
+ * standalone subject picker. A member counts as mentioned whenever their
+ * exact @username appears as a token (start-of-string or word-boundary
+ * before the '@', end-of-string or non-identifier char after the username).
+ * Mirrors the equivalent check in app/create/page.tsx (web).
+ */
+export function getMentionedMembers(text: string, members: MentionMember[]): MentionMember[] {
+  return members.filter((member) => {
+    const escaped = member.username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?:^|[\\s([{"',:;-])@${escaped}(?=$|[^A-Za-z0-9_])`, 'i');
+    return re.test(text);
+  });
+}
+
+/**
  * Inserts "@username " in place of the in-progress token, returning the new
  * full text plus the caret position right after the inserted mention.
  */

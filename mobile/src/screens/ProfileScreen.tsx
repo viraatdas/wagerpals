@@ -2,10 +2,11 @@
 // there was previously no way to see a balance or add funds from the
 // phone), and account settings.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Alert, StatusBar, ScrollView, RefreshControl, Platform } from 'react-native';
+import { View, Text, StyleSheet, Alert, StatusBar, ScrollView, RefreshControl, Platform, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
 import notificationService from '../services/notifications';
@@ -51,6 +52,20 @@ function safeAmount(n: number | null | undefined): number {
   return typeof n === 'number' && Number.isFinite(n) ? n : 0;
 }
 
+// Same host check as app/api/users/avatar/route.ts's BLOB_HOST_SUFFIX /
+// lib/sync-user.ts's AVATAR_BLOB_HOST_SUFFIX / app/profile/page.tsx's
+// isCustomAvatar — decides whether the current avatar_url is one of our
+// uploads (so "Remove photo" makes sense to offer) or something else (an
+// OAuth photo, or nothing).
+function isCustomAvatar(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    return new URL(url).hostname.endsWith('.public.blob.vercel-storage.com');
+  } catch {
+    return false;
+  }
+}
+
 function IconChip({ name, tone }: { name: keyof typeof Ionicons.glyphMap; tone: IconChipTone }) {
   const { bg, fg } = ICON_CHIP_TONE[tone];
   return (
@@ -72,6 +87,7 @@ export default function ProfileScreen() {
   const [loadError, setLoadError] = useState<ApiError | null>(null);
   const [walletError, setWalletError] = useState<ApiError | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [avatarStatus, setAvatarStatus] = useState<'idle' | 'uploading' | 'removing'>('idle');
 
   // Guards against setState-after-unmount from a fetch that resolves after
   // the screen has gone away.
@@ -204,6 +220,64 @@ export default function ProfileScreen() {
     }
   }, [authUser]);
 
+  // Tap the avatar -> pick a square-cropped photo from the library -> upload
+  // to POST /api/users/avatar -> refresh the local user row with the
+  // server's URL (never optimistic — the server may reject the file, and
+  // this is the only place that knows the final blob URL).
+  const handleChangeAvatar = useCallback(async () => {
+    if (avatarStatus !== 'idle') return;
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        'Photo access needed',
+        'Allow WagerPals to access your photos in Settings to set a profile photo.'
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+
+    const asset = result.assets[0];
+    const mimeType = asset.mimeType || 'image/jpeg';
+    const fileName = asset.fileName || `avatar.${mimeType.split('/')[1] || 'jpg'}`;
+
+    setAvatarStatus('uploading');
+    try {
+      const { avatar_url } = await apiService.uploadAvatar(asset.uri, fileName, mimeType);
+      setUserData((prev) => (prev ? { ...prev, avatar_url } : prev));
+      success();
+    } catch (err) {
+      hapticError();
+      const message = err instanceof ApiError ? err.userMessage : "Couldn't upload that photo. Try again.";
+      Alert.alert('Error', message);
+    } finally {
+      setAvatarStatus('idle');
+    }
+  }, [avatarStatus]);
+
+  const handleRemoveAvatar = useCallback(async () => {
+    if (avatarStatus !== 'idle') return;
+    setAvatarStatus('removing');
+    try {
+      const { avatar_url } = await apiService.removeAvatar();
+      setUserData((prev) => (prev ? { ...prev, avatar_url } : prev));
+      success();
+    } catch (err) {
+      hapticError();
+      const message = err instanceof ApiError ? err.userMessage : "Couldn't remove that photo. Try again.";
+      Alert.alert('Error', message);
+    } finally {
+      setAvatarStatus('idle');
+    }
+  }, [avatarStatus]);
+
   const goToWallet = useCallback(() => {
     navigation.navigate('Wallet');
   }, [navigation]);
@@ -277,7 +351,24 @@ export default function ProfileScreen() {
       >
         {/* Profile header */}
         <View style={styles.profileHeader}>
-          <Avatar username={userData?.username} size="lg" style={styles.avatar} />
+          <Pressable
+            onPress={handleChangeAvatar}
+            disabled={avatarStatus !== 'idle'}
+            accessibilityRole="button"
+            accessibilityLabel={userData?.avatar_url ? 'Change photo' : 'Add a photo'}
+            style={styles.avatarPressable}
+          >
+            <Avatar username={userData?.username} avatarUrl={userData?.avatar_url} size="lg" style={styles.avatar} />
+            {avatarStatus === 'uploading' ? (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator size="small" color={colors.white} />
+              </View>
+            ) : (
+              <View style={styles.avatarEditBadge}>
+                <Ionicons name="camera" size={14} color={colors.white} />
+              </View>
+            )}
+          </Pressable>
           <Text style={styles.username} numberOfLines={1} ellipsizeMode="tail">
             @{displayUsername}
           </Text>
@@ -286,6 +377,13 @@ export default function ProfileScreen() {
               {authUser.email}
             </Text>
           ) : null}
+          {isCustomAvatar(userData?.avatar_url) && (
+            <Pressable onPress={handleRemoveAvatar} disabled={avatarStatus !== 'idle'} hitSlop={8}>
+              <Text style={styles.removePhotoText}>
+                {avatarStatus === 'removing' ? 'Removing…' : 'Remove photo'}
+              </Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Stats */}
@@ -428,8 +526,41 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.xl,
   },
-  avatar: {
+  avatarPressable: {
+    position: 'relative',
     marginBottom: spacing.lg,
+  },
+  avatar: {},
+  avatarOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 28,
+    backgroundColor: 'rgba(28,27,23,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.brand2,
+    borderWidth: 2,
+    borderColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removePhotoText: {
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.xs,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+    textDecorationLine: 'underline',
   },
   username: {
     fontFamily: font.sansSemiBold,

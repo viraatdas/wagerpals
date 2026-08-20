@@ -72,7 +72,7 @@ function avatarSizeClass(depth: number): string {
   return AVATAR_SIZE_CLASSES[Math.max(0, idx)];
 }
 
-function Avatar({ username, depth }: { username: string; depth: number }) {
+function Avatar({ username, avatarUrl, depth }: { username: string; avatarUrl?: string | null; depth: number }) {
   const label = username || '?';
   const initial = label.trim().charAt(0).toUpperCase() || '?';
   // People are always amber, everywhere — the redesign's absolute colour
@@ -84,11 +84,16 @@ function Avatar({ username, depth }: { username: string; depth: number }) {
   return (
     <span
       aria-hidden="true"
-      className={`border-amber bg-amber/15 text-amber-ink ${avatarSizeClass(
+      className={`overflow-hidden border-amber bg-amber/15 text-amber-ink ${avatarSizeClass(
         depth
       )} inline-flex shrink-0 items-center justify-center rounded-full border-2 font-sans font-semibold`}
     >
-      {initial}
+      {avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+      ) : (
+        initial
+      )}
     </span>
   );
 }
@@ -315,7 +320,7 @@ function CommentNodeItem({ node, actions }: { node: CommentNode<CommentWithMeta>
           isPending ? 'opacity-60' : ''
         } ${justLanded ? 'animate-bet-land' : ''}`}
       >
-        <Avatar username={comment.username} depth={depth} />
+        <Avatar username={comment.username} avatarUrl={comment.avatar_url} depth={depth} />
 
         <div className="min-w-0 flex-1">
           {isDeleted ? (

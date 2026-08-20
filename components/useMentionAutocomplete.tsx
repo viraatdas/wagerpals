@@ -218,7 +218,7 @@ export function MentionAutocompleteMenu({
           aria-selected={i === clampedHighlight}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onPick(member)}
-          className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm transition ${
+          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition ${
             i === clampedHighlight
               ? 'tone-pending tone-text bg-[var(--tone-fill)]'
               : 'text-foreground hover:bg-surface-sunken'
@@ -233,7 +233,6 @@ export function MentionAutocompleteMenu({
             </span>
             <span className="truncate font-medium">{handle(member.username)}</span>
           </span>
-          {member.role && <span className="flex-none text-xs text-muted">{member.role}</span>}
         </button>
       ))}
     </div>

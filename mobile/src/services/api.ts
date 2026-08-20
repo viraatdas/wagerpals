@@ -313,6 +313,70 @@ class ApiService {
     return this.request<User[]>('/api/users');
   }
 
+  // Uploads a custom profile photo to POST /api/users/avatar. Deliberately
+  // bypasses `request()`/`attempt()`: those always send
+  // 'Content-Type: application/json', which is wrong for a multipart body —
+  // React Native (and fetch generally) needs to set its own multipart
+  // boundary, which only happens if no Content-Type header is set at all.
+  // `fileUri` is whatever expo-image-picker returned (a local file:// URI on
+  // the device); RN's FormData accepts the { uri, name, type } shape as a
+  // file value.
+  async uploadAvatar(fileUri: string, fileName: string, mimeType: string): Promise<{ avatar_url: string | null }> {
+    const endpoint = '/api/users/avatar';
+    const [accessToken, refreshToken] = await Promise.all([
+      authService.getAccessToken(),
+      getSharedItem('refreshToken'),
+    ]);
+
+    const formData = new FormData();
+    formData.append('avatar', { uri: fileUri, name: fileName, type: mimeType } as unknown as Blob);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      let response: Response;
+      try {
+        response = await fetch(`${API_BASE_URL}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+            ...(refreshToken ? { 'x-stack-refresh-token': refreshToken } : {}),
+          },
+          body: formData,
+          signal: controller.signal,
+        });
+      } catch (err) {
+        throw toApiError(err, endpoint);
+      }
+
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+
+      if (!response.ok) {
+        throw new ApiError({
+          message: data.error || `Request failed (${response.status})`,
+          status: response.status,
+          kind: 'http',
+          endpoint,
+          code: data.code,
+        });
+      }
+
+      return data;
+    } catch (err) {
+      throw err instanceof ApiError ? err : toApiError(err, endpoint);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // DELETE /api/users/avatar — plain JSON round trip, so the normal
+  // request() path is fine here (no multipart body involved).
+  async removeAvatar(): Promise<{ avatar_url: string | null }> {
+    return this.request<{ avatar_url: string | null }>('/api/users/avatar', { method: 'DELETE' });
+  }
+
   // Group APIs
   async getGroups(userId: string): Promise<Group[]> {
     return this.request<Group[]>(`/api/groups?userId=${encodeURIComponent(userId)}`, {

@@ -70,6 +70,11 @@ export interface Bet {
   timestamp: number;
   is_late: boolean;
   escrow_hold_id?: string | null;
+  // Populated by db.bets.getByEvent via a LEFT JOIN onto users — lets the
+  // Ledger (and mobile EventDetailScreen) render the bettor's real avatar
+  // instead of always falling back to initials. Absent from other db.bets.*
+  // accessors that don't join users; treat a missing value as "show initials".
+  avatar_url?: string | null;
 }
 
 export interface ActivityItem {
@@ -172,6 +177,11 @@ export interface GroupMember {
   group_id: string;
   user_id: string;
   username?: string;
+  // Populated by db.groupMembers.getByGroup / getPendingByGroup via a JOIN
+  // onto users — lets the group roster and admin/manage rows render real
+  // avatars instead of always falling back to initials. Same disclosure
+  // level as `username`, which the same JOIN already exposed.
+  avatar_url?: string | null;
   role: 'admin' | 'member';
   status: 'pending' | 'active';
   joined_at?: string;
@@ -184,6 +194,12 @@ export interface Comment {
   username: string;
   content: string;
   timestamp: number;
+  // Populated by db.comments.get / getByEvent / getReplies via a JOIN onto
+  // users — lets CommentThread render the commenter's real avatar instead of
+  // always falling back to initials. Same disclosure level as `username`,
+  // which the same JOIN already exposed. Never set on a scrubbed tombstone
+  // (content/username are blanked too — see app/api/comments/route.ts).
+  avatar_url?: string | null;
   parent_id?: string | null;
   edited_at?: string | null;
   deleted_at?: string | null;

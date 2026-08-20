@@ -234,7 +234,7 @@ export default function GroupManagePage() {
                   className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <AvatarStack people={[{ username: member.username }]} size="sm" className="flex-none" />
+                    <AvatarStack people={[{ username: member.username, avatar_url: member.avatar_url }]} size="sm" className="flex-none" />
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-foreground truncate">{handle(member.username)}</p>
                       <p className="font-mono text-xs text-muted">
@@ -305,7 +305,7 @@ export default function GroupManagePage() {
                     className="flex flex-col gap-3 px-4 py-4 sm:px-5 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <AvatarStack people={[{ username: member.username }]} size="sm" className="flex-none" />
+                      <AvatarStack people={[{ username: member.username, avatar_url: member.avatar_url }]} size="sm" className="flex-none" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground truncate">{handle(member.username)}</p>
                         <div className="mt-0.5 flex items-center gap-1.5">

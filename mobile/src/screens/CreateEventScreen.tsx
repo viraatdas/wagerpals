@@ -13,23 +13,16 @@ import { tapMedium, success, error as hapticError } from '../utils/haptics';
 import {
   FormScreen,
   Field,
-  AmountInput,
-  Toggle,
-  UserPicker,
   Button,
-  LoadingState,
   ErrorState,
 } from '../components';
-import type { UserPickerUser } from '../components/UserPicker';
 import { MentionSuggestions } from '../components/MentionSuggestions';
+import { MentionHidePanel } from '../components/MentionHidePanel';
 import { useMentionAutocomplete } from '../utils/useMentionAutocomplete';
-import type { MentionMember } from '../utils/mentions';
+import { getMentionedMembers, type MentionMember } from '../utils/mentions';
 
 type CreateEventRouteProps = RouteProp<RootStackParamList, 'CreateEvent'>;
 
-// Mirrors lib/payments.ts MAX_TRANSACTION_AMOUNT — kept in sync by hand since
-// this mobile bundle can't import from the Next.js server package.
-const MAX_STAKE_AMOUNT = 500;
 const MAX_TITLE_LENGTH = 100;
 const MAX_SIDE_LENGTH = 40;
 
@@ -37,14 +30,12 @@ interface FormErrors {
   title?: string;
   sideA?: string;
   sideB?: string;
-  stake?: string;
 }
 
 function validateForm(input: {
   title: string;
   sideA: string;
   sideB: string;
-  stakeAmount: string;
 }): FormErrors {
   const errors: FormErrors = {};
   const trimmedTitle = input.title.trim();
@@ -71,16 +62,6 @@ function validateForm(input: {
 
   if (!errors.sideA && !errors.sideB && trimmedA.toLowerCase() === trimmedB.toLowerCase()) {
     errors.sideB = 'Side B must be different from side A.';
-  }
-
-  const trimmedStake = input.stakeAmount.trim();
-  if (trimmedStake) {
-    const stake = parseFloat(trimmedStake);
-    if (!Number.isFinite(stake) || stake <= 0) {
-      errors.stake = 'Enter a stake amount.';
-    } else if (stake > MAX_STAKE_AMOUNT) {
-      errors.stake = `Max stake is $${MAX_STAKE_AMOUNT}.`;
-    }
   }
 
   return errors;
@@ -111,13 +92,10 @@ export default function CreateEventScreen() {
   const [title, setTitle] = useState('');
   const [sideA, setSideA] = useState('');
   const [sideB, setSideB] = useState('');
-  // ONE optional $ stake field — no more "play with W" vs "real money"
-  // choice, and no more group-level cash_enabled gating (dollar
-  // consolidation). Left blank, bettors each choose their own amount when
-  // they bet; filled in, it's the fixed amount everyone puts in.
-  const [stakeAmount, setStakeAmount] = useState('');
-  const [subjectUserId, setSubjectUserId] = useState<string | null>(null);
-  const [notifySubject, setNotifySubject] = useState(true);
+  // Who this bet is hidden from, if anyone — always a member currently
+  // @mentioned in the title (see mentionedMembers below). There is no
+  // standalone subject picker; this is the only way to set it.
+  const [hideFromId, setHideFromId] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -157,48 +135,30 @@ export default function CreateEventScreen() {
     };
   }, [user, creatorReloadKey]);
 
-  // Subject-tagging candidates: active members of this group, minus the
-  // creator themselves. Its own loading/error state so a slow or failing
-  // members fetch never blocks the rest of the form.
+  // Group members, used only to rank @mention candidates for the title
+  // field now (the old standalone subject picker is gone). A failed fetch
+  // just leaves the mention list empty rather than blocking the form.
   const [members, setMembers] = useState<GroupMember[]>([]);
-  const [membersLoading, setMembersLoading] = useState(true);
-  const [membersError, setMembersError] = useState<string | null>(null);
-  const [membersReloadKey, setMembersReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    setMembersLoading(true);
-    setMembersError(null);
     apiService
       .getGroupMembers(groupId)
       .then((data) => {
         if (cancelled) return;
         setMembers(data);
-        setMembersLoading(false);
       })
       .catch((err) => {
         if (cancelled) return;
-        const apiErr = err instanceof ApiError ? err : toApiError(err, '/api/groups/members');
-        setMembersError(apiErr.userMessage);
-        setMembersLoading(false);
+        console.warn('[CreateEvent] failed to load group members for @mentions:', err);
       });
     return () => {
       cancelled = true;
     };
-  }, [groupId, membersReloadKey]);
+  }, [groupId]);
 
-  const subjectCandidates: UserPickerUser[] = useMemo(
-    () =>
-      members
-        .filter((m) => m.status === 'active' && m.user_id !== user?.id)
-        .map((m) => ({ id: m.user_id, username: m.username || 'Member' })),
-    [members, user?.id]
-  );
-
-  const subjectUsername = subjectCandidates.find((u) => u.id === subjectUserId)?.username;
-
-  // @mention candidates for the title field — same active-members-minus-self
-  // set as the subject picker above, just kept in MentionMember shape.
+  // @mention candidates for the title field — active members of this group,
+  // minus the creator (you can't tag yourself).
   const mentionMembers: MentionMember[] = useMemo(
     () =>
       members
@@ -209,13 +169,27 @@ export default function CreateEventScreen() {
 
   const titleMention = useMentionAutocomplete({ members: mentionMembers, value: title, onChange: setTitle });
 
+  // Who's actually mentioned in the title right now — the sole source of
+  // "who can this bet be hidden from" (see MentionHidePanel).
+  const mentionedMembers = useMemo(() => getMentionedMembers(title, mentionMembers), [title, mentionMembers]);
+
+  // If a mention is deleted from the title, a previously-picked "hide from"
+  // selection can point at someone no longer mentioned — clear it rather
+  // than silently keep hiding the bet from someone the title no longer
+  // names.
+  useEffect(() => {
+    if (hideFromId && !mentionedMembers.some((m) => m.user_id === hideFromId)) {
+      setHideFromId(null);
+    }
+  }, [hideFromId, mentionedMembers]);
+
   const handleCreate = async () => {
     if (!user) {
       setSubmitError('You must be signed in to create an event.');
       return;
     }
 
-    const errors = validateForm({ title, sideA, sideB, stakeAmount });
+    const errors = validateForm({ title, sideA, sideB });
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) {
       return;
@@ -235,7 +209,6 @@ export default function CreateEventScreen() {
     setIsSubmitting(true);
 
     try {
-      const trimmedStake = stakeAmount.trim();
       const newEvent = await apiService.createEvent({
         title: title.trim(),
         side_a: sideA.trim(),
@@ -247,12 +220,14 @@ export default function CreateEventScreen() {
         creator_username: creatorUsername,
         // Dollar consolidation: every wager stakes dollars now — no more
         // "play with W" vs "real money" choice, so this always sends
-        // 'cash'. stake_amount stays optional/undefined for an open stake,
-        // where each bettor picks their own amount when they bet.
+        // 'cash'. There is no stake input at creation — stake_amount is
+        // omitted entirely; each bettor picks their own amount when they
+        // place a bet.
         payment_type: 'cash',
-        stake_amount: trimmedStake ? parseFloat(trimmedStake) : undefined,
-        subject_user_id: subjectUserId ?? undefined,
-        notify_subject: subjectUserId ? notifySubject : undefined,
+        // subject_user_id/notify_subject are sent only when the "Hide this
+        // bet from @x" panel is actually on — a mention alone is just text.
+        subject_user_id: hideFromId ?? undefined,
+        notify_subject: hideFromId ? false : undefined,
       });
 
       success();
@@ -304,7 +279,7 @@ export default function CreateEventScreen() {
         ) : null}
 
         <Field
-          label="Wager Title"
+          label="Event"
           value={title}
           onChangeText={(t) => {
             setTitle(t);
@@ -321,6 +296,7 @@ export default function CreateEventScreen() {
         {titleMention.isOpen ? (
           <MentionSuggestions candidates={titleMention.candidates} onPick={titleMention.acceptMention} />
         ) : null}
+        <MentionHidePanel mentionedMembers={mentionedMembers} hideFromId={hideFromId} onChange={setHideFromId} />
 
         {/* Side A/B are visually pre-bound to Emerald/Crimson from the start
             — the same convention the bet form, side cards and confidence
@@ -361,60 +337,6 @@ export default function CreateEventScreen() {
           returnKeyType="done"
         />
 
-        {/* ONE optional $ stake field — leave it blank for an open stake
-            (each bettor chooses their own amount), or fill it in and
-            everyone puts in the same amount. */}
-        <Text style={styles.sectionLabel}>Stakes</Text>
-        <View style={styles.stakeWrap}>
-          <AmountInput
-            label="Stake Amount (optional)"
-            value={stakeAmount}
-            onChangeText={(v) => {
-              setStakeAmount(v);
-              if (formErrors.stake) setFormErrors((prev) => ({ ...prev, stake: undefined }));
-            }}
-            max={MAX_STAKE_AMOUNT}
-            error={formErrors.stake}
-          />
-          <View style={styles.infoRow}>
-            <Ionicons name="lock-closed-outline" size={14} color={colors.textFaint} />
-            <Text style={styles.infoText}>
-              Each participant's stake is escrowed from their wallet until the event resolves.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.subjectHeaderRow}>
-          <Ionicons name="person-outline" size={14} color={colors.amber} />
-          <Text style={styles.sectionLabel}>This bet is about someone (optional)</Text>
-        </View>
-        {membersLoading ? (
-          <LoadingState compact label="Loading group members…" />
-        ) : membersError ? (
-          <ErrorState compact message={membersError} onRetry={() => setMembersReloadKey((k) => k + 1)} />
-        ) : (
-          <>
-            <UserPicker
-              users={subjectCandidates}
-              value={subjectUserId}
-              onChange={setSubjectUserId}
-              placeholder="No one, general bet"
-              hint="Pick who this wager is about."
-            />
-            {subjectUserId ? (
-              <Toggle
-                label="Keep it secret from them"
-                value={!notifySubject}
-                onValueChange={(secret) => setNotifySubject(!secret)}
-                description={
-                  notifySubject
-                    ? `${subjectUsername ?? 'They'} will be notified about this bet.`
-                    : `Quiet bet: ${subjectUsername ?? 'they'} won't be notified.`
-                }
-              />
-            ) : null}
-          </>
-        )}
       </FormScreen>
     </View>
   );
@@ -436,17 +358,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginBottom: spacing.xl,
   },
-  sectionLabel: {
-    fontSize: tokens.fontSize.sm,
-    fontWeight: '600',
-    color: colors.textMuted,
-    marginBottom: spacing.sm,
-  },
-  subjectHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
   sideLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -462,22 +373,6 @@ const styles = StyleSheet.create({
     fontFamily: font.sansSemiBold,
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
-  },
-  stakeWrap: {
-    marginTop: spacing.sm,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.xs,
-    marginTop: -spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: tokens.fontSize.xs,
-    color: colors.textFaint,
-    lineHeight: tokens.lineHeight.xs,
   },
   errorBanner: {
     flexDirection: 'row',
