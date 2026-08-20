@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stackServerApp } from '@/lib/stack';
-import { cookies } from 'next/headers';
 import { getAllowedAuthCallbackUrl } from '@/lib/auth-redirect';
 
 const DEFAULT_MOBILE_CALLBACK = 'wagerpals://oauth-callback';
@@ -38,21 +37,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(callbackUrl.toString());
     }
 
-    // Try to get the access token from cookies
-    const cookieStore = await cookies();
-    const allCookies = cookieStore.getAll();
-
-    // Look for Stack Auth session cookies
+    // Get the real session tokens from the Stack SDK, NOT by grepping cookies.
+    // Stack keeps the access token in memory (only the refresh token is ever a
+    // cookie), and it rebranded its infra to "hexclave", so the old
+    // cookie.name.includes('stack-access') scan returned an EMPTY access token
+    // — the app then threw "No access token received" and the OAuth round-trip
+    // appeared to hang/never complete. currentSession.getTokens() is the
+    // supported, rebrand-proof accessor.
     let accessToken = '';
     let refreshToken = '';
-
-    for (const cookie of allCookies) {
-      if (cookie.name.includes('stack-access') || cookie.name.includes('accessToken')) {
-        accessToken = cookie.value;
-      }
-      if (cookie.name.includes('stack-refresh') || cookie.name.includes('refreshToken')) {
-        refreshToken = cookie.value;
-      }
+    try {
+      const tokens = await user.currentSession.getTokens();
+      accessToken = tokens.accessToken ?? '';
+      refreshToken = tokens.refreshToken ?? '';
+    } catch (e) {
+      console.error('mobile-session: getTokens failed', e);
     }
 
     const userId = user.id;
