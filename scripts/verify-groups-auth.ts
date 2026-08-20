@@ -148,6 +148,15 @@ class FakeDb {
     isMember: async (groupId: string, userId: string): Promise<boolean> =>
       this._members.some(m => m.group_id === groupId && m.user_id === userId && m.status === 'active'),
   };
+
+  // No resolved-event fixtures in this auth-focused harness — the group
+  // membership/roster checks below don't care about standings content, only
+  // that the member-gated ?id= branch (which now also computes `standings`
+  // via this accessor, see app/api/groups/route.ts) doesn't blow up for a
+  // fake db with no `events` at all.
+  events = {
+    getResolvedWithBetsByGroup: async (_groupId: string): Promise<any[]> => [],
+  };
 }
 
 // ---------------------------------------------------------------------------

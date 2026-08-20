@@ -21,12 +21,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../hooks/useAuth';
 import apiService from '../services/api';
-import { Event, EventWithStats, Group, GroupMember, WalletSummary } from '../types';
+import { Event, EventWithStats, Group, GroupMember, GroupStanding, WalletSummary } from '../types';
 import { ApiError, toApiError } from '../utils/errors';
 import { tapLight } from '../utils/haptics';
 import { handle } from '../utils/format';
 import { colors, font, gradients, radius, spacing, tokens, glow } from '../theme';
 import {
+  Avatar,
   Button,
   Card,
   EmptyState,
@@ -41,7 +42,13 @@ import {
   SplitBar,
 } from '../components';
 
-type GroupData = Group & { members?: GroupMember[]; pending_requests?: GroupMember[] };
+type GroupData = Group & {
+  members?: GroupMember[];
+  pending_requests?: GroupMember[];
+  // Member-only data (CLAUDE.md §8) — populated only when GET /api/groups?id=
+  // resolves the caller as an active member; mirrors app/api/groups/route.ts.
+  standings?: GroupStanding[];
+};
 
 type EventListItem =
   | { kind: 'section'; id: string; label: string }
@@ -335,6 +342,12 @@ export default function GroupDetailScreen() {
   // it from the already-loaded member roster instead of inventing a field.
   const creatorUsername = members.find((m) => m.user_id === group?.created_by)?.username;
 
+  // Standings ride along on the same GET /api/groups?id= payload as
+  // `members` — absent (not just empty) for a stale/non-member response,
+  // so default to [] the same way `members` already does above.
+  const standings = group?.standings ?? [];
+  const hasStandings = standings.some((row) => row.bets_count > 0);
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <FlatList
@@ -414,6 +427,37 @@ export default function GroupDetailScreen() {
                 <Ionicons name="share-outline" size={20} color={colors.brand} />
                 <Text style={styles.actionButtonText}>Invite</Text>
               </Pressable>
+            </View>
+
+            <View style={styles.standingsWrap}>
+              <SectionHeader title="Standings" />
+              {hasStandings ? (
+                <View style={styles.standingsCard}>
+                  {standings.map((row, idx) => {
+                    const isTop = idx === 0 && row.net > 0;
+                    return (
+                      <View
+                        key={row.user_id}
+                        style={[styles.standingRow, isTop && styles.standingRowTop, idx === standings.length - 1 && styles.standingRowLast]}
+                      >
+                        <Text style={[styles.standingRank, isTop && styles.standingRankTop]}>{idx + 1}</Text>
+                        <Avatar username={row.username} avatarUrl={row.avatar_url} size="sm" />
+                        <Text style={styles.standingName} numberOfLines={1} ellipsizeMode="tail">
+                          {handle(row.username)}
+                        </Text>
+                        <View style={styles.standingMoneyCol}>
+                          <Money amount={row.net} signed tone="auto" size="sm" />
+                          <Text style={styles.standingBetsCount}>
+                            {row.bets_count} {row.bets_count === 1 ? 'bet' : 'bets'}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : (
+                <Text style={styles.standingsEmpty}>No resolved bets yet. Standings show up once the group settles its first wager.</Text>
+              )}
             </View>
           </View>
         }
@@ -516,10 +560,12 @@ const styles = StyleSheet.create({
   codeRowPressed: {
     opacity: 0.6,
   },
+  // The join code — what people actually read aloud to invite someone into
+  // the group, so it needs to be legible at a glance, not caption-faint.
   groupCode: {
     fontFamily: font.monoMedium,
-    fontSize: tokens.fontSize.sm,
-    color: colors.textMuted,
+    fontSize: tokens.fontSize.base,
+    color: colors.text,
     fontVariant: ['tabular-nums'],
   },
   copyIcon: {
@@ -635,6 +681,65 @@ const styles = StyleSheet.create({
   sectionHeaderWrap: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
+  },
+  standingsWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+  },
+  standingsCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+  },
+  standingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    gap: spacing.sm,
+  },
+  standingRowTop: {
+    backgroundColor: tokens.color.goldFill,
+  },
+  standingRowLast: {
+    borderBottomWidth: 0,
+  },
+  standingRank: {
+    width: 18,
+    textAlign: 'right',
+    fontFamily: font.monoMedium,
+    fontSize: tokens.fontSize.sm,
+    color: colors.textFaint,
+    fontVariant: ['tabular-nums'],
+  },
+  standingRankTop: {
+    color: colors.gold,
+  },
+  standingName: {
+    flex: 1,
+    minWidth: 0,
+    fontFamily: font.sansMedium,
+    fontSize: tokens.fontSize.sm,
+    color: colors.text,
+  },
+  standingMoneyCol: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  standingBetsCount: {
+    fontFamily: font.sans,
+    fontSize: tokens.fontSize.xs,
+    color: colors.textFaint,
+  },
+  standingsEmpty: {
+    fontFamily: font.sans,
+    fontSize: tokens.fontSize.sm,
+    color: colors.textMuted,
   },
   eventCard: {
     marginHorizontal: spacing.lg,

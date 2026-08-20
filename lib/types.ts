@@ -187,6 +187,23 @@ export interface GroupMember {
   joined_at?: string;
 }
 
+// One row of a group's standings — an active member's net across the
+// group's resolved, non-cancelled/non-refunded events, summed via
+// calculateNetResults (lib/utils.ts) per event. Populated only on the
+// member-gated `GET /api/groups?id=` response (CLAUDE.md §8 "Group
+// membership is the read boundary") — never on the invite preview or
+// `?public=true` branches. See that route for the computation.
+export interface GroupStanding {
+  user_id: string;
+  username: string;
+  avatar_url?: string | null;
+  net: number;
+  // Count of non-late bets, placed by this member, on events that actually
+  // paid out (i.e. counted toward `net`) — a cancelled/no-winner event
+  // contributes to neither.
+  bets_count: number;
+}
+
 export interface Comment {
   id: string;
   event_id: string;

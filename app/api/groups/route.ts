@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { Group } from '@/lib/types';
+import { Bet, Event, Group, GroupMember, GroupStanding } from '@/lib/types';
 import { requireAuth, verifyUserMatch } from '@/lib/auth';
+import { calculateNetResults } from '@/lib/utils';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -10,6 +11,64 @@ export const dynamic = 'force-dynamic';
 function generateGroupId(): string {
   const num = crypto.randomInt(100000, 999999);
   return num.toString();
+}
+
+// Standings: rank the group's ACTIVE members by their net across the
+// group's RESOLVED, non-cancelled events. Reuses calculateNetResults (the
+// one settlement-math function, lib/utils.ts) per event and sums the
+// results per user — never reimplements the payout math.
+//
+// A resolved event contributes nothing when it was refunded rather than
+// settled — mirrors app/api/events/resolve/route.ts's own `refunded` check
+// (winning_side null = cancelled; nobody backed the winning side = the
+// settlement engine's no-winners refund path in lib/payments.ts). Both
+// conditions are read straight off the bets already fetched with the event,
+// same fields (`side`, `is_late`, `amount`) settleCashEvent keys its refund
+// decision off of — no second query, and no touching lib/payments.ts.
+//
+// Members with no resolved bets still show, at net 0 / 0 bets — every
+// active member is seeded into the map up front.
+function computeGroupStandings(
+  activeMembers: GroupMember[],
+  resolvedEvents: (Event & { bets: Bet[] })[]
+): GroupStanding[] {
+  const netByUser = new Map<string, number>();
+  const betsCountByUser = new Map<string, number>();
+  for (const member of activeMembers) {
+    netByUser.set(member.user_id, 0);
+    betsCountByUser.set(member.user_id, 0);
+  }
+
+  for (const event of resolvedEvents) {
+    const winningSide = event.resolution?.winning_side;
+    if (!winningSide) continue; // cancelled — every stake was refunded, no contribution
+
+    const winningTotal = event.bets
+      .filter(b => !b.is_late && b.side === winningSide)
+      .reduce((sum, b) => sum + b.amount, 0);
+    if (winningTotal === 0) continue; // nobody backed the winner — refunded, not settled
+
+    const netResults = calculateNetResults(event.bets, winningSide);
+    for (const result of netResults) {
+      if (!netByUser.has(result.user_id)) continue; // only rank current active members
+      netByUser.set(result.user_id, (netByUser.get(result.user_id) || 0) + result.net);
+    }
+    for (const bet of event.bets) {
+      if (bet.is_late) continue;
+      if (!betsCountByUser.has(bet.user_id)) continue;
+      betsCountByUser.set(bet.user_id, (betsCountByUser.get(bet.user_id) || 0) + 1);
+    }
+  }
+
+  return activeMembers
+    .map((member) => ({
+      user_id: member.user_id,
+      username: member.username || '',
+      avatar_url: member.avatar_url ?? undefined,
+      net: Math.round((netByUser.get(member.user_id) || 0) * 100) / 100,
+      bets_count: betsCountByUser.get(member.user_id) || 0,
+    }))
+    .sort((a, b) => b.net - a.net);
 }
 
 export async function GET(request: NextRequest) {
@@ -101,6 +160,12 @@ export async function GET(request: NextRequest) {
         activeMembers[0] ||
         null;
 
+    // Standings: member-only data (CLAUDE.md §8), so this only ever runs
+    // inside the `viewerStatus === 'active'` branch reached above — never
+    // for the invite preview just above, and never for `?public=true`.
+    const resolvedEvents = await db.events.getResolvedWithBetsByGroup(groupId);
+    const standings = computeGroupStandings(activeMembers, resolvedEvents);
+
     return NextResponse.json({
       ...group,
       resolver,
@@ -115,6 +180,7 @@ export async function GET(request: NextRequest) {
       // moderation is creator-only. is_admin is kept in the payload for
       // compatibility but now just means "is the group creator".
       is_admin: group.created_by === callerId,
+      standings,
     });
   }
 

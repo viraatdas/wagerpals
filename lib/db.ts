@@ -592,6 +592,34 @@ export const db = {
 
       return events;
     },
+
+    // For group standings (GET /api/groups?id=, member-gated branch only —
+    // see that route's header comment and CLAUDE.md §8): every RESOLVED
+    // event in a group together with its bets, in two batched queries (all
+    // resolved events, then all their bets keyed by event_id) instead of one
+    // bets query per event. Bare `bets.*` — no avatar_url join, since the
+    // caller already has avatar_url per member from db.groupMembers.getByGroup.
+    getResolvedWithBetsByGroup: async (groupId: string): Promise<(Event & { bets: Bet[] })[]> => {
+      const eventsResult = await sql`
+        SELECT * FROM events WHERE group_id = ${groupId} AND status = 'resolved'
+      `;
+      const events = eventsResult.rows.map(mapEvent);
+      if (events.length === 0) return [];
+
+      const eventIds = events.map(e => e.id);
+      const betsResult = await sql`
+        SELECT * FROM bets WHERE event_id = ANY(${eventIds as any}::text[]) ORDER BY event_id, timestamp ASC
+      `;
+      const betsByEvent = new Map<string, Bet[]>();
+      for (const row of betsResult.rows) {
+        const bet = mapBet(row);
+        const list = betsByEvent.get(bet.event_id) || [];
+        list.push(bet);
+        betsByEvent.set(bet.event_id, list);
+      }
+
+      return events.map(event => ({ ...event, bets: betsByEvent.get(event.id) || [] }));
+    },
   },
 
   bets: {

@@ -8,7 +8,7 @@ import EventCard from '@/components/EventCard';
 import { EventWithStats } from '@/lib/types';
 import AvatarStack from '@/components/AvatarStack';
 import EmptySlip from '@/components/EmptySlip';
-import { handle } from '@/lib/utils';
+import { handle, formatAmount } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -172,6 +172,8 @@ export default function GroupPage() {
 
   const { trendingEvents, ongoingEvents, settledEvents } = categorizeEvents();
   const members: any[] = Array.isArray(group.members) ? group.members : [];
+  const standings: any[] = Array.isArray(group.standings) ? group.standings : [];
+  const hasStandings = standings.some((row) => row.bets_count > 0);
 
   return (
     <div className="page-shell mobile-page animate-rise">
@@ -180,8 +182,11 @@ export default function GroupPage() {
         <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span className="eyebrow">
-                Group <span className="font-mono normal-case tracking-normal">{group.id}</span>
+              <span className="inline-flex items-baseline gap-1.5">
+                <span className="eyebrow">Group</span>
+                {/* The join code — what people actually read aloud to invite someone into
+                    the group, so it needs to be legible at a glance, not eyebrow-tiny. */}
+                <span className="font-mono text-sm font-medium text-ink tabular-nums">{group.id}</span>
               </span>
               {group.is_public ? (
                 <span className="pill tone-info"><span className="tone-dot" />Free points</span>
@@ -309,6 +314,49 @@ export default function GroupPage() {
           action={{ label: 'Create the first event', href: '/create' }}
         />
       )}
+
+      {/* Standings */}
+      <section className="mt-10">
+        <div className="section-head mb-5">
+          <span className="eyebrow">Standings</span>
+        </div>
+        {hasStandings ? (
+          <div className="card overflow-hidden">
+            <ul className="divide-y divide-hairline">
+              {standings.map((row: any, idx: number) => {
+                const isTop = idx === 0 && row.net > 0;
+                const netClass = row.net > 0 ? 'text-emerald' : row.net < 0 ? 'text-crimson-ink' : 'text-ink';
+                return (
+                  <li
+                    key={row.user_id}
+                    className={`flex items-center gap-3 px-4 py-3 sm:px-5 ${isTop ? 'bg-gold/5' : ''}`}
+                  >
+                    <span className={`w-5 shrink-0 text-right font-mono text-sm tabular-nums ${isTop ? 'text-gold-ink' : 'text-ink-muted'}`}>
+                      {idx + 1}
+                    </span>
+                    <AvatarStack people={[{ username: row.username, avatar_url: row.avatar_url }]} size="sm" className="flex-none" />
+                    <span className="min-w-0 flex-1 truncate font-sans text-sm font-medium text-foreground">
+                      {handle(row.username)}
+                    </span>
+                    <div className="flex flex-col items-end shrink-0">
+                      <span className={`font-mono text-sm font-semibold tabular-nums ${netClass}`}>
+                        {formatAmount(row.net)}
+                      </span>
+                      <span className="text-xs text-ink-muted">
+                        {row.bets_count} {row.bets_count === 1 ? 'bet' : 'bets'}
+                      </span>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : (
+          <p className="font-sans text-sm text-ink-muted">
+            No resolved bets yet. Standings show up once the group settles its first wager.
+          </p>
+        )}
+      </section>
 
       {/* Member roster */}
       <section className="mt-10">

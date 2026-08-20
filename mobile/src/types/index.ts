@@ -169,6 +169,18 @@ export interface GroupMember {
   joined_at?: string;
 }
 
+// Mirrors lib/types.ts GroupStanding — one row of a group's standings, an
+// active member's net across the group's resolved, non-cancelled/
+// non-refunded events. Populated only on the member-gated GET /api/groups?id=
+// response, never on the invite preview or ?public=true branches.
+export interface GroupStanding {
+  user_id: string;
+  username: string;
+  avatar_url?: string | null;
+  net: number;
+  bets_count: number;
+}
+
 export interface Comment {
   id: string;
   event_id: string;

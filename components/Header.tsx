@@ -7,19 +7,22 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@stackframe/stack';
 import Logo from './Logo';
 
-// The six IA labels (see IA-DECISIONS.md — bindings are fixed, not mine to
+// The IA labels (see IA-DECISIONS.md — bindings are fixed, not mine to
 // re-litigate). "Create" is deliberately not in this list: it's the primary
-// action button, not a nav item.
+// action button, not a nav item. There is no global "Friends" concept in
+// this app — who you're playing against is scoped to a group, and a
+// group's standings live on that group's own page, not a site-wide roster.
+// app/users/page.tsx stays on disk and routable, just unlinked here (same
+// treatment /all-events and /calendar already got).
 const desktopLinks = [
   { href: '/', label: 'Live' },
   { href: '/activity', label: 'History' },
-  { href: '/users', label: 'Friends' },
   { href: '/profile', label: 'Profile' },
 ];
 
-// Mobile bottom-tab bar: same labels, but only four slots fit comfortably
+// Mobile bottom-tab bar: same labels, but only three slots fit comfortably
 // at 360px (per IA-DECISIONS.md #5) — Wallet stays reachable via the
-// header's balance chip, Friends via a link on the Profile page.
+// header's balance chip.
 const mobileNavItems = [
   {
     href: '/',
