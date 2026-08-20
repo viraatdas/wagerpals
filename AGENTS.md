@@ -173,10 +173,14 @@ finishing mobile work, every time, in the session where the work happened:
 4. When it finishes, submit it:
    `... eas submit --platform ios --profile production --id <build-id> --non-interactive`
 5. Confirm via the ASC API that the build reached VALID (filter `expired=false` AND
-   today's `uploadedDate` — never trust version number alone, see §4's stale-record trap),
-   and that it appears for TestFlight: internal (owner) distribution is automatic;
-   external testers ride the beta-review queue (one submission per version-train — queue
-   the next when the previous clears).
+   today's `uploadedDate` — never trust version number alone, see §4's stale-record trap).
+   Then, EVERY build, no exceptions: add it to the "Friends" external TestFlight group
+   (`POST /v1/betaGroups/5ca50117-b65d-4871-a09a-5212f005908a/relationships/builds`) and
+   attempt a beta review submission (`POST /v1/betaAppReviewSubmissions`); a 422
+   ANOTHER_BUILD_IN_REVIEW is fine — it means the train is queued, and the newest build
+   flows to external testers + the public link
+   (https://testflight.apple.com/join/SS2XwXNF) as reviews clear. Internal (owner)
+   distribution is automatic.
 6. Report the build number to the owner in the same breath as the change itself. A mobile
    change that hasn't produced a TestFlight build is NOT done.
 

@@ -37,7 +37,7 @@ const archivoBlack = Archivo_Black({
 });
 
 const APP_TITLE = "WagerPals | Bet On Your Friends' Shenanigans";
-const APP_DESCRIPTION = "Don't tell the feds";
+const APP_DESCRIPTION = "We have Kalshi at Home";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://wagerpals.io"),

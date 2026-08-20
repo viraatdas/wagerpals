@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "WagerPals",
+    "name": "Wager Pals",
     "slug": "wagerpals",
     "version": "1.1.0",
     "orientation": "portrait",
@@ -22,8 +22,12 @@
         "applinks:*.wagerpals.io"
       ],
       "entitlements": {
-        "com.apple.security.application-groups": ["group.com.wagerpals.app"],
-        "keychain-access-groups": ["$(AppIdentifierPrefix)com.wagerpals.shared"]
+        "com.apple.security.application-groups": [
+          "group.com.wagerpals.app"
+        ],
+        "keychain-access-groups": [
+          "$(AppIdentifierPrefix)com.wagerpals.shared"
+        ]
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -108,8 +112,12 @@
                   "targetName": "WagerPalsMessages",
                   "bundleIdentifier": "com.wagerpals.app.messages",
                   "entitlements": {
-                    "com.apple.security.application-groups": ["group.com.wagerpals.app"],
-                    "keychain-access-groups": ["$(AppIdentifierPrefix)com.wagerpals.shared"]
+                    "com.apple.security.application-groups": [
+                      "group.com.wagerpals.app"
+                    ],
+                    "keychain-access-groups": [
+                      "$(AppIdentifierPrefix)com.wagerpals.shared"
+                    ]
                   }
                 }
               ]
