@@ -1,5 +1,13 @@
-// Authentication service using Stack Auth via web-based OAuth
-import * as WebBrowser from 'expo-web-browser';
+// Authentication service. Email/magic-link goes through the web app's Stack
+// Auth-backed endpoints; Google uses the NATIVE iOS Google Sign-In SDK (the
+// system account picker) and exchanges the resulting Google ID token for a
+// Stack session at /api/auth/google-native. No in-app browser is involved.
+import {
+  GoogleSignin,
+  isSuccessResponse,
+  isErrorWithCode,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 import { AuthUser } from '../types';
 import {
   setSharedItem,
@@ -13,6 +21,36 @@ import {
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__
   ? 'http://localhost:3000'
   : 'https://www.wagerpals.io');
+
+// The existing Web OAuth client id (Google Cloud console → Credentials). This
+// is a public identifier, not a secret. Passing it as webClientId is what
+// makes the native SDK return an `idToken` we can verify server-side, and it
+// is also one of the audiences /api/auth/google-native accepts.
+const GOOGLE_WEB_CLIENT_ID =
+  // @ts-ignore
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+  '1084366774946-9t37qi8aaj3v3k69fnkggf7qq2egl0m3.apps.googleusercontent.com';
+
+// The iOS OAuth client id. It does NOT exist yet — the owner is creating it in
+// the Google Cloud console (iOS client, bundle id com.wagerpals.app). It MUST
+// be set (EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID in mobile/.env, and mirrored into
+// EAS build env) BEFORE building, and its reversed form must be the iOS URL
+// scheme injected by app.config.js. Without it, native Google sign-in cannot
+// start.
+const GOOGLE_IOS_CLIENT_ID =
+  // @ts-ignore
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
+
+let googleConfigured = false;
+function ensureGoogleConfigured() {
+  if (googleConfigured) return;
+  GoogleSignin.configure({
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+    iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
+    offlineAccess: false,
+  });
+  googleConfigured = true;
+}
 
 class AuthService {
   private currentUser: AuthUser | null = null;
@@ -117,60 +155,69 @@ class AuthService {
 
   async signInWithGoogle(): Promise<AuthUser> {
     try {
-      const callbackUrl = 'wagerpals://oauth-callback';
-      const oauthUrl = `${API_BASE_URL}/api/auth/mobile-oauth?provider=google&callback_url=${encodeURIComponent(callbackUrl)}`;
+      ensureGoogleConfigured();
 
-      // Open the OAuth URL in an in-app browser
-      const result = await WebBrowser.openAuthSessionAsync(oauthUrl, callbackUrl);
+      // No-op on iOS (Play Services is Android-only) but harmless, and keeps
+      // the call site correct if Android is ever enabled.
+      await GoogleSignin.hasPlayServices();
 
-      if (result.type === 'cancel' || result.type === 'dismiss') {
+      // Native system account picker. Returns { type: 'success', data } or
+      // { type: 'cancelled' } — it does not throw on a plain cancel.
+      const response = await GoogleSignin.signIn();
+
+      if (!isSuccessResponse(response)) {
         throw new Error('Authentication cancelled');
       }
 
-      if (result.type === 'success' && result.url) {
-        const url = new URL(result.url);
-        const params = url.searchParams;
-
-        const error = params.get('error');
-        if (error) {
-          throw new Error(error);
-        }
-
-        const accessToken = params.get('access_token');
-        const refreshToken = params.get('refresh_token');
-        const userId = params.get('user_id');
-        const email = params.get('email');
-        const displayName = params.get('display_name');
-
-        if (!accessToken) {
-          throw new Error('No access token received');
-        }
-
-        await setSharedItem('accessToken', accessToken);
-        if (refreshToken) {
-          await setSharedItem('refreshToken', refreshToken);
-        }
-
-        const user: AuthUser = {
-          id: userId || '',
-          email: email || '',
-          displayName: displayName || email?.split('@')[0] || 'User',
-          primaryEmail: email || '',
-        };
-
-        await this.setUser(user);
-        await this.syncUser();
-        return user;
+      const idToken = response.data.idToken;
+      if (!idToken) {
+        throw new Error('Google did not return an identity token. Please try again.');
       }
 
-      throw new Error('Authentication failed');
+      // Exchange the verified-by-us-on-the-server Google ID token for a Stack
+      // session.
+      const res = await fetch(`${API_BASE_URL}/api/auth/google-native`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Could not sign you in with Google. Please try again.');
+      }
+
+      const data = await res.json();
+
+      if (data.access_token) {
+        await setSharedItem('accessToken', data.access_token);
+      }
+      if (data.refresh_token) {
+        await setSharedItem('refreshToken', data.refresh_token);
+      }
+
+      const user: AuthUser = {
+        id: data.user_id || data.id || '',
+        email: data.email || '',
+        displayName: data.display_name || data.email?.split('@')[0] || 'User',
+        primaryEmail: data.email || '',
+      };
+
+      await this.setUser(user);
+      await this.syncUser();
+      return user;
     } catch (error: any) {
-      console.error('Google sign in error:', error);
-
-      if (error.message?.includes('cancelled') || error.message?.includes('canceled')) {
+      // A user backing out of the native sheet is not an error worth
+      // surfacing. The SDK signals cancel either as a typed response (handled
+      // above) or, for some operations, as an error code.
+      if (isErrorWithCode(error) && error.code === statusCodes.SIGN_IN_CANCELLED) {
         throw new Error('Authentication cancelled');
       }
+      if (error?.message === 'Authentication cancelled') {
+        throw error;
+      }
 
+      console.error('Google sign in error:', error);
       throw error;
     }
   }
