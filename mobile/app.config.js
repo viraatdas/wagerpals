@@ -18,6 +18,15 @@ module.exports = ({ config }) => {
   const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
   const plugins = [...(config.plugins || [])];
 
+  // Native Sign in with Apple (App Review Guideline 4.8: the app offers Google
+  // sign-in, so Apple requires an equivalent). This config plugin adds the
+  // `com.apple.developer.applesignin` entitlement, which is what makes EAS
+  // provision the "Sign in with Apple" capability for the app id. It takes no
+  // options and is safe to add unconditionally — it is a no-op at runtime on
+  // non-Apple platforms. A native iOS app authenticates against its own bundle
+  // id (com.wagerpals.app), so NO separate Apple Services ID is required.
+  plugins.push('expo-apple-authentication');
+
   if (iosClientId) {
     const reversed =
       'com.googleusercontent.apps.' +

@@ -8,6 +8,7 @@ import {
   isErrorWithCode,
   statusCodes,
 } from '@react-native-google-signin/google-signin';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { AuthUser } from '../types';
 import {
   setSharedItem,
@@ -220,6 +221,81 @@ class AuthService {
       console.error('Google sign in error:', error);
       throw error;
     }
+  }
+
+  async signInWithApple(): Promise<AuthUser> {
+    let credential: AppleAuthentication.AppleAuthenticationCredential;
+    try {
+      // Native Sign in with Apple sheet. Requesting FULL_NAME + EMAIL — Apple
+      // only returns these on the user's FIRST authorization for this app;
+      // every later sign-in returns just the identity token. We capture them
+      // here and forward them so the backend can seed a display name and, if
+      // the token ever omits the email, use it as a lookup hint.
+      credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+    } catch (error: any) {
+      // Backing out of the native sheet is not an error worth surfacing —
+      // mirror the Google path and throw the same cancel sentinel.
+      if (error?.code === 'ERR_REQUEST_CANCELED') {
+        throw new Error('Authentication cancelled');
+      }
+      console.error('Apple sign in error:', error);
+      throw error;
+    }
+
+    const identityToken = credential.identityToken;
+    if (!identityToken) {
+      throw new Error('Apple did not return an identity token. Please try again.');
+    }
+
+    // fullName is Apple's structured name; it is null on non-first sign-ins.
+    const fullName = credential.fullName
+      ? {
+          givenName: credential.fullName.givenName ?? undefined,
+          familyName: credential.fullName.familyName ?? undefined,
+        }
+      : undefined;
+
+    // Exchange the verified-by-us-on-the-server Apple identity token for a
+    // Stack session.
+    const res = await fetch(`${API_BASE_URL}/api/auth/apple-native`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identityToken,
+        fullName,
+        email: credential.email ?? undefined,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Could not sign you in with Apple. Please try again.');
+    }
+
+    const data = await res.json();
+
+    if (data.access_token) {
+      await setSharedItem('accessToken', data.access_token);
+    }
+    if (data.refresh_token) {
+      await setSharedItem('refreshToken', data.refresh_token);
+    }
+
+    const user: AuthUser = {
+      id: data.user_id || data.id || '',
+      email: data.email || '',
+      displayName: data.display_name || data.email?.split('@')[0] || 'User',
+      primaryEmail: data.email || '',
+    };
+
+    await this.setUser(user);
+    await this.syncUser();
+    return user;
   }
 
   async signOut() {

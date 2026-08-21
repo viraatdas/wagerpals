@@ -9,6 +9,7 @@
 // land on the same account.
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Platform,
   StatusBar,
   StyleSheet,
   Text,
@@ -18,6 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import authService from '../services/auth';
 import { ApiError, toApiError } from '../utils/errors';
 import * as haptics from '../utils/haptics';
@@ -25,7 +27,7 @@ import { Button, FormScreen } from '../components';
 import { colors, font, gradients, radius, spacing, tokens } from '../theme';
 
 type Step = 'email' | 'code';
-type Busy = null | 'sendCode' | 'verify' | 'google' | 'resend';
+type Busy = null | 'sendCode' | 'verify' | 'google' | 'apple' | 'resend';
 
 const CODE_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 30;
@@ -48,7 +50,28 @@ export default function AuthScreen() {
   const [emailError, setEmailError] = useState('');
   const [codeError, setCodeError] = useState('');
   const [cooldown, setCooldown] = useState(0);
+  const [appleAvailable, setAppleAvailable] = useState(false);
   const codeInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    // Sign in with Apple is iOS-only and only on supported OS versions. Gate
+    // the button on a real availability check so Android/unsupported never
+    // renders it (App Review Guideline 4.8 only requires it where Google is
+    // offered, which is every platform, but the native sheet is Apple-only).
+    let cancelled = false;
+    if (Platform.OS === 'ios') {
+      AppleAuthentication.isAvailableAsync()
+        .then((available) => {
+          if (!cancelled) setAppleAvailable(available);
+        })
+        .catch(() => {
+          if (!cancelled) setAppleAvailable(false);
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -123,6 +146,12 @@ export default function AuthScreen() {
     }
   };
 
+  // Native Google Sign-In only works when the iOS OAuth client id is baked
+  // into the build (EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID). Until it is, hide the
+  // Google button so no one taps a button that can't complete — Apple + email
+  // still cover sign-in (and Apple satisfies Guideline 4.8 on its own).
+  const googleConfigured = !!process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+
   const handleGoogleAuth = async () => {
     if (busy) return;
     setBusy('google');
@@ -140,6 +169,28 @@ export default function AuthScreen() {
         return;
       }
       const apiErr = classifyError(err, '/api/auth/mobile-oauth');
+      setEmailError(apiErr.isOffline ? "You're offline. Check your connection and try again." : apiErr.userMessage);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleAppleAuth = async () => {
+    if (busy) return;
+    setBusy('apple');
+    setEmailError('');
+
+    try {
+      await authService.signInWithApple();
+      haptics.success();
+      // Auth state change will trigger navigation via RootNavigator
+    } catch (err) {
+      // Backing out of the Apple sheet is not an error worth surfacing —
+      // authService throws this exact message on ERR_REQUEST_CANCELED.
+      if (err instanceof Error && err.message === 'Authentication cancelled') {
+        return;
+      }
+      const apiErr = classifyError(err, '/api/auth/apple-native');
       setEmailError(apiErr.isOffline ? "You're offline. Check your connection and try again." : apiErr.userMessage);
     } finally {
       setBusy(null);
@@ -240,16 +291,31 @@ export default function AuthScreen() {
                 <View style={styles.dividerLine} />
               </View>
 
-              <Button
-                title="Continue with Google"
-                onPress={handleGoogleAuth}
-                loading={busy === 'google'}
-                disabled={busy !== null && busy !== 'google'}
-                variant="secondary"
-                icon="logo-google"
-                fullWidth
-                haptic="none"
-              />
+              {googleConfigured ? (
+                <Button
+                  title="Continue with Google"
+                  onPress={handleGoogleAuth}
+                  loading={busy === 'google'}
+                  disabled={busy !== null && busy !== 'google'}
+                  variant="secondary"
+                  icon="logo-google"
+                  fullWidth
+                  haptic="none"
+                />
+              ) : null}
+
+              {appleAvailable ? (
+                // Apple mandates their official button + styling. Black-on-paper
+                // reads best against the light "paper" surface. Native sheet is
+                // iOS-only, so this only renders after isAvailableAsync().
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={radius.md}
+                  style={styles.appleButton}
+                  onPress={handleAppleAuth}
+                />
+              ) : null}
             </View>
           ) : (
             <View style={styles.form}>
@@ -446,6 +512,13 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     letterSpacing: 12,
+  },
+  // Height matches the Button component's default (md = 44) so the Apple
+  // button lines up with "Continue with Google" directly above it.
+  appleButton: {
+    height: 44,
+    width: '100%',
+    marginTop: spacing.md,
   },
   divider: {
     flexDirection: 'row',
