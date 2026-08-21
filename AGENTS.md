@@ -234,3 +234,33 @@ must be `https://api.hexclave.com/api/v1/auth/oauth/callback/google` (the docume
 api.stack-auth.com callback 400s with redirect_uri_mismatch). Verified headlessly with a
 WebKit run through the production chain (scratchpad oauthcheck.mjs pattern): assert Google
 receives our client_id and no redirect error renders.
+
+## 10. Building without EAS cloud credits (local builds)
+
+The Expo account is on the Free plan (30 cloud iOS builds/month). When that's exhausted
+(or to avoid burning it), build LOCALLY — local builds do NOT consume the cloud quota:
+
+```bash
+cd mobile
+eas build --platform ios --profile production --local --output /tmp/wagerpals.ipa
+```
+
+This runs the same fastlane/xcodebuild pipeline on this machine and writes a store-signed
+.ipa. It fetches signing credentials from EAS servers automatically ("All credentials are
+ready to build"). Then submit the artifact the normal way:
+
+```bash
+eas submit --platform ios --profile production --path /tmp/wagerpals.ipa --non-interactive
+```
+
+Then run the §7 delivery chain (attach to the Friends external group + beta review + the
+delivery proof) exactly as for a cloud build.
+
+Gotchas learned here:
+- Local builds take ~20-30 min. Run them so they survive: this box sleeps and (apparently)
+  a peer session sometimes `pkill`s xcodebuild, killing detached builds mid-run. Prefer
+  running the command in the operator's own foreground terminal (`! cd mobile && eas
+  build … --local`) rather than a backgrounded agent process, which has been getting SIGINT.
+- `--local` still needs the full Xcode toolchain and CocoaPods (present here: Xcode 26.6).
+- The iMessage extension target builds fine locally (the config plugin injects it during
+  prebuild, same as cloud).
