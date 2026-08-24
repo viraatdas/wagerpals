@@ -312,5 +312,13 @@ not re-litigate them:
   is incompatible with the current project format and dies with "The Xcode build
   system has terminated due to an error"
 
+There is NO software workaround. Tested 2026-08-24 by feeding the probe's streams to an
+undrained pipe: stdout-only blocks, stderr-only blocks, and stripping `-v` still blocks —
+because the 16 KB `-dM` macro dump on stdout is the output Xcode actually needs, and it
+cannot fit in a 512-byte pipe. Interposing a clang wrapper cannot help. Freeing pipes does
+not help either: quitting Spotify, Notion and Beeper released ~90 pipe fds and capacity did
+not move one byte, which says `amountpipekva` is LEAKED rather than genuinely in use. Only
+a reboot resets that accounting.
+
 Cloud builds are immune (different machine). Builds 9-21 were ALL cloud builds, so
 until this is fixed no local build has ever actually succeeded on this box.
