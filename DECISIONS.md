@@ -1073,3 +1073,29 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   click away; screenshots must match the shipped UI, which made build 10 the honest choice
   (owner approved).
 - **By:** orchestrator (Fable) · 2026-08-19
+
+## App Store: Sign in with Apple was never provisioned; privacy policy never existed
+- **What:** Preparing build 22 (the Guideline 4.8 fix) surfaced two things no build could
+  have fixed on its own. (1) **`APPLE_ID_AUTH` was never enabled on the App ID.** Commit
+  747d09de assumed "EAS provisions the App ID capability at build" — it does not, for a
+  non-interactive build. `com.wagerpals.app` carried only IAP, push, associated domains and
+  app groups, so any archive would have failed at export against a profile lacking the
+  entitlement. Enabled it via the ASC API (`capabilityType: APPLE_ID_AUTH`, setting
+  `APPLE_ID_AUTH_APP_CONSENT: PRIMARY_APP_CONSENT`); Apple then regenerates the profile
+  content, and the profile pulled at build time now carries `com.apple.developer.applesignin`
+  (the Aug 20 copy did not). (2) **There was no privacy policy.** ASC's `privacyPolicyUrl`
+  pointed at `https://www.wagerpals.io/`, which never says the word "privacy"; `/privacy`,
+  `/privacy-policy` and `/terms` all 404'd. That is a Guideline 5.1.1 rejection. Added
+  `app/privacy/page.tsx` (tokens-only, contact = the live TestFlight feedback address) and
+  repointed ASC at it.
+- **Also:** the store listing's promotional text read "polymarket for firends" (typo, public
+  on the product page), and `demoAccountRequired` was false while the app is entirely behind
+  a login wall — a 2.1 "could not sign in" risk.
+- **Open risk (owner decided to submit anyway):** the listing is rated 4+ while the app moves
+  real money through Stripe. Guideline 5.3 is a bigger rejection risk than 4.8 ever was.
+- **Local builds:** three consecutive agent-spawned local builds hung at the
+  xcodebuild <-> SWBBuildService handshake (both sides idle on mach ports, zero compile
+  workers, derived data frozen) — via EAS and via direct `xcodebuild -quiet` alike. This is
+  the failure AGENTS.md 10 already describes; the operator's own foreground terminal is the
+  working path. Do not burn cycles retrying it from an agent process.
+- **By:** worker · 2026-08-24
