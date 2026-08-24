@@ -282,13 +282,17 @@ measured at exactly 1024, then 512, on this machine with swap pinned at 5.1 GB o
 SWBBuildService sits idle in `mach_msg` waiting for a task that will never finish,
 and xcodebuild waits on the build service. Three processes, all "alive", zero progress.
 
-**`sudo purge` does NOT fix it** (verified 2026-08-24: it freed ~530 MB of pages and
-capacity stayed pinned at exactly 512, unmoving across repeated samples). macOS sizes
-pipes from a dedicated kernel address-space pool, not from free RAM, and once that pool
-is degraded it stays degraded until pipes are actually released. What works: **reboot**
-(definitive), or quit the heavy pipe holders — measured on this box as node 139,
-OrbStack 91, browser 47, Notion 38, Spotify 35 open pipe fds. Then confirm
-`npm run preflight:local` reports >= 16384 before building.
+**Reboot is the fix. Nothing softer worked.** Measured 2026-08-24, in order:
+- `sudo purge` freed ~530 MB of pages; capacity stayed pinned at exactly 512.
+- Free RAM was never the constraint — 530 MB is ample for a 16 KB pipe buffer.
+- Nor was the pipe pool exhausted: 432 distinct pipe fds is ~6.75 MB, only ~42% of a
+  16 MB `maxpipekva`, well under the 50% mark where XNU switches to small pipes.
+
+So neither of the two obvious explanations holds. What is left, and what fits a box with
+2.5 days of uptime under heavy multi-agent load, is kernel address-space fragmentation:
+`pipespace()` grows a pipe from 512 bytes toward 16384 on demand via `kmem_alloc`, and
+that growth is failing. Only a reboot clears it. Confirm with `npm run preflight:local`
+(want >= 16384) before spending 25 minutes on a build.
 
 The one-command recovery path lives outside the repo at `~/wagerpals-ship22/ship22.sh`
 (durable — the session scratchpad is under /private/tmp and does not survive a reboot).
