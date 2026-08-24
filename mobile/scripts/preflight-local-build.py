@@ -36,9 +36,13 @@ if n >= NEEDED:
     sys.exit(0)
 print(
     "\nBLOCKED: the kernel is handing out minimum-size pipes, so xcodebuild will\n"
-    "hang at CreateBuildDescription with no error. Free memory, then re-run:\n"
-    "  - sudo purge\n"
-    "  - quit the biggest apps (a browser is usually the top consumer)\n"
-    "  - or reboot\n"
-    "Cloud builds (eas build without --local) are unaffected.")
+    "hang at CreateBuildDescription with no error.\n\n"
+    "macOS sizes pipes from a dedicated kernel address-space pool, NOT from free\n"
+    "RAM, and once degraded it stays degraded until pipes are released. Verified\n"
+    "2026-08-24: `sudo purge` freed ~530 MB and capacity stayed pinned at 512.\n"
+    "What actually works:\n"
+    "  - reboot (definitive: resets the pool)\n"
+    "  - or quit the heavy pipe holders (measured: node 139, OrbStack 91,\n"
+    "    browser 47, Notion 38, Spotify 35)\n"
+    "Cloud builds (eas build without --local) are immune.")
 sys.exit(1)

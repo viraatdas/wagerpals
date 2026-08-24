@@ -282,8 +282,18 @@ measured at exactly 1024, then 512, on this machine with swap pinned at 5.1 GB o
 SWBBuildService sits idle in `mach_msg` waiting for a task that will never finish,
 and xcodebuild waits on the build service. Three processes, all "alive", zero progress.
 
-The fix is to free memory (`sudo purge`, quit the biggest app — a browser is usually
-top, or reboot) until `npm run preflight:local` reports >= 16384, then build.
+**`sudo purge` does NOT fix it** (verified 2026-08-24: it freed ~530 MB of pages and
+capacity stayed pinned at exactly 512, unmoving across repeated samples). macOS sizes
+pipes from a dedicated kernel address-space pool, not from free RAM, and once that pool
+is degraded it stays degraded until pipes are actually released. What works: **reboot**
+(definitive), or quit the heavy pipe holders — measured on this box as node 139,
+OrbStack 91, browser 47, Notion 38, Spotify 35 open pipe fds. Then confirm
+`npm run preflight:local` reports >= 16384 before building.
+
+The one-command recovery path lives outside the repo at `~/wagerpals-ship22/ship22.sh`
+(durable — the session scratchpad is under /private/tmp and does not survive a reboot).
+It preflights, builds, submits, cancels the in-flight review submission, attaches the new
+build, refiles, runs the TestFlight chain, and prints the delivery proof.
 
 Things that look like the cause and are NOT — each was ruled out with evidence, do
 not re-litigate them:
