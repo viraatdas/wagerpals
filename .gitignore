@@ -47,3 +47,6 @@ RUDDER_SHARED.md
 .claude/skills/rudder-*/
 .rudder-workspaces/
 .env*
+
+# offstage run artifacts (screenshots, logs) — regenerated per run
+.offstage/
