@@ -264,3 +264,39 @@ Gotchas learned here:
 - `--local` still needs the full Xcode toolchain and CocoaPods (present here: Xcode 26.6).
 - The iMessage extension target builds fine locally (the config plugin injects it during
   prebuild, same as cloud).
+
+### The local-build hang: tiny pipes under memory pressure (root-caused 2026-08-24)
+
+A local build that prints its fastlane banner and then does NOTHING — no compile
+workers, derived data frozen at ~2.4 MB, no error, forever — is NOT an EAS, signing,
+or project problem. Run `cd mobile && npm run preflight:local` FIRST; it answers in
+under a second.
+
+What happens: Xcode's `CreateBuildDescription` runs a toolchain probe,
+`clang -v -E -dM -arch arm64 -isysroot <sdk> -x objective-c -c /dev/null`, through
+`ExecuteExternalTool` and does not drain its output concurrently. The probe emits
+~16 KB (16082 B stdout + 4672 B stderr). A healthy macOS pipe holds 16384 B, so it
+just fits. **Under memory pressure the kernel falls back to 512/1024-byte pipes** —
+measured at exactly 1024, then 512, on this machine with swap pinned at 5.1 GB of
+6.1 GB. clang then blocks in `write()` inside `clang::driver::Command::Print`,
+SWBBuildService sits idle in `mach_msg` waiting for a task that will never finish,
+and xcodebuild waits on the build service. Three processes, all "alive", zero progress.
+
+The fix is to free memory (`sudo purge`, quit the biggest app — a browser is usually
+top, or reboot) until `npm run preflight:local` reports >= 16384, then build.
+
+Things that look like the cause and are NOT — each was ruled out with evidence, do
+not re-litigate them:
+- disk space (41 GB free), process limits (483 of 4000), fd limits
+- a stale clang module cache, DerivedData, or Xcode caches (all cleared, still hung)
+- running the build detached with `os.setsid()` (retried attached; still hung — but
+  note setsid IS worth avoiding anyway, it drops the login session's bootstrap namespace)
+- the launchd session type (the agent shell is already `Aqua`)
+- `CC_PRINT_OPTIONS` (explicitly set to NO; still hung)
+- EAS's `| tee` pipeline with xcpretty disabled (raw `xcodebuild -quiet` hangs identically)
+- the legacy `XCBBuildService` via `XCBBUILDSERVICE_PATH` — it exists in Xcode 26 but
+  is incompatible with the current project format and dies with "The Xcode build
+  system has terminated due to an error"
+
+Cloud builds are immune (different machine). Builds 9-21 were ALL cloud builds, so
+until this is fixed no local build has ever actually succeeded on this box.
