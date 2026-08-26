@@ -100,8 +100,30 @@ xcodebuild -exportArchive \
 
 IPA="$OUT/export/WagerPals.ipa"
 echo "==> verifying $IPA"
-codesign -dvvv "$OUT/WagerPals.xcarchive/Products/Applications/WagerPals.app" 2>&1 |
-  grep -q "TeamIdentifier=$TEAM" || { echo "wrong team"; exit 1; }
+# Verify the .ipa, not the .xcarchive: the archive is Apple *Development*
+# signed by design and only exportArchive re-signs it for distribution, so
+# checking the archive would pass while shipping the wrong thing.
+#
+# Note the deliberate absence of `| grep -q` here. Under `set -o pipefail`,
+# grep -q exits the moment it matches, codesign dies on SIGPIPE, and the
+# pipeline reports failure on a SUCCESSFUL check. That cost one good build 23
+# a false "wrong team" abort; capture first, match second.
+VERIFY_DIR=$(mktemp -d)
+trap 'rm -rf "$VERIFY_DIR"' EXIT
+( cd "$VERIFY_DIR" && unzip -q "$IPA" )
+APP="$VERIFY_DIR/Payload/WagerPals.app"
+SIG=$(codesign -dvvv "$APP" 2>&1 || true)
+ENT=$(codesign -d --entitlements - --xml "$APP" 2>/dev/null | plutil -p - 2>/dev/null || true)
+fail=0
+case "$SIG" in *"TeamIdentifier=$TEAM"*) ;; *) echo "  FAIL wrong team"; fail=1;; esac
+case "$SIG" in *"Authority=Apple Distribution"*) ;; *) echo "  FAIL not distribution-signed"; fail=1;; esac
+case "$ENT" in *'"aps-environment" => "production"'*) ;; *) echo "  FAIL aps-environment is not production"; fail=1;; esac
+case "$ENT" in *'"get-task-allow" => 0'*|*'"get-task-allow" => false'*) ;; *) echo "  FAIL get-task-allow is not false"; fail=1;; esac
+test -d "$APP/PlugIns/WagerPalsMessages.appex" || { echo "  FAIL iMessage extension missing"; fail=1; }
+BUILT=$(plutil -extract CFBundleVersion raw "$APP/Info.plist" 2>/dev/null || echo '?')
+test "$BUILT" = "$BUILD_NUMBER" || { echo "  FAIL CFBundleVersion is $BUILT, expected $BUILD_NUMBER"; fail=1; }
+test "$fail" = 0 || exit 1
+echo "  ok: $MARKETING_VERSION ($BUILT), Apple Distribution, production APS, extension bundled"
 ls -la "$IPA"
 echo
 echo "store-signed ipa ready. Submit with:"
