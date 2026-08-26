@@ -21,11 +21,10 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_verify_payments_local';
 process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_verify_payments_local';
-// Withdrawals are disabled by default in production (see
-// app/api/wallet/route.ts and .env.local.example) because no real payout
-// mechanism exists yet. Force-enable here so Step 13 can still exercise the
-// withdrawal path end-to-end; a later step flips this off and back on to
-// prove the gate itself works.
+// Withdrawals refund to source and are ON unless the flag is the exact string
+// 'false' (see app/api/wallet/route.ts). Pin it explicitly so Step 13 runs the
+// payout path regardless of what .env.local happens to say; Step 13b flips it
+// to 'false' and back to prove the kill switch itself works.
 process.env.WALLET_WITHDRAWALS_ENABLED = 'true';
 
 // Neutralize outbound push before any route handler runs.
@@ -1062,9 +1061,15 @@ async function main(): Promise<void> {
     });
 
     // -----------------------------------------------------------------
-    // Step 13 — withdrawal path
+    // Step 13 — withdrawal path (refund to source)
     // -----------------------------------------------------------------
-    await step('Step 13: withdrawal path', async () => {
+    // Withdrawals now refund to the card that funded the deposit. This suite
+    // runs against a DUMMY Stripe key (see the env preamble), so every refund
+    // lookup fails — which makes this the best possible place to assert the
+    // property that actually protects users: when the payout cannot happen,
+    // the money comes BACK and the ledger says 'failed'. It must never sit
+    // debited-and-pending, and it must never claim 'completed'.
+    await step('Step 13: withdrawal path (refund to source)', async () => {
       const preBob = await walletBalance(bobId);
 
       const res = await callRoute(walletRoute.POST, '/api/wallet', {
@@ -1072,20 +1077,19 @@ async function main(): Promise<void> {
         userId: bobId,
         body: { user_id: bobId, action: 'withdraw', amount: 20, idempotency_key: 'wd1' },
       });
-      assert(res.status === 200, `bob withdraws $20: 200 (got ${res.status})`);
-      assertMoney(await walletBalance(bobId), preBob - 20, 'bob balance drops by exactly $20');
+      assert(res.status === 502, `bob withdraws $20 with no refundable deposit: 502 (got ${res.status})`);
+      assert(res.body?.code === 'PAYOUT_FAILED', `withdraw: code PAYOUT_FAILED (got ${res.body?.code})`);
+      assertMoney(await walletBalance(bobId), preBob, 'failed payout returns the money to the wallet');
+
       const w1 = await sql`SELECT amount, status FROM transactions WHERE user_id = ${bobId} AND type = 'withdrawal' AND idempotency_key = ${`withdraw:${bobId}:wd1`}`;
-      assert(w1.rows.length === 1 && parseFloat(w1.rows[0].amount) === -20, 'a withdrawal transaction of -$20 exists');
-      // B2 fix: the row must be honest about the fact that no payout has
-      // actually happened — there is no Stripe Connect transfer (or any
-      // external call) anywhere in this codebase, so 'completed' would be a
-      // lie. Money already left the wallet (asserted above); the ledger
-      // status must reflect that it hasn't reached the user yet.
+      assert(w1.rows.length === 1, 'exactly one withdrawal row was written');
       assert(
-        w1.rows.length === 1 && w1.rows[0].status === 'pending',
-        `withdrawal transaction status is 'pending', not falsely 'completed' (got ${w1.rows[0]?.status})`
+        w1.rows[0].status === 'failed',
+        `withdrawal row reads 'failed', never left pending or falsely completed (got ${w1.rows[0]?.status})`
       );
 
+      // Replaying the same key must not debit again. The row already exists,
+      // so the partial unique index turns the retry into a no-op.
       const replay = await callRoute(walletRoute.POST, '/api/wallet', {
         method: 'POST',
         userId: bobId,
@@ -1093,11 +1097,10 @@ async function main(): Promise<void> {
       });
       assert(replay.status === 200, `replay withdraw: 200 (got ${replay.status})`);
       assert(replay.body?.duplicate === true, 'replay withdraw: duplicate === true');
-      assertMoney(await walletBalance(bobId), preBob - 20, 'replay withdraw: balance unchanged');
+      assertMoney(await walletBalance(bobId), preBob, 'replay withdraw: balance unchanged');
       const w2 = await sql`SELECT COUNT(*)::int AS n FROM transactions WHERE user_id = ${bobId} AND type = 'withdrawal' AND idempotency_key = ${`withdraw:${bobId}:wd1`}`;
       assert(w2.rows[0].n === 1, 'replay withdraw: still exactly one withdrawal transaction with that key');
 
-      const balAfterFirst = await walletBalance(bobId);
       const before1 = await snapshotUser(bobId);
       const tooLarge = await callRoute(walletRoute.POST, '/api/wallet', {
         method: 'POST',
@@ -1109,83 +1112,117 @@ async function main(): Promise<void> {
       const after1 = await snapshotUser(bobId);
       assertSnapshotUnchanged(before1, after1, 'bob ($600 withdrawal attempt)');
 
+      // Above the cap is refused BEFORE any debit. The cap is checked ahead of
+      // the balance guard, so this reports EXCEEDS_WITHDRAWABLE rather than
+      // INSUFFICIENT_FUNDS — bob cannot withdraw more than he ever deposited.
       const before2 = await snapshotUser(bobId);
+      const balNow = await walletBalance(bobId);
       const excessive = await callRoute(walletRoute.POST, '/api/wallet', {
         method: 'POST',
         userId: bobId,
-        body: { user_id: bobId, action: 'withdraw', amount: balAfterFirst + 50, idempotency_key: 'wd_insufficient' },
+        body: { user_id: bobId, action: 'withdraw', amount: balNow + 50, idempotency_key: 'wd_insufficient' },
       });
-      assert(excessive.status === 400, `withdraw exceeding balance: rejected 400 (got ${excessive.status})`);
+      assert(excessive.status === 400, `withdraw exceeding the cap: rejected 400 (got ${excessive.status})`);
       assert(
-        excessive.body?.code === 'INSUFFICIENT_FUNDS',
-        `withdraw exceeding balance: code INSUFFICIENT_FUNDS (got ${excessive.body?.code})`
+        excessive.body?.code === 'EXCEEDS_WITHDRAWABLE',
+        `withdraw exceeding the cap: code EXCEEDS_WITHDRAWABLE (got ${excessive.body?.code})`
       );
       const after2 = await snapshotUser(bobId);
       assertSnapshotUnchanged(before2, after2, 'bob (excessive withdrawal attempt)');
+
+      // The read model must advertise the same ceiling the writer enforces,
+      // or the UI offers a number that fails at submit.
+      const walletGet = await callRoute(walletRoute.GET, `/api/wallet?userId=${bobId}`, {
+        method: 'GET',
+        userId: bobId,
+      });
+      assert(walletGet.status === 200, `GET /api/wallet: 200 (got ${walletGet.status})`);
+      assert(
+        typeof walletGet.body?.withdrawable === 'number',
+        'GET /api/wallet exposes a numeric `withdrawable`'
+      );
+      assert(
+        walletGet.body.withdrawable <= walletGet.body.wallet.balance + 1e-9,
+        `withdrawable (${walletGet.body?.withdrawable}) never exceeds the balance (${walletGet.body?.wallet?.balance})`
+      );
 
       await checkInvariant1(bobId, 'bob after Step 13');
       await checkInvariant4(testUserIds, 'after Step 13');
     });
 
     // -----------------------------------------------------------------
-    // Step 13b — withdrawals are disabled by default (B2 gate)
+    // Step 13b — the kill switch, and only the kill switch
     // -----------------------------------------------------------------
-    // withdrawFromWallet has no real payout mechanism behind it (no Stripe
-    // Connect transfer, no external call of any kind), so the API must
-    // refuse the withdraw action unless WALLET_WITHDRAWALS_ENABLED is the
-    // exact string 'true'. Steps 1-13 ran with the flag force-enabled (see
-    // the env preamble at the top of this file) so the withdrawal path
-    // itself could be exercised; this step flips the flag off to prove the
-    // gate fails closed, then restores it so nothing after this step is
-    // affected.
-    await step('Step 13b: withdrawals disabled by default (PAYOUTS_UNAVAILABLE gate)', async () => {
+    // A real payout path exists now, so the flag's meaning inverted: it is an
+    // operator kill switch, not a guard against a missing feature. ONLY the
+    // exact string 'false' disables withdrawals; unset/empty/'true'/anything
+    // else lets the payout run. This proves both halves, because a kill switch
+    // that fails open on a typo is not a kill switch.
+    await step('Step 13b: WALLET_WITHDRAWALS_ENABLED is a kill switch', async () => {
       const originalFlag = process.env.WALLET_WITHDRAWALS_ENABLED;
       try {
-        for (const flagValue of [undefined, '', 'false', 'TRUE', '1']) {
+        // 'false' — off, and nothing at all happens.
+        process.env.WALLET_WITHDRAWALS_ENABLED = 'false';
+        const before = await snapshotUser(bobId);
+        const gated = await callRoute(walletRoute.POST, '/api/wallet', {
+          method: 'POST',
+          userId: bobId,
+          body: { user_id: bobId, action: 'withdraw', amount: 5, idempotency_key: 'wd_gated_false' },
+        });
+        assert(gated.status === 503, `withdraw with flag "false": 503 (got ${gated.status})`);
+        assert(
+          gated.body?.code === 'PAYOUTS_UNAVAILABLE',
+          `withdraw with flag "false": code PAYOUTS_UNAVAILABLE (got ${gated.body?.code})`
+        );
+        assert(
+          typeof gated.body?.error === 'string' && gated.body.error.length > 0,
+          'withdraw with flag "false": response carries a human-readable error message'
+        );
+        const after = await snapshotUser(bobId);
+        assertSnapshotUnchanged(before, after, 'bob (withdraw attempt with the kill switch on)');
+        const gatedRow = await sql`
+          SELECT COUNT(*)::int AS n FROM transactions
+          WHERE user_id = ${bobId} AND type = 'withdrawal' AND idempotency_key = ${`withdraw:${bobId}:wd_gated_false`}
+        `;
+        assert(gatedRow.rows[0].n === 0, 'withdraw with flag "false": no withdrawal row was created at all');
+
+        // Everything else — on. The payout still cannot succeed against the
+        // dummy Stripe key, but it must get far enough to TRY, which is the
+        // difference between "switched off" and "switched on".
+        for (const flagValue of [undefined, '', 'true', 'TRUE', '1']) {
           if (flagValue === undefined) {
             delete process.env.WALLET_WITHDRAWALS_ENABLED;
           } else {
             process.env.WALLET_WITHDRAWALS_ENABLED = flagValue;
           }
-
-          const before = await snapshotUser(bobId);
-          const gated = await callRoute(walletRoute.POST, '/api/wallet', {
+          const shown = flagValue === undefined ? 'unset' : JSON.stringify(flagValue);
+          const balBefore = await walletBalance(bobId);
+          const open = await callRoute(walletRoute.POST, '/api/wallet', {
             method: 'POST',
             userId: bobId,
-            body: { user_id: bobId, action: 'withdraw', amount: 5, idempotency_key: `wd_gated_${flagValue ?? 'unset'}` },
+            body: { user_id: bobId, action: 'withdraw', amount: 5, idempotency_key: `wd_open_${flagValue ?? 'unset'}` },
           });
-          const shown = flagValue === undefined ? 'unset' : JSON.stringify(flagValue);
-          assert(gated.status === 503, `withdraw with flag ${shown}: 503 (got ${gated.status})`);
           assert(
-            gated.body?.code === 'PAYOUTS_UNAVAILABLE',
-            `withdraw with flag ${shown}: code PAYOUTS_UNAVAILABLE (got ${gated.body?.code})`
+            open.status !== 503,
+            `withdraw with flag ${shown}: not gated off (got ${open.status})`
           );
           assert(
-            typeof gated.body?.error === 'string' && gated.body.error.length > 0,
-            `withdraw with flag ${shown}: response carries a human-readable error message`
+            open.body?.code === 'PAYOUT_FAILED',
+            `withdraw with flag ${shown}: reached the payout and failed there (got ${open.body?.code})`
           );
-          const after = await snapshotUser(bobId);
-          assertSnapshotUnchanged(before, after, `bob (withdraw attempt with flag ${shown})`);
-
-          const gatedRow = await sql`
-            SELECT COUNT(*)::int AS n FROM transactions
-            WHERE user_id = ${bobId} AND type = 'withdrawal' AND idempotency_key = ${`withdraw:${bobId}:wd_gated_${flagValue ?? 'unset'}`}
-          `;
-          assert(gatedRow.rows[0].n === 0, `withdraw with flag ${shown}: no withdrawal transaction row was created`);
+          assertMoney(
+            await walletBalance(bobId),
+            balBefore,
+            `withdraw with flag ${shown}: money returned after the failed payout`
+          );
         }
       } finally {
-        // Restore exactly what it was (the env preamble's 'true') so Step 14
-        // and any future steps that might touch withdrawals aren't affected.
         if (originalFlag === undefined) {
           delete process.env.WALLET_WITHDRAWALS_ENABLED;
         } else {
           process.env.WALLET_WITHDRAWALS_ENABLED = originalFlag;
         }
       }
-      assert(
-        process.env.WALLET_WITHDRAWALS_ENABLED === 'true',
-        'WALLET_WITHDRAWALS_ENABLED restored to true after the gate check'
-      );
     });
 
     // -----------------------------------------------------------------

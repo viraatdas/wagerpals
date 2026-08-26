@@ -226,6 +226,7 @@ it requires `POSTGRES_URL` (and in two cases, permission to `CREATE DATABASE`) i
 | `scripts/verify-constraint-status.ts` | `verify:constraints` | Proves `constraintStatus()` in `scripts/migrate-comeback.ts` is table-scoped (not just constraint-name-scoped) using throwaway `zz_probe_*` objects, dropped in a `finally`. | Yes |
 | `scripts/verify-groups-auth.ts` | `verify:groups-auth` | Drives the real `GET /api/groups` and `GET /api/groups/members` handlers against the **real** `lib/auth.ts` — only Stack Auth itself is stubbed (`scripts/testing/stack-auth-stub.ts`, via the same `module.registerHooks` redirect `test:auth` uses), with `lib/db`/`lib/push` faked in memory. Proves a group's roster, pending-join queue and admin/resolver info reach only an authenticated **active member of that group**, that `?public=true` stays anonymous, and that `?userId=` cannot name anyone but the caller. | No |
 | `scripts/verify-users-auth.ts` | `verify:users-auth` | Drives the real `GET /api/users` handler against the **real** `lib/auth.ts` — only Stack Auth itself is stubbed (`scripts/testing/stack-auth-stub.ts`, same `module.registerHooks` redirect as `verify:groups-auth`), with `lib/db` faked in memory. Proves the no-params user directory is 401 for an anonymous caller (and that the gate runs *before* `db.users.getAll()`), while `?id=<self>`, `?id=<other>` and `?username=` keep their existing shapes. | No |
+| `scripts/verify-withdrawals.ts` | `verify:withdrawals` | Drives the real `withdrawFromWallet` / `executeWithdrawalPayout` / `getWithdrawable` against the shared dev database with only Stripe replaced by a recording fake `RefundGateway`. Proves the refund-to-source cap (grants and winnings are not withdrawable), that a failed payout returns the money and marks the row `failed`, and that retries never refund twice. | Yes (shared dev DB) |
 | `scripts/verify-comeback.ts` | `db:verify` | Structural + functional proof that the comeback migration landed; read-only (write checks roll back). | Yes |
 | `scripts/check-identity.ts` | `identity:check` | Part A (no DB): the forged `x-stack-user-id` header does not authenticate, unauthenticated requests get a clean 401 before touching the DB. Part B (needs DB): scans for duplicate emails, missing emails, broken tombstones, dangling FK references to tombstoned users. | Part A: No. Part B: skipped with a message if `POSTGRES_URL` is unset (does not fail). |
 | `scripts/test-sync-user.ts` | `test:sync-user` | Integration test of `lib/sync-user.ts` against an in-memory mirror of the `users` table's real constraints. | No |
@@ -279,6 +280,41 @@ from `lib/payments.ts` and `app/api/webhooks/stripe/route.ts`:
 
 Proven by `npm run verify:payments` (`scripts/verify-payments.ts`), which drives the real
 route handlers against a live database — **needs `POSTGRES_URL`**.
+
+### Money only leaves the way it came in
+
+Withdrawals are Stripe **refunds against the user's own deposit PaymentIntents** — not
+Connect transfers, not payouts. That single choice is what makes cashing out safe to ship,
+and it must not be quietly widened.
+
+- **The cap is `min(balance, completed card deposits − already withdrawn)`**, computed by
+  `readWithdrawable()` in `lib/payments.ts` *inside the transaction that holds the wallet
+  lock*. Move that check outside the lock and two concurrent withdrawals will both see the
+  same headroom and both pass.
+- **`stripe_payment_intent_id IS NOT NULL` is load-bearing in the deposit sum.**
+  `applyUsdSeedIfNeeded` writes the $10 signup grant as a `type='deposit'` row with no
+  payment intent, because nobody paid for it. Summing bare `type='deposit'` makes house
+  money withdrawable and lets a fleet of throwaway accounts mint real cash — the exact
+  failure the LIABILITY NOTE above `grantSignupBonus` predicts. It was written that way
+  once and `npm run verify:withdrawals` caught it.
+- **Winnings above your own deposits are deliberately not withdrawable.** Paying those out
+  is money transmission and needs Connect plus licensing. If that changes, the cap changes
+  with it — do not "fix" the cap on its own.
+- **The debit lands before the refund, never after.** A crash between them leaves the user
+  short but recoverable; the other order pays out money that was never debited.
+  `executeWithdrawalPayout` plans the whole allocation before creating a single refund, and
+  `failWithdrawalPayout` returns the money and marks the row `failed` — so a withdrawal is
+  never left debited-and-pending.
+- **Refund idempotency is keyed `wd:<withdrawalTxnId>:<paymentIntentId>`.** Stripe returns
+  the original refund for a repeated key, which is what makes a retried payout safe.
+- `WALLET_WITHDRAWALS_ENABLED` is now an operator **kill switch**: only the exact string
+  `'false'` disables withdrawals. It used to fail closed on anything but `'true'` because
+  no payout path existed; that reason is gone.
+
+Proven by `npm run verify:withdrawals` (`scripts/verify-withdrawals.ts`) — drives the real
+engine with a recording fake `RefundGateway`, **needs `POSTGRES_URL`** — and by Steps 13/13b
+of `npm run verify:payments`, which assert that a payout that cannot happen returns the
+money.
 
 ### Single canonical user sync
 

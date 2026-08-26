@@ -42,6 +42,11 @@ export interface WalletPanelProps {
 export default function WalletPanel({ className }: WalletPanelProps) {
   const user = useUser({ or: 'return-null' });
   const [wallet, setWallet] = useState<{ balance: number } | null>(null);
+  // Cash-out ceiling from GET /api/wallet: min(balance, card deposits -
+  // already withdrawn). Money leaves as a refund to the card that funded
+  // the deposit, so the signup credit and winnings off other players are
+  // not withdrawable and the balance alone would overpromise.
+  const [withdrawable, setWithdrawable] = useState<number | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [walletDataLoading, setWalletDataLoading] = useState(true);
   const [depositAmount, setDepositAmount] = useState('');
@@ -74,6 +79,7 @@ export default function WalletPanel({ className }: WalletPanelProps) {
         const data = await response.json();
         setWallet(data.wallet);
         setTransactions(data.transactions || []);
+        setWithdrawable(typeof data.withdrawable === 'number' ? data.withdrawable : null);
       }
     } catch {
       // Wallet may not exist yet, that's fine
@@ -116,7 +122,17 @@ export default function WalletPanel({ className }: WalletPanelProps) {
           setDepositClientSecret(data.clientSecret);
           setToast({ message: 'Enter your card details to finish depositing.', type: 'info' });
         } else {
-          setToast({ message: 'Withdrawn.', type: 'success' });
+          // A withdrawal is a card refund, so it does not land instantly and
+          // the amount can be trimmed if part of it could not be refunded.
+          // Say what actually happened rather than a flat "Withdrawn."
+          const paid = typeof data.paid_out === 'number' ? data.paid_out : parseFloat(amount);
+          const returned = typeof data.returned_to_wallet === 'number' ? data.returned_to_wallet : 0;
+          setToast({
+            message: returned > 0
+              ? `$${paid.toFixed(2)} is on its way back to your card. $${returned.toFixed(2)} couldn't be refunded and stayed in your wallet.`
+              : `$${paid.toFixed(2)} is on its way back to your card. It can take a few days to appear.`,
+            type: 'success',
+          });
           setWalletAction('none');
           setDepositAmount('');
           setWithdrawAmount('');
@@ -244,6 +260,13 @@ export default function WalletPanel({ className }: WalletPanelProps) {
             <p className="field-hint mb-3">
               {walletAction === 'deposit' ? 'Enter a deposit amount' : 'Enter a withdraw amount'}
             </p>
+            {walletAction === 'withdraw' && withdrawable !== null && (
+              <p className="text-sm text-ink-muted mb-3">
+                {withdrawable > 0
+                  ? <>You can withdraw up to <span className="tone-text font-mono">${withdrawable.toFixed(2)}</span>. Money goes back to the card you paid with, so winnings above what you deposited stay here to bet with.</>
+                  : <>Nothing to withdraw yet. Money goes back to the card you paid with, so only deposits can be withdrawn.</>}
+              </p>
+            )}
             <div className="flex flex-col gap-2 sm:flex-row">
               <div className="flex-1 relative">
                 <label htmlFor="wallet-amount" className="sr-only">
@@ -255,7 +278,7 @@ export default function WalletPanel({ className }: WalletPanelProps) {
                   type="number"
                   step="0.01"
                   min="1"
-                  max="500"
+                  max={walletAction === 'withdraw' && withdrawable !== null ? Math.min(500, withdrawable) : 500}
                   value={walletAction === 'deposit' ? depositAmount : withdrawAmount}
                   onChange={(e) => walletAction === 'deposit' ? setDepositAmount(e.target.value) : setWithdrawAmount(e.target.value)}
                   placeholder="0.00"

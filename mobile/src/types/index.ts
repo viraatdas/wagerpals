@@ -280,6 +280,12 @@ export interface WalletSummary {
   transactions: Transaction[];
   escrow_held_total: number;
   available: number;
+  // Cash-out ceiling: min(balance, lifetime card deposits - already withdrawn).
+  // Money leaves as a Stripe refund to the card that funded the deposit, so
+  // the signup grant and winnings taken off other players are not withdrawable.
+  // Optional because builds that predate it must keep working — read it as
+  // `withdrawable ?? available` and the old behaviour falls out.
+  withdrawable?: number;
   event?: EventWalletSummary;
 }
 

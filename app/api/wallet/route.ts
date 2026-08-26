@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAuth, verifyUserMatch } from '@/lib/auth';
 import { generateId } from '@/lib/utils';
-import { MAX_TRANSACTION_AMOUNT, withdrawFromWallet, getWalletSummary, ensureWallet, isPaymentError } from '@/lib/payments';
+import {
+  MAX_TRANSACTION_AMOUNT,
+  withdrawFromWallet,
+  executeWithdrawalPayout,
+  getWithdrawable,
+  getWalletSummary,
+  ensureWallet,
+  isPaymentError,
+  type RefundGateway,
+} from '@/lib/payments';
 import Stripe from 'stripe';
 
 export const dynamic = 'force-dynamic';
@@ -11,6 +20,29 @@ function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error('STRIPE_SECRET_KEY is not configured');
   return new Stripe(key);
+}
+
+// The only place the Stripe SDK meets the payout engine. lib/payments.ts takes
+// this as an interface so it can be driven by a fake in verification scripts.
+function stripeRefundGateway(): RefundGateway {
+  const stripe = getStripe();
+  return {
+    async refundableCents(paymentIntentId: string) {
+      const pi = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+      const charge = pi.latest_charge as Stripe.Charge | null;
+      if (!charge || typeof charge === 'string') return 0;
+      if (!charge.captured || charge.refunded) return 0;
+      // What the card was actually charged, minus anything already sent back.
+      return Math.max(0, (charge.amount_captured ?? 0) - (charge.amount_refunded ?? 0));
+    },
+    async createRefund({ paymentIntentId, amountCents, idempotencyKey }) {
+      const refund = await stripe.refunds.create(
+        { payment_intent: paymentIntentId, amount: amountCents },
+        { idempotencyKey }
+      );
+      return { id: refund.id };
+    },
+  };
 }
 
 // GET /api/wallet?userId=xxx&eventId=yyy — get wallet balance, recent
@@ -32,12 +64,18 @@ export async function GET(request: NextRequest) {
 
   const summary = await getWalletSummary(userId, eventId || undefined);
   const transactions = await db.transactions.getByUser(userId, 20);
+  // Additive field: clients that predate it keep working, and the ones that
+  // know about it can show the real cash-out ceiling instead of offering the
+  // full balance and failing at submit.
+  const withdrawable = await getWithdrawable(userId);
 
   return NextResponse.json({
     wallet: summary.wallet,
     transactions,
     escrow_held_total: summary.escrow_held_total,
     available: summary.available,
+    withdrawable: withdrawable.withdrawable,
+    withdrawable_breakdown: withdrawable,
     // The W counterparts — additive, never mixed with the usd fields above.
     escrow_held_total_wp: summary.escrow_held_total_wp,
     available_wp: summary.available_wp,
@@ -130,14 +168,12 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === 'withdraw') {
-    // Withdrawals debit the wallet but there is no Stripe Connect payout
-    // (or any other external transfer) wired up anywhere in this codebase —
-    // shipping this path unconditionally would silently delete users'
-    // money. Fail closed: only the exact string 'true' enables it, so an
-    // unset/empty/misspelled env var keeps withdrawals off. This check
-    // must run before withdrawFromWallet is ever called, so a disabled
-    // gate produces no wallet mutation and no transaction row.
-    if (process.env.WALLET_WITHDRAWALS_ENABLED !== 'true') {
+    // Withdrawals refund to the card that funded the deposit (see the
+    // "withdrawals: refund to source" note in lib/payments.ts). The kill
+    // switch stays: set WALLET_WITHDRAWALS_ENABLED=false to turn payouts off
+    // without a deploy. Absent/empty now means ON, because a real payout path
+    // exists — the old fail-closed default was guarding against its absence.
+    if (process.env.WALLET_WITHDRAWALS_ENABLED === 'false') {
       return NextResponse.json(
         { error: 'Withdrawals are temporarily unavailable.', code: 'PAYOUTS_UNAVAILABLE' },
         { status: 503 }
@@ -145,12 +181,39 @@ export async function POST(request: NextRequest) {
     }
 
     try {
+      // Step 1, transactional: cap-check, debit, and write a 'pending' row.
       const result = await withdrawFromWallet({
         userId: user_id,
         amount: parsedAmount,
         idempotencyKey: idempotency_key,
       });
-      return NextResponse.json({ wallet: result.wallet, transaction: result.transaction, duplicate: result.duplicate });
+
+      // A replay of an already-submitted withdrawal must not fire a second
+      // set of refunds here. The original request owns the payout.
+      if (result.duplicate) {
+        return NextResponse.json({ wallet: result.wallet, transaction: result.transaction, duplicate: true });
+      }
+
+      // Step 2, over the network: actual Stripe refunds, then finalize.
+      // executeWithdrawalPayout puts the money back and marks the row failed
+      // if nothing could be refunded, so a throw here never leaves the user
+      // silently short.
+      const payout = await executeWithdrawalPayout({
+        userId: user_id,
+        transactionId: result.transaction.id,
+        amount: parsedAmount,
+        gateway: stripeRefundGateway(),
+      });
+
+      const fresh = await getWalletSummary(user_id);
+      return NextResponse.json({
+        wallet: fresh.wallet,
+        transaction: payout.transaction,
+        duplicate: false,
+        paid_out: payout.paidOut,
+        returned_to_wallet: payout.returnedToWallet,
+        refund_ids: payout.refundIds,
+      });
     } catch (error) {
       if (isPaymentError(error)) {
         return NextResponse.json(

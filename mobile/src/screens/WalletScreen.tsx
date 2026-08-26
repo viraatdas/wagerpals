@@ -332,7 +332,11 @@ export default function WalletScreen() {
     if (!withdrawAmount || !Number.isFinite(amount) || amount <= 0 || amount > MAX_TRANSACTION_AMOUNT) {
       return;
     }
-    if (summary && amount > summary.available) {
+    // The ceiling is what can be refunded to the card, which is usually
+    // less than the balance — the signup grant and winnings off other players
+    // are not withdrawable. Fall back to `available` on builds served by an
+    // API that predates the field.
+    if (summary && amount > (summary.withdrawable ?? summary.available)) {
       return;
     }
 
@@ -425,6 +429,7 @@ export default function WalletScreen() {
   }
 
   const available = safeAmount(summary.available);
+  const withdrawable = safeAmount(summary.withdrawable ?? summary.available);
   const escrowed = safeAmount(summary.escrow_held_total);
   const depositAmountNum = parseFloat(depositAmount);
   const depositValid = depositAmount.length > 0 && Number.isFinite(depositAmountNum) && depositAmountNum > 0 && depositAmountNum <= MAX_TRANSACTION_AMOUNT;
@@ -434,7 +439,7 @@ export default function WalletScreen() {
     Number.isFinite(withdrawAmountNum) &&
     withdrawAmountNum > 0 &&
     withdrawAmountNum <= MAX_TRANSACTION_AMOUNT &&
-    withdrawAmountNum <= available;
+    withdrawAmountNum <= withdrawable;
 
   const listHeader = (
     <View>
@@ -554,11 +559,16 @@ export default function WalletScreen() {
           }}
           label="Amount to withdraw"
           max={MAX_TRANSACTION_AMOUNT}
-          available={available}
+          available={withdrawable}
           error={withdrawError}
           quickAmounts={QUICK_WITHDRAW_AMOUNTS}
           editable={!withdrawSubmitting}
         />
+        <Text style={styles.withdrawNote}>
+          {withdrawable < available
+            ? `Money goes back to the card you paid with, so you can withdraw up to ${formatMoney(withdrawable)}. The rest stays here to bet with.`
+            : 'Money goes back to the card you paid with. It can take a few days to show up on your statement.'}
+        </Text>
         <Button
           title="Withdraw"
           onPress={handleWithdraw}
@@ -599,6 +609,13 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize.sm,
     color: colors.textMuted,
     marginBottom: spacing.sm,
+  },
+  withdrawNote: {
+    fontSize: tokens.fontSize.sm,
+    lineHeight: tokens.fontSize.sm * 1.45,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
   },
   heroAmount: {
     fontSize: 40,

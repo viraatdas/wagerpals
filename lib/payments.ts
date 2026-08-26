@@ -12,7 +12,9 @@ export type PaymentErrorCode =
   | 'EVENT_NOT_RESOLVED'
   | 'INVALID_STAKE'
   | 'AMOUNT_TOO_LARGE'
-  | 'REVERSAL_BLOCKED';
+  | 'REVERSAL_BLOCKED'
+  | 'EXCEEDS_WITHDRAWABLE'
+  | 'PAYOUT_FAILED';
 
 export class PaymentError extends Error {
   readonly code: PaymentErrorCode;
@@ -881,6 +883,94 @@ export async function failStripeDeposit(params: {
 
 // ---- withdrawals (usd only — the W is never withdrawable) --------------
 
+// ---- withdrawals: refund to source -------------------------------------
+//
+// Money leaves this platform the same way it came in: as a Stripe REFUND
+// against the user's own deposit PaymentIntents. That choice is what makes
+// withdrawals safe to ship at all.
+//
+//   - No Stripe Connect, no connected accounts, no KYC onboarding. Refunds
+//     work with the plain secret key that already credits deposits.
+//   - It cannot mint money. A refund can only send dollars back to a card
+//     that previously sent them here, so the `usd-seed:*` house grants and
+//     any winnings taken off other players are structurally unwithdrawable.
+//     That is the netting the LIABILITY NOTE on grantSignupBonus demands,
+//     enforced by Stripe itself rather than by arithmetic we could get wrong.
+//
+// The limit that buys: a user can never cash out more than they put in.
+// Winnings above your own deposits stay in the wallet as spending money.
+// Paying those out is money transmission and needs Connect plus licensing,
+// which is a product decision, not a missing function.
+//
+// WITHDRAWABLE = min(balance, lifetime completed deposits - everything already
+// withdrawn). Both halves matter: the balance half stops you withdrawing money
+// you have already lost, the deposits half stops you withdrawing money you
+// never paid in.
+export interface WithdrawableBreakdown {
+  withdrawable: number;
+  balance: number;
+  deposited: number;
+  withdrawn: number;
+}
+
+// Runs against a caller-supplied client so it can be computed INSIDE the same
+// transaction that holds the wallet lock. Two concurrent withdrawals must not
+// both see the full headroom and both pass.
+type SqlRunner = {
+  sql: (strings: TemplateStringsArray, ...values: any[]) => Promise<{ rows: any[] }>;
+};
+
+async function readWithdrawable(
+  tx: SqlRunner,
+  userId: string
+): Promise<WithdrawableBreakdown> {
+  const walletRow = await tx.sql`SELECT balance FROM wallets WHERE user_id = ${userId}`;
+  const balance = roundMoney(Number(walletRow.rows[0]?.balance ?? 0));
+
+  // Only 'completed' deposits count: a pending PaymentIntent has not settled,
+  // and a failed one never will.
+  //
+  // `stripe_payment_intent_id IS NOT NULL` is the load-bearing clause, not a
+  // tidiness one. applyUsdSeedIfNeeded writes the $10 signup grant as a
+  // type='deposit' row (idempotency_key 'usd-seed:<userId>') with no payment
+  // intent, because nobody paid for it. Summing bare type='deposit' would make
+  // that house money withdrawable and let a fleet of fake accounts mint real
+  // cash — precisely the failure grantSignupBonus's LIABILITY NOTE predicts.
+  // Requiring a payment intent also generalises: any future credit that did
+  // not arrive from a card is unwithdrawable by construction, and it lines up
+  // with the payout mechanism, which can only refund intents that exist.
+  const depositRow = await tx.sql`
+    SELECT COALESCE(SUM(amount), 0) AS total FROM transactions
+    WHERE user_id = ${userId} AND type = 'deposit' AND status = 'completed' AND currency = 'usd'
+      AND stripe_payment_intent_id IS NOT NULL
+  `;
+  const deposited = roundMoney(Number(depositRow.rows[0]?.total ?? 0));
+
+  // 'pending' counts as spent headroom, not just 'completed'. A withdrawal
+  // whose refunds are still in flight has already claimed those dollars; if
+  // it later fails, failWithdrawalPayout puts the headroom back by marking
+  // the row 'failed'.
+  const withdrawnRow = await tx.sql`
+    SELECT COALESCE(SUM(ABS(amount)), 0) AS total FROM transactions
+    WHERE user_id = ${userId} AND type = 'withdrawal'
+      AND status IN ('pending', 'completed') AND currency = 'usd'
+  `;
+  const withdrawn = roundMoney(Number(withdrawnRow.rows[0]?.total ?? 0));
+
+  const headroom = roundMoney(deposited - withdrawn);
+  return {
+    withdrawable: Math.max(0, roundMoney(Math.min(balance, headroom))),
+    balance,
+    deposited,
+    withdrawn,
+  };
+}
+
+export async function getWithdrawable(userId: string): Promise<WithdrawableBreakdown> {
+  await ensureWallet(userId);
+  return readWithdrawable({ sql }, userId);
+}
+
 export interface WithdrawResult {
   wallet: Wallet;
   transaction: Transaction;
@@ -924,14 +1014,29 @@ export async function withdrawFromWallet(params: {
     // balance before the duplicate check would make a legitimate replay
     // fail with INSUFFICIENT_FUNDS once the original withdrawal has already
     // spent the money down.
-    // Status is 'pending', not 'completed': there is no Stripe Connect
-    // payout (or any other external transfer) wired up anywhere in this
-    // codebase. The debit below is real — the money leaves the user's
-    // spendable balance right now — but nothing has actually been paid
-    // out yet, so the ledger must not claim otherwise. The
-    // WALLET_WITHDRAWALS_ENABLED gate in app/api/wallet/route.ts keeps
-    // this path unreachable by default until a real payout mechanism
-    // marks these rows 'completed'.
+    // Cap the withdrawal at what this user actually paid in and has not
+    // already taken out. Computed under the wallet lock taken above, so two
+    // concurrent withdrawals can't both see the same headroom — the second
+    // one reads the first's 'pending' row and is refused.
+    const headroom = await readWithdrawable(tx, params.userId);
+    if (amount > headroom.withdrawable) {
+      throw new PaymentError(
+        'EXCEEDS_WITHDRAWABLE',
+        headroom.withdrawable > 0
+          ? `You can withdraw up to $${headroom.withdrawable.toFixed(2)}. Money goes back to the card it came from, so winnings above what you deposited stay in your wallet.`
+          : 'You have nothing to withdraw yet. Money goes back to the card it came from, so only deposits can be withdrawn.',
+        400,
+        headroom as unknown as Record<string, unknown>
+      );
+    }
+
+    // Status is 'pending', not 'completed': the wallet debit below is real
+    // and immediate, but the Stripe refunds have not been created yet.
+    // completeWithdrawalPayout / failWithdrawalPayout move this row once the
+    // money has actually moved, so the ledger never claims a payout that has
+    // not happened. The debit lands first on purpose — a crash between here
+    // and the refund leaves the user short but recoverable, whereas
+    // refunding first and crashing would pay out money we never debited.
     const insertResult = await tx.sql`
       INSERT INTO transactions (id, user_id, type, amount, status, description, idempotency_key, currency)
       VALUES (
@@ -967,6 +1072,188 @@ export async function withdrawFromWallet(params: {
     const wallet = await debitWalletGuarded(tx, params.userId, amount, 'withdrawal');
 
     return { wallet, transaction, duplicate: false };
+  });
+}
+
+// The Stripe surface this module needs, and nothing more. Injected rather
+// than imported so the money engine stays testable without a network or an
+// SDK — same reason lib/push.ts takes a PushTransport.
+export interface RefundGateway {
+  // Cents still refundable on this PaymentIntent (captured minus refunded).
+  refundableCents(paymentIntentId: string): Promise<number>;
+  // MUST be idempotent on idempotencyKey: a retry returns the original refund
+  // rather than sending the money twice.
+  createRefund(args: {
+    paymentIntentId: string;
+    amountCents: number;
+    idempotencyKey: string;
+  }): Promise<{ id: string }>;
+}
+
+export interface PayoutResult {
+  transaction: Transaction;
+  refundIds: string[];
+  paidOut: number;
+  returnedToWallet: number;
+}
+
+/**
+ * Turn a pending withdrawal row into actual Stripe refunds against the user's
+ * own deposits, then finalize the ledger.
+ *
+ * Deliberately NOT inside withTransaction: it makes network calls, and holding
+ * a Postgres transaction open across a Stripe round trip would pin a pool
+ * connection for the duration and widen every lock it holds.
+ *
+ * Newest deposit first. Older PaymentIntents are likelier to be past a card
+ * network's refund window, so spending the fresh ones first fails less often.
+ */
+export async function executeWithdrawalPayout(params: {
+  userId: string;
+  transactionId: string;
+  amount: number;
+  gateway: RefundGateway;
+}): Promise<PayoutResult> {
+  const wantCents = Math.round(roundMoney(params.amount) * 100);
+
+  const depositRows = await sql`
+    SELECT stripe_payment_intent_id, created_at
+    FROM transactions
+    WHERE user_id = ${params.userId}
+      AND type = 'deposit'
+      AND status = 'completed'
+      AND currency = 'usd'
+      AND stripe_payment_intent_id IS NOT NULL
+    ORDER BY created_at DESC
+  `;
+
+  // Pass one: plan. Ask Stripe what is actually refundable on each intent and
+  // build the whole allocation BEFORE moving a cent. If the plan cannot cover
+  // the request we abort having created zero refunds, which is much easier to
+  // reason about than unwinding half a payout.
+  const plan: Array<{ paymentIntentId: string; amountCents: number }> = [];
+  let unplanned = wantCents;
+  for (const row of depositRows.rows) {
+    if (unplanned <= 0) break;
+    const pi = String(row.stripe_payment_intent_id);
+    let available = 0;
+    try {
+      available = await params.gateway.refundableCents(pi);
+    } catch (err) {
+      // A single unreadable intent must not sink the payout; skip it and
+      // keep planning against the rest.
+      console.error(`[payout] could not read refundable amount for ${pi}`, err);
+      continue;
+    }
+    const take = Math.min(unplanned, available);
+    if (take > 0) {
+      plan.push({ paymentIntentId: pi, amountCents: take });
+      unplanned -= take;
+    }
+  }
+
+  if (unplanned > 0) {
+    await failWithdrawalPayout({
+      userId: params.userId,
+      transactionId: params.transactionId,
+      amount: params.amount,
+      reason: 'no refundable deposit covers this amount',
+    });
+    throw new PaymentError(
+      'PAYOUT_FAILED',
+      'We could not send this back to your card. Your money has been returned to your wallet balance.',
+      502
+    );
+  }
+
+  // Pass two: execute. The idempotency key is derived from the withdrawal row
+  // id and the intent, so replaying this whole function (a retry, a crash
+  // between refunds, a duplicate request) re-requests the SAME refund from
+  // Stripe and gets the original back instead of paying twice.
+  const refundIds: string[] = [];
+  let paidCents = 0;
+  for (const step of plan) {
+    try {
+      const refund = await params.gateway.createRefund({
+        paymentIntentId: step.paymentIntentId,
+        amountCents: step.amountCents,
+        idempotencyKey: `wd:${params.transactionId}:${step.paymentIntentId}`,
+      });
+      refundIds.push(refund.id);
+      paidCents += step.amountCents;
+    } catch (err) {
+      console.error(`[payout] refund failed on ${step.paymentIntentId}`, err);
+      break;
+    }
+  }
+
+  const paidOut = roundMoney(paidCents / 100);
+  const shortfall = roundMoney(params.amount - paidOut);
+
+  if (paidOut === 0) {
+    await failWithdrawalPayout({
+      userId: params.userId,
+      transactionId: params.transactionId,
+      amount: params.amount,
+      reason: 'every refund attempt was rejected',
+    });
+    throw new PaymentError(
+      'PAYOUT_FAILED',
+      'We could not send this back to your card. Your money has been returned to your wallet balance.',
+      502
+    );
+  }
+
+  // Partial success: some refunds landed, some did not. Pay out what moved,
+  // hand the rest straight back, and correct the ledger row down to the truth
+  // rather than leaving it claiming an amount that never left.
+  const transaction = await withTransaction(async (tx) => {
+    if (shortfall > 0) {
+      await tx.sql`SELECT balance FROM wallets WHERE user_id = ${params.userId} FOR UPDATE`;
+      await tx.sql`UPDATE wallets SET balance = balance + ${shortfall} WHERE user_id = ${params.userId}`;
+    }
+    const updated = await tx.sql`
+      UPDATE transactions
+      SET status = 'completed',
+          amount = ${-paidOut},
+          description = ${`Withdrawal $${paidOut.toFixed(2)} refunded to card (${refundIds.join(', ')})`}
+      WHERE id = ${params.transactionId} AND status = 'pending'
+      RETURNING *
+    `;
+    if (updated.rows.length === 0) {
+      // Already finalized by a concurrent runner; read it back rather than
+      // double-crediting anything.
+      const existing = await tx.sql`SELECT * FROM transactions WHERE id = ${params.transactionId}`;
+      return mapTransaction(existing.rows[0]);
+    }
+    return mapTransaction(updated.rows[0]);
+  });
+
+  return { transaction, refundIds, paidOut, returnedToWallet: shortfall };
+}
+
+/**
+ * Undo a withdrawal whose payout never happened: put the money back in the
+ * wallet and mark the row 'failed' so readWithdrawable stops counting it as
+ * spent headroom. Guarded on status='pending' so it cannot double-credit.
+ */
+export async function failWithdrawalPayout(params: {
+  userId: string;
+  transactionId: string;
+  amount: number;
+  reason: string;
+}): Promise<void> {
+  await withTransaction(async (tx) => {
+    const updated = await tx.sql`
+      UPDATE transactions
+      SET status = 'failed',
+          description = ${`Withdrawal $${roundMoney(params.amount).toFixed(2)} failed: ${params.reason}`}
+      WHERE id = ${params.transactionId} AND status = 'pending'
+      RETURNING id
+    `;
+    if (updated.rows.length === 0) return;
+    await tx.sql`SELECT balance FROM wallets WHERE user_id = ${params.userId} FOR UPDATE`;
+    await tx.sql`UPDATE wallets SET balance = balance + ${roundMoney(params.amount)} WHERE user_id = ${params.userId}`;
   });
 }
 
