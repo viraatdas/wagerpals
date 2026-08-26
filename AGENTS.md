@@ -241,84 +241,146 @@ The Expo account is on the Free plan (30 cloud iOS builds/month). When that's ex
 (or to avoid burning it), build LOCALLY — local builds do NOT consume the cloud quota:
 
 ```bash
-cd mobile
-eas build --platform ios --profile production --local --output /tmp/wagerpals.ipa
-```
-
-This runs the same fastlane/xcodebuild pipeline on this machine and writes a store-signed
-.ipa. It fetches signing credentials from EAS servers automatically ("All credentials are
-ready to build"). Then submit the artifact the normal way:
-
-```bash
-eas submit --platform ios --profile production --path /tmp/wagerpals.ipa --non-interactive
+./mobile/scripts/local-build.sh 22   # <build-number>: prebuild -> stamp -> archive -> .ipa
+cd mobile && eas submit --platform ios --profile production \
+  --path ~/wagerpals-ship22/export/WagerPals.ipa --non-interactive
 ```
 
 Then run the §7 delivery chain (attach to the Friends external group + beta review + the
 delivery proof) exactly as for a cloud build.
 
-Gotchas learned here:
-- Local builds take ~20-30 min. Run them so they survive: this box sleeps and (apparently)
-  a peer session sometimes `pkill`s xcodebuild, killing detached builds mid-run. Prefer
-  running the command in the operator's own foreground terminal (`! cd mobile && eas
-  build … --local`) rather than a backgrounded agent process, which has been getting SIGINT.
-- `--local` still needs the full Xcode toolchain and CocoaPods (present here: Xcode 26.6).
-- The iMessage extension target builds fine locally (the config plugin injects it during
-  prebuild, same as cloud).
+`local-build.sh` drives `xcodebuild archive` + `-exportArchive` directly rather than
+`eas build --local`. Both of the reasons are documented below and were hit for real on
+2026-08-25: the pipe deadlock, and the two-distribution-certs signing trap that kills
+`eas build --local` on this machine specifically. Build 22 is the first local build that
+has ever succeeded here.
 
-### The local-build hang: tiny pipes under memory pressure (root-caused 2026-08-24)
+Gotchas learned here:
+- Local builds take ~20-30 min (build 22: ~11 min archive + ~40 s export, warm pods).
+  This box sleeps and a peer session sometimes `pkill`s xcodebuild, killing detached
+  builds mid-run. If a backgrounded agent run keeps dying, hand it to the operator's own
+  foreground terminal (`! ./mobile/scripts/local-build.sh 22`).
+- It needs the full Xcode toolchain and CocoaPods (present here: Xcode 26.6).
+- The iMessage extension target builds fine locally (the config plugin injects it during
+  prebuild, same as cloud) and comes out distribution-signed inside the .ipa.
+- Nothing local increments the build number — `appVersionSource` is `remote`, so EAS owns
+  it for cloud builds and you must pass the next one explicitly here. Check the current
+  high-water mark on ASC first; never reuse a number.
+
+### The local-build hang: a 512-byte pipe, and the shim that beats it (fixed 2026-08-25)
 
 A local build that prints its fastlane banner and then does NOTHING — no compile
-workers, derived data frozen at ~2.4 MB, no error, forever — is NOT an EAS, signing,
-or project problem. Run `cd mobile && npm run preflight:local` FIRST; it answers in
-under a second.
+workers, derived data frozen at ~2.4 MB, no error, forever — is the undrained-pipe
+deadlock described below. It is FIXED, and the fix needs no reboot, no sudo, and no
+free memory:
 
-What happens: Xcode's `CreateBuildDescription` runs a toolchain probe,
+```bash
+./mobile/scripts/local-build.sh 22       # prebuild -> stamp -> archive -> store-signed .ipa
+```
+
+That script installs the shim itself. It also does NOT use `eas build --local`, for a
+second reason that has nothing to do with pipes — see "the local signing trap" below.
+
+**The mechanism.** Xcode's `CreateBuildDescription` runs a toolchain probe,
 `clang -v -E -dM -arch arm64 -isysroot <sdk> -x objective-c -c /dev/null`, through
-`ExecuteExternalTool` and does not drain its output concurrently. The probe emits
-~16 KB (16082 B stdout + 4672 B stderr). A healthy macOS pipe holds 16384 B, so it
-just fits. **Under memory pressure the kernel falls back to 512/1024-byte pipes** —
-measured at exactly 1024, then 512, on this machine with swap pinned at 5.1 GB of
-6.1 GB. clang then blocks in `write()` inside `clang::driver::Command::Print`,
-SWBBuildService sits idle in `mach_msg` waiting for a task that will never finish,
-and xcodebuild waits on the build service. Three processes, all "alive", zero progress.
+`ExecuteExternalTool` and does not read its pipes until the process exits. The probe
+emits ~20.7 KB (16,082 B on stdout, ~4.7 KB on stderr). A healthy macOS pipe holds
+16,384 B, so it just fits. This machine hands out **512-byte** pipes, so clang blocks in
+`write()` after 511 bytes, SWBBuildService sits in `mach_msg` waiting for a task that will
+never finish, and xcodebuild waits on the build service. Three processes, all "alive",
+zero progress. `timeout` cannot kill it either — xcodebuild ignores SIGTERM in that
+state, so always use `timeout -k` around it.
 
-**Reboot is the fix. Nothing softer worked.** Measured 2026-08-24, in order:
-- `sudo purge` freed ~530 MB of pages; capacity stayed pinned at exactly 512.
-- Free RAM was never the constraint — 530 MB is ample for a 16 KB pipe buffer.
-- Nor was the pipe pool exhausted: 432 distinct pipe fds is ~6.75 MB, only ~42% of a
-  16 MB `maxpipekva`, well under the 50% mark where XNU switches to small pipes.
+**The fix decouples the tool's EXIT from its output being flushed**, instead of trying to
+get a bigger pipe. `mobile/scripts/pipefix-toolchain.sh` installs
+`~/Library/Developer/Toolchains/PipeFix.xctoolchain`, in which every file is a symlink to
+the real XcodeDefault toolchain except `usr/bin/clang`. That shim `exec`s the real clang
+directly for every ordinary compile (so the build pays nothing), and only for the `-dM`
+probe runs it buffered and then forks **one detached writer per stream** before exiting.
+xcodebuild's wait returns in ~0.2 s, it starts reading, and the writers push all 20.7 KB
+through the same 512-byte pipe, 511 bytes at a time.
 
-So neither of the two obvious explanations holds. What is left, and what fits a box with
-2.5 days of uptime under heavy multi-agent load, is kernel address-space fragmentation:
-`pipespace()` grows a pipe from 512 bytes toward 16384 on demand via `kmem_alloc`, and
-that growth is failing. Only a reboot clears it. Confirm with `npm run preflight:local`
-(want >= 16384) before spending 25 minutes on a build.
+Two details that are easy to get wrong — both were hit and fixed here:
+- Each detached writer must `close()` the OTHER stream's fd. Otherwise the stderr writer
+  keeps a handle on the stdout pipe, a reader that drains stdout to EOF first never sees
+  EOF, and you have rebuilt the same deadlock one level down. Xcode does read the two
+  streams one at a time, so this is not theoretical — it hung exactly this way.
+- `TOOLCHAINS` is the only lever that actually routes the probe. `xcrun --toolchain <id>`
+  and `TOOLCHAINS=<id> xcrun -f clang` silently resolve back to XcodeDefault (a
+  deliberately bogus id resolves identically, with no error). Pointing `DEVELOPER_DIR` at
+  a shadow `Xcode.app` built from symlinks is accepted by xcodebuild, but SWBBuildService
+  resolves the toolchain from the REAL Xcode it is loaded out of, so the probe still runs
+  the unshimmed clang. Both verified 2026-08-25; don't spend the afternoon on them again.
 
-The one-command recovery path lives outside the repo at `~/wagerpals-ship22/ship22.sh`
-(durable — the session scratchpad is under /private/tmp and does not survive a reboot).
-It preflights, builds, submits, cancels the in-flight review submission, attaches the new
-build, refiles, runs the TestFlight chain, and prints the delivery proof.
+`npm run preflight:local` still measures pipe capacity (>= 16384 is healthy). Treat it as
+information now, not a gate: with the pipefix toolchain a 512-byte pipe builds fine.
 
-Things that look like the cause and are NOT — each was ruled out with evidence, do
-not re-litigate them:
-- disk space (41 GB free), process limits (483 of 4000), fd limits
+**Why "just reboot" is not the answer.** A reboot does clear it, and it does not hold:
+this box was rebooted at 01:21 on 2026-08-25 and capacity was back to 512 bytes by 16:53
+the same day — ~15.5 h later, under multi-agent load (load average 30). Memory pressure
+was NOT the trigger on that measurement: swap was 627 MB of 1024 MB and 677 MB of pages
+were free while capacity sat at 512.
+
+Things that look like the cause and are NOT — each ruled out with evidence, do not
+re-litigate them:
+- disk space (38 GB free), process limits, fd limits
 - a stale clang module cache, DerivedData, or Xcode caches (all cleared, still hung)
-- running the build detached with `os.setsid()` (retried attached; still hung — but
-  note setsid IS worth avoiding anyway, it drops the login session's bootstrap namespace)
+- running the build detached with `os.setsid()` (retried attached; still hung — but note
+  setsid IS worth avoiding anyway, it drops the login session's bootstrap namespace)
 - the launchd session type (the agent shell is already `Aqua`)
 - `CC_PRINT_OPTIONS` (explicitly set to NO; still hung)
 - EAS's `| tee` pipeline with xcpretty disabled (raw `xcodebuild -quiet` hangs identically)
-- the legacy `XCBBuildService` via `XCBBUILDSERVICE_PATH` — it exists in Xcode 26 but
-  is incompatible with the current project format and dies with "The Xcode build
-  system has terminated due to an error"
+- the legacy `XCBBuildService` via `XCBBUILDSERVICE_PATH` — it exists in Xcode 26 but is
+  incompatible with the current project format and dies with "The Xcode build system has
+  terminated due to an error"
+- freeing memory or quitting apps: `sudo purge` freed ~530 MB and capacity stayed pinned
+  at 512; quitting Spotify, Notion and Beeper released ~90 pipe fds and it did not move
+  one byte
+- raising a kernel limit: there is no `kern.ipc.maxpipekva` sysctl on Darwin 25. And the
+  pipe never grows — 512 bytes whether you write 512 or 65536 at a time, before or after
+  draining, as your own user or via `launchctl asuser`
 
-There is NO software workaround. Tested 2026-08-24 by feeding the probe's streams to an
-undrained pipe: stdout-only blocks, stderr-only blocks, and stripping `-v` still blocks —
-because the 16 KB `-dM` macro dump on stdout is the output Xcode actually needs, and it
-cannot fit in a 512-byte pipe. Interposing a clang wrapper cannot help. Freeing pipes does
-not help either: quitting Spotify, Notion and Beeper released ~90 pipe fds and capacity did
-not move one byte, which says `amountpipekva` is LEAKED rather than genuinely in use. Only
-a reboot resets that accounting.
+Cloud builds are immune (different machine). Builds 9-21 were ALL cloud builds; build 22
+is the first local build this box has ever produced.
 
-Cloud builds are immune (different machine). Builds 9-21 were ALL cloud builds, so
-until this is fixed no local build has ever actually succeeded on this box.
+### The local signing trap: two distribution certs, same human-readable name
+
+Once the pipe deadlock was out of the way, `eas build --local` got through prebuild, pods
+and the JS bundle, then died the moment fastlane started the archive — before a single
+source file compiled — with:
+
+```
+Provisioning profile "*[expo] com.wagerpals.app AppStore ..." doesn't include signing
+certificate "Apple Distribution: Viraat Das (3C4383262W)".
+```
+
+The team has TWO usable distribution certificates, and only one of them is in the profiles:
+
+| cert | ASC type | serial | where the private key is | in the profiles? |
+|---|---|---|---|---|
+| `iPhone Distribution: Viraat Das` | `IOS_DISTRIBUTION` | `3D6F8E4B…` | EAS servers | **yes** — both profiles |
+| `Apple Distribution: Viraat Das` | `DISTRIBUTION` | `18FBE858…` | this machine's login keychain | no |
+
+`eas build --local` imports its own cert into a temporary keychain (the log even says
+"Verifying whether the distribution certificate and provisioning profile match" and
+passes), but Xcode then searches every keychain, prefers the newer *Apple* Distribution
+identity over the legacy *iPhone* Distribution one, and rejects the profile. **Cloud builds
+never hit this** — the cloud machine has no competing local cert, which is exactly why
+builds 12-21 sailed through.
+
+`mobile/scripts/local-build.sh` sidesteps it instead of fighting it: archive and export
+with `CODE_SIGN_STYLE=Automatic` plus `-allowProvisioningUpdates` and the App Store Connect
+API key, so Xcode provisions against the cert this machine actually holds. Do NOT "fix" it
+by deleting the local identity or by re-uploading credentials to EAS unless you intend to
+change what cloud builds sign with too.
+
+One detail that looks alarming and is not: the **archive** comes out Apple *Development*
+signed with `aps-environment=development`. `xcodebuild -exportArchive` re-signs it for
+distribution. Verify the `.ipa`, never the `.xcarchive`:
+
+```bash
+codesign -dvvv Payload/WagerPals.app          # want: Apple Distribution: Viraat Das
+codesign -d --entitlements - --xml Payload/WagerPals.app | plutil -p -
+# want: aps-environment => production, get-task-allow => false,
+#       com.apple.developer.applesignin present
+```
