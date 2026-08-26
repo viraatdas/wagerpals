@@ -42,3 +42,6 @@ yarn-error.*
 
 # offstage run artifacts (screenshots, logs) — regenerated per run
 .offstage/
+
+# ledger session journals + viz (local agent artifacts)
+.ledger/
