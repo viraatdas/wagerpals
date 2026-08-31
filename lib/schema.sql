@@ -206,7 +206,27 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Stack Auth's OTP sign-in is two calls: `send-sign-in-code` returns a nonce,
+-- and `sign-in` wants the 6-character emailed code CONCATENATED with that
+-- nonce (the combined value must be exactly 45 characters). The nonce goes
+-- only to whoever called send.
+--
+-- The mobile app posts {email} and later {email, code} — it never sees a
+-- nonce — so the server has to hold it between the two requests. It cannot
+-- live in module memory: each request may hit a different serverless
+-- instance.
+--
+-- Not user data. Single-use (deleted when redeemed) and short-lived; the
+-- emailed code is still the only secret, and it is never stored here.
+CREATE TABLE IF NOT EXISTS otp_sign_in_nonces (
+  email TEXT PRIMARY KEY,
+  nonce TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_otp_sign_in_nonces_expires_at ON otp_sign_in_nonces(expires_at);
 CREATE INDEX IF NOT EXISTS idx_bets_event_id ON bets(event_id);
 CREATE INDEX IF NOT EXISTS idx_bets_user_id ON bets(user_id);
 CREATE INDEX IF NOT EXISTS idx_bets_escrow_hold_id ON bets(escrow_hold_id) WHERE escrow_hold_id IS NOT NULL;

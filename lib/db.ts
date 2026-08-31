@@ -1664,4 +1664,52 @@ export const db = {
       `;
     },
   },
+
+  // Stack Auth OTP sign-in needs the nonce from `send-sign-in-code` handed
+  // back to `sign-in` alongside the emailed code. The mobile client posts
+  // {email} then {email, code} and never sees a nonce, so we park it here
+  // between the two requests (module memory would not survive the hop to a
+  // different serverless instance).
+  //
+  // The emailed code is the secret and is never stored. Rows are single-use
+  // and short-lived.
+  otpNonces: {
+    /** Store (or replace) the pending nonce for an email. */
+    put: async (email: string, nonce: string, ttlSeconds = 900): Promise<void> => {
+      await sql`
+        INSERT INTO otp_sign_in_nonces (email, nonce, expires_at)
+        VALUES (
+          ${email.toLowerCase()},
+          ${nonce},
+          CURRENT_TIMESTAMP + (${ttlSeconds} * INTERVAL '1 second')
+        )
+        ON CONFLICT (email) DO UPDATE
+          SET nonce = EXCLUDED.nonce,
+              expires_at = EXCLUDED.expires_at,
+              created_at = CURRENT_TIMESTAMP
+      `;
+    },
+
+    /**
+     * Read and consume the pending nonce for an email. Single-use: the row is
+     * deleted in the same statement, so a replayed verify cannot reuse it.
+     * Returns null if there is none or it has expired.
+     */
+    take: async (email: string): Promise<string | null> => {
+      const result = await sql`
+        DELETE FROM otp_sign_in_nonces
+        WHERE email = ${email.toLowerCase()} AND expires_at > CURRENT_TIMESTAMP
+        RETURNING nonce
+      `;
+      return result.rows.length > 0 ? (result.rows[0].nonce as string) : null;
+    },
+
+    /** Opportunistic cleanup of expired rows. */
+    pruneExpired: async (): Promise<number> => {
+      const result = await sql`
+        DELETE FROM otp_sign_in_nonces WHERE expires_at <= CURRENT_TIMESTAMP RETURNING email
+      `;
+      return result.rows.length;
+    },
+  },
 };

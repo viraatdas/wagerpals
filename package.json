@@ -28,6 +28,7 @@
     "verify:constraints": "tsx scripts/verify-constraint-status.ts",
     "verify:groups-auth": "tsx scripts/verify-groups-auth.ts",
     "verify:users-auth": "tsx scripts/verify-users-auth.ts",
+    "verify:activity-auth": "tsx scripts/verify-activity-auth.ts",
     "brand:verify": "tsx scripts/verify-brand.ts",
     "verify:withdrawals": "tsx scripts/verify-withdrawals.ts"
   },

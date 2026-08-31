@@ -226,6 +226,7 @@ it requires `POSTGRES_URL` (and in two cases, permission to `CREATE DATABASE`) i
 | `scripts/verify-constraint-status.ts` | `verify:constraints` | Proves `constraintStatus()` in `scripts/migrate-comeback.ts` is table-scoped (not just constraint-name-scoped) using throwaway `zz_probe_*` objects, dropped in a `finally`. | Yes |
 | `scripts/verify-groups-auth.ts` | `verify:groups-auth` | Drives the real `GET /api/groups` and `GET /api/groups/members` handlers against the **real** `lib/auth.ts` — only Stack Auth itself is stubbed (`scripts/testing/stack-auth-stub.ts`, via the same `module.registerHooks` redirect `test:auth` uses), with `lib/db`/`lib/push` faked in memory. Proves a group's roster, pending-join queue and admin/resolver info reach only an authenticated **active member of that group**, that `?public=true` stays anonymous, and that `?userId=` cannot name anyone but the caller. | No |
 | `scripts/verify-users-auth.ts` | `verify:users-auth` | Drives the real `GET /api/users` handler against the **real** `lib/auth.ts` — only Stack Auth itself is stubbed (`scripts/testing/stack-auth-stub.ts`, same `module.registerHooks` redirect as `verify:groups-auth`), with `lib/db` faked in memory. Proves the no-params user directory is 401 for an anonymous caller (and that the gate runs *before* `db.users.getAll()`), while `?id=<self>`, `?id=<other>` and `?username=` keep their existing shapes. | No |
+| `scripts/verify-activity-auth.ts` | `verify:activity-auth` | Drives the real `GET /api/activity` handler against the **real** `lib/auth.ts` — only Stack Auth is stubbed (`scripts/testing/stack-auth-stub.ts`, same `module.registerHooks` redirect the other auth checks use), with `lib/db`/`lib/push` faked in memory. Proves the feed is 401 for an anonymous caller and 403 for anyone naming someone else, that the gate runs *before* `db.activities.getByUserGroups()`, and that the response is never `Cache-Control: public`. | No |
 | `scripts/verify-withdrawals.ts` | `verify:withdrawals` | Drives the real `withdrawFromWallet` / `executeWithdrawalPayout` / `getWithdrawable` against the shared dev database with only Stripe replaced by a recording fake `RefundGateway`. Proves the refund-to-source cap (grants and winnings are not withdrawable), that a failed payout returns the money and marks the row `failed`, and that retries never refund twice. | Yes (shared dev DB) |
 | `scripts/verify-comeback.ts` | `db:verify` | Structural + functional proof that the comeback migration landed; read-only (write checks roll back). | Yes |
 | `scripts/check-identity.ts` | `identity:check` | Part A (no DB): the forged `x-stack-user-id` header does not authenticate, unauthenticated requests get a clean 401 before touching the DB. Part B (needs DB): scans for duplicate emails, missing emails, broken tombstones, dangling FK references to tombstoned users. | Part A: No. Part B: skipped with a message if `POSTGRES_URL` is unset (does not fail). |
@@ -378,6 +379,41 @@ anonymous request can't learn the user count or infer anything from timing eithe
 
 Proven by `npm run verify:users-auth` (`scripts/verify-users-auth.ts`) — no database
 required, and it drives the real `lib/auth.ts` (only Stack Auth is stubbed).
+
+### An activity feed is only ever the caller's own
+
+`GET /api/activity` is backed by `db.activities.getByUserGroups`, which returns every
+activity across every group the named user belongs to — **including private ones** — and
+each row carries `group_name`, `event_title` and the comment `note`. So the feed is not a
+public profile; it is a window into every private group that user is in.
+
+This shipped ungated. The handler read `userId` straight off the query string with no
+`requireAuth` and no `verifyUserMatch`, which made the whole chain anonymous:
+
+```
+GET /api/users?username=<victim>   ->  their user id   (this branch is deliberately public)
+GET /api/activity?userId=<that id> ->  their private group names, the wagers inside
+                                       them, and the comment text on those wagers
+```
+
+User ids are not secrets — the `?username=` lookup hands them out on purpose — so a query
+param naming whose data to return was never an access check. This is the same class of bug
+as trusting `x-stack-user-id`, and §8's group-membership rule already forbade it in words;
+it was simply never enforced on this route.
+
+- `requireAuth` runs **before** the feed is read, so an anonymous caller can't confirm a
+  user id exists or infer anything from timing.
+- `userId` is optional and redundant: it must equal the caller (`verifyUserMatch`, 403
+  otherwise), and when omitted it is derived from the session — same shape as
+  `GET /api/groups`.
+- The response is `Cache-Control: private, no-store`. It used to be
+  `public, s-maxage=10`, which invites a shared/CDN cache to serve one user's feed to the
+  next caller. Per-caller data must never be marked `public`.
+
+Proven by `npm run verify:activity-auth` (`scripts/verify-activity-auth.ts`) — no database
+required, and it drives the real `lib/auth.ts` (only Stack Auth is stubbed). It asserts the
+401/403 shapes on every session path, that the database is never touched on a refused
+request, and that the `public` cache header does not come back.
 
 ### The central notification filter
 

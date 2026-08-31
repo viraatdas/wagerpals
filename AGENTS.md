@@ -134,7 +134,7 @@ npm run build                                          # web build green
 npm run verify:payments      # money invariants, both currencies (live DB)
 npm run verify:escrow-chips  # the two-surface escrow invariant (live DB)
 npm run verify:imessage && npm run verify:notifications
-npm run verify:groups-auth && npm run verify:users-auth
+npm run verify:groups-auth && npm run verify:users-auth && npm run verify:activity-auth
 npm run verify:comments && npm run identity:check
 npm run db:verify            # schema matches the migration (live DB)
 ```

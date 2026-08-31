@@ -509,16 +509,27 @@ async function runSuite(testUrl: string): Promise<void> {
     assertEqual(res.body.username, 'ada_l', 'public fields still come through');
   });
 
-  await test('an anonymous caller sees only the public shape', async () => {
+  await test('an anonymous caller sees only the public shape, and no directory at all', async () => {
     resetSessions();
     const byId = await get(webRequest(undefined, `?id=${adaStackId}`));
     assertEqual(byId.body.email, undefined, 'email is stripped for ?id=');
     const byUsername = await get(webRequest(undefined, '?username=ada_l'));
     assertEqual(byUsername.body.email, undefined, 'email is stripped for ?username=');
+
+    // The no-params directory is a bulk read of every human on the platform,
+    // so it is gated (CLAUDE.md section 8, "the user directory is never
+    // anonymous") — an anonymous caller gets 401, not a redacted list.
     const list = await get(webRequest(undefined, ''));
-    assert(Array.isArray(list.body), 'the list endpoint returns an array');
+    assertEqual(list.status, 401, 'the anonymous directory is refused');
+    assert(!Array.isArray(list.body), 'no user rows come back with the 401');
+
+    // ...and a signed-in caller still gets the redacted shape, never identity fields.
+    signInWeb(dupGoogleOnly);
+    const authed = await get(webRequest(undefined, ''));
+    assertEqual(authed.status, 200, 'a signed-in caller still gets the directory');
+    assert(Array.isArray(authed.body), 'the list endpoint returns an array');
     assert(
-      list.body.every((u: any) => u.email === undefined && u.auth_methods === undefined),
+      authed.body.every((u: any) => u.email === undefined && u.auth_methods === undefined),
       'no row in the list leaks identity fields'
     );
   });
@@ -716,8 +727,11 @@ async function runSuite(testUrl: string): Promise<void> {
     const direct = await db.users.get(tombstoneId);
     assertEqual(direct?.merged_into, adaStackId, 'the tombstone points at the surviving account');
 
+    // The directory is auth-gated, so sign in before asking for it.
     resetSessions();
+    signInWeb(dupGoogleOnly);
     const listed = await get(webRequest(undefined, ''));
+    assertEqual(listed.status, 200, 'the signed-in directory read succeeds');
     assert(!listed.body.some((u: any) => u.id === tombstoneId), 'the API list skips tombstones too');
   });
 

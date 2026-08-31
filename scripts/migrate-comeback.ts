@@ -307,7 +307,22 @@ async function migrateComeback(): Promise<void> {
   await step('transactions.currency', () => columnExists('transactions', 'currency'), () => sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'usd' CONSTRAINT transactions_currency_check CHECK (currency IN ('usd', 'wp'))`);
   await step('escrow_holds.currency', () => columnExists('escrow_holds', 'currency'), () => sql`ALTER TABLE escrow_holds ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'usd' CONSTRAINT escrow_holds_currency_check CHECK (currency IN ('usd', 'wp'))`);
 
-  console.log('\n20. backfill: notification_preferences for existing users');
+  console.log('\n20. otp_sign_in_nonces table & index');
+  // Stack Auth's OTP sign-in wants the emailed code concatenated with the
+  // nonce that `send-sign-in-code` returned. The mobile client never sees a
+  // nonce, so the server parks it here between the two requests — module
+  // memory would not survive the hop to another serverless instance.
+  await step('otp_sign_in_nonces table', () => tableExists('otp_sign_in_nonces'), () => sql`
+    CREATE TABLE IF NOT EXISTS otp_sign_in_nonces (
+      email TEXT PRIMARY KEY,
+      nonce TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await step('idx_otp_sign_in_nonces_expires_at', () => indexExists('idx_otp_sign_in_nonces_expires_at'), () => sql`CREATE INDEX IF NOT EXISTS idx_otp_sign_in_nonces_expires_at ON otp_sign_in_nonces(expires_at)`);
+
+  console.log('\n21. backfill: notification_preferences for existing users');
   const backfilled = await sql`
     INSERT INTO notification_preferences (user_id)
     SELECT id FROM users
