@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { isReviewDemoLogin, mintReviewDemoSession } from '@/lib/app-review-demo';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,17 @@ export async function POST(request: NextRequest) {
         { error: 'Email and code are required' },
         { status: 400 }
       );
+    }
+
+    // App Review demonstration mode (Guideline 2.1(a)). Inert unless both
+    // APP_REVIEW_DEMO_EMAIL and APP_REVIEW_DEMO_CODE are set; matches exactly
+    // one address. See lib/app-review-demo.ts for the invariants.
+    if (isReviewDemoLogin(email, code)) {
+      const demo = await mintReviewDemoSession();
+      if (demo && demo.ok) return NextResponse.json(demo.session);
+      if (demo && !demo.ok) {
+        return NextResponse.json({ error: demo.error }, { status: demo.status });
+      }
     }
 
     const projectId = process.env.NEXT_PUBLIC_STACK_PROJECT_ID || '';

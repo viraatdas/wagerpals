@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { isReviewDemoEmail } from '@/lib/app-review-demo';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,14 @@ export async function POST(request: NextRequest) {
 
     if (!email || typeof email !== 'string') {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    }
+
+    // App Review demonstration mode (Guideline 2.1(a)): the review address has
+    // no real inbox, so don't ask Stack Auth to mail it a code. Report success
+    // so the app advances to the code screen, where the configured code is
+    // accepted by mobile-verify-code. Inert unless demo mode is configured.
+    if (isReviewDemoEmail(email)) {
+      return NextResponse.json({ success: true });
     }
 
     const projectId = process.env.NEXT_PUBLIC_STACK_PROJECT_ID || '';

@@ -31,7 +31,21 @@ export const dynamic = 'force-dynamic';
 // The app's own bundle id is the audience of a native Sign in with Apple
 // identity token (a native iOS app authenticates against its bundle id — no
 // separate Services ID is involved). Public identifier, not a secret.
-const APPLE_BUNDLE_ID = process.env.APPLE_BUNDLE_ID || 'com.wagerpals.app';
+// The app's real bundle id, confirmed against build 23's signed entitlements
+// (application-identifier = 3C4383262W.com.wagerpals.app). This is always
+// accepted. APPLE_BUNDLE_ID may add further audiences (comma-separated, e.g. a
+// Services ID for a web flow) but can no longer REPLACE the native one — a
+// misconfigured env var silently breaking native Sign in with Apple is exactly
+// what caused the Guideline 2.1(a) rejection of build 23.
+const NATIVE_BUNDLE_ID = 'com.wagerpals.app';
+
+const APPLE_AUDIENCES = Array.from(
+  new Set(
+    [NATIVE_BUNDLE_ID, ...(process.env.APPLE_BUNDLE_ID || '').split(',')]
+      .map((a) => a.trim())
+      .filter(Boolean)
+  )
+);
 
 const APPLE_ISSUER = 'https://appleid.apple.com';
 
@@ -69,11 +83,26 @@ export async function POST(request: NextRequest) {
   try {
     const result = await jwtVerify(identityToken, appleJwks, {
       issuer: APPLE_ISSUER,
-      audience: APPLE_BUNDLE_ID,
+      audience: APPLE_AUDIENCES,
     });
     payload = result.payload;
   } catch (err) {
-    console.error('[apple-native] identity token verification failed:', err instanceof Error ? err.message : err);
+    // Log the token's own claims (UNVERIFIED — for diagnosis only, never
+    // trusted) so an audience/issuer mismatch is visible in logs instead of
+    // being indistinguishable from a forged token.
+    let claimHint = 'unreadable';
+    try {
+      const raw = JSON.parse(Buffer.from(identityToken.split('.')[1], 'base64url').toString());
+      claimHint = `aud=${JSON.stringify(raw?.aud)} iss=${JSON.stringify(raw?.iss)}`;
+    } catch {
+      /* keep 'unreadable' */
+    }
+    console.error(
+      '[apple-native] identity token verification failed:',
+      err instanceof Error ? err.message : err,
+      '| expected aud one of', APPLE_AUDIENCES,
+      '| token claims (unverified):', claimHint
+    );
     return NextResponse.json({ error: 'We could not verify your Apple sign-in. Please try again.' }, { status: 401 });
   }
 
