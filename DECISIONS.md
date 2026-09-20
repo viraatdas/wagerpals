@@ -1295,3 +1295,38 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
 - **Queue cost is now zero:** the version is already rejected, so cutting build 24 no longer
   sacrifices a queue position. That was the only argument against a new build.
 - **By:** worker · 2026-09-18
+
+## App Store: three of four rejection reasons fixed and verified in production
+- **2.3.6 Age Rating — FIXED.** `gambling=true`; appStoreAgeRating FOUR_PLUS -> SEVENTEEN_PLUS.
+- **2.1(a) App Completeness (Sign in with Apple) — FIXED, ROOT CAUSE FOUND.** It was never
+  signing, entitlements or `APPLE_BUNDLE_ID`. The Stack SDK types
+  `createSession(options?)` as optional while the compiled runtime dereferences
+  `options.expiresInMillis` unconditionally, so every no-argument call threw
+  `TypeError: Cannot read properties of undefined (reading 'expiresInMillis')`, the route's
+  outer catch turned it into a 500, and the app showed "Something went wrong signing you
+  in." The types said the call was fine, so it type-checked and shipped broken.
+  `google-native` carried the identical bug, so native Google sign-in was equally dead —
+  between that, no password field, and no reviewer access to the code inbox, the reviewer
+  had NO working way into the app. All three call sites now pass an explicit lifetime from
+  `MOBILE_SESSION_EXPIRES_IN_MS` in `lib/stack.ts`. Found by testing the new demo mode
+  against production, which failed the same way and produced the stack trace.
+- **2.1(a) Information Needed — FIXED.** `lib/app-review-demo.ts` implements the
+  demonstration mode Apple's rejection names. Inert unless both `APP_REVIEW_DEMO_EMAIL` and
+  `APP_REVIEW_DEMO_CODE` are set; one address only; constant-time comparison on both fields;
+  session minted via `stackServerApp` and row via `syncUser()` like every other sign-in;
+  every acceptance logged. The code is 6 digits because the app's input strips non-digits
+  and slices to CODE_LENGTH=6, so the ADDRESS carries the entropy, not the code. ASC review
+  notes now spell out the exact steps. Unset `APP_REVIEW_DEMO_CODE` after approval.
+- **Verified live on wagerpals.io:** demo sign-in returns real access+refresh tokens;
+  those tokens return 200 on `/api/activity`, `/api/groups` and `/api/users?id=` when sent
+  with `x-stack-refresh-token` (which `mobile/src/services/api.ts` always sends); a wrong
+  code is refused; the demo code against any other address is refused; anonymous
+  `/api/activity` is still 401. Gate green: tsc, build, and 8 verify scripts.
+- **NO NEW BUILD NEEDED.** Every fix is server-side — `git diff 52cac234..HEAD -- mobile/`
+  is empty. Build 23, already attached to 1.1.0, exercises the fixed server as-is.
+- **STILL BLOCKING — 5.1.1(ix).** The app must be submitted from an Apple Developer Program
+  account enrolled as an **organization**. The account holder is viraat.laldas@gmail.com, an
+  individual enrolment. Apple stated documentation cannot substitute. Declaring
+  `gambling=true` makes this MORE certain, not less. Resubmitting from this account is a
+  near-certain repeat rejection, so the refile was NOT filed pending the owner's call.
+- **By:** worker · 2026-09-20
