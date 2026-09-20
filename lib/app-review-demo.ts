@@ -1,6 +1,6 @@
 import 'server-only';
 import { timingSafeEqual } from 'crypto';
-import { stackServerApp } from '@/lib/stack';
+import { stackServerApp, MOBILE_SESSION_EXPIRES_IN_MS } from '@/lib/stack';
 import { syncUser } from '@/lib/sync-user';
 import type { AuthenticatedStackUser } from '@/lib/auth';
 
@@ -117,7 +117,7 @@ export async function mintReviewDemoSession(): Promise<
     });
   }
 
-  const session = await stackUser.createSession();
+  const session = await stackUser.createSession({ expiresInMillis: MOBILE_SESSION_EXPIRES_IN_MS });
   const tokens = await session.getTokens();
   if (!tokens.accessToken) {
     console.error('[app-review-demo] createSession returned no access token for', stackUser.id);

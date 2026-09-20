@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OAuth2Client } from 'google-auth-library';
-import { stackServerApp } from '@/lib/stack';
+import { stackServerApp, MOBILE_SESSION_EXPIRES_IN_MS } from '@/lib/stack';
 import { syncUser } from '@/lib/sync-user';
 import type { AuthenticatedStackUser } from '@/lib/auth';
 
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     // Mint a real Stack session for this user, exactly like the web OAuth
     // return leg does (mobile-session getTokens()).
-    const session = await stackUser.createSession();
+    const session = await stackUser.createSession({ expiresInMillis: MOBILE_SESSION_EXPIRES_IN_MS });
     const tokens = await session.getTokens();
     if (!tokens.accessToken) {
       console.error('[google-native] createSession returned no access token for user', stackUser.id);
