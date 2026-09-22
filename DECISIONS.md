@@ -1417,3 +1417,32 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   `currency.ts`, `format.ts`, `WalletScreen.tsx`, `AmountInput.tsx`. Building locally via
   `mobile/scripts/local-build.sh 24`.
 - **By:** worker · 2026-09-22
+
+## Build 24: points-mode ipa built, proven, uploaded
+- **Built** with `./mobile/scripts/local-build.sh 24` through the PipeFix toolchain:
+  ARCHIVE SUCCEEDED, EXPORT SUCCEEDED, 13,679,046-byte store-signed ipa, 1.1.0 (24),
+  `com.apple.developer.applesignin` present, Apple Distribution, production APS.
+- **The first build 24 attempt was killed on purpose.** Mid-build I found `Money.tsx`
+  carried its OWN hardcoded `$` formatter that bypassed `utils/format.formatMoney` — there
+  was a TODO in the file saying exactly that. It renders the largest numbers in the app
+  including the wallet balance hero, so the headline figure would have said dollars while
+  every other number said points. Fixed, guarded in `verify:points-mode`, rebuilt.
+- **PROOF the bundle is really points mode, not assumed.** String presence proves nothing
+  here: the ternary keeps BOTH branches, so the usd copy and "Add funds" are still findable
+  in the shipped bundle as dead strings. What settles it is the baked constant. Running
+  `npx expo export:embed --platform ios --dev false` gives the pre-Hermes JS, and the
+  currency module compiles to:
+
+      var t='points', n=!0
+
+  i.e. `CURRENCY_MODE='points'` and `IS_POINTS=true`. `EXPO_PUBLIC_CURRENCY_MODE` does not
+  appear in the bundle at all — Babel inlined it as undefined, and the default fell to
+  points exactly as `mobile/src/utils/currency.ts` intends. This is why that module defaults
+  to points rather than usd: a forgotten env var under-claims instead of shipping dollars.
+- **Uploaded** with `xcrun altool --upload-app` using the ASC API key: UPLOAD SUCCEEDED,
+  Delivery UUID 535dbef8-ac58-4704-84aa-5cb58aa54db0, 13,679,046 bytes in 2.4s. Awaiting
+  Apple-side processing before it can be attached.
+- **Reviewer-visible web surfaces checked:** `/about` renders the points copy; the homepage
+  carries no money claim (its `$9`/`$11` are Next.js RSC payload refs and `card` is a CSS
+  class, not currency).
+- **By:** worker · 2026-09-22
