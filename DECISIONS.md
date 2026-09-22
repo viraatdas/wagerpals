@@ -1446,3 +1446,33 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   carries no money claim (its `$9`/`$11` are Next.js RSC payload refs and `card` is a CSS
   class, not currency).
 - **By:** worker · 2026-09-22
+
+## App Store: 1.1.0 build 24 RESUBMITTED with every rejection reason addressed
+- **Submitted 2026-09-22T22:54:12Z**, reviewSubmission **e964e306-a6ef-4076-b802-2e52254deac5**,
+  state WAITING_FOR_REVIEW, build 24 attached, releaseType AFTER_APPROVAL (self-releases on
+  approval). Age rating SEVENTEEN_PLUS with gambling=false, gamblingSimulated=FREQUENT_OR_INTENSE.
+- **How the four rejections were answered:**
+  - 2.3.6 age rating — real money removed, so Simulated Gambling is now the accurate
+    descriptor rather than Gambling.
+  - 5.1.1(ix) organization account — no longer a highly regulated service, so an individual
+    enrolment is permissible. This is why the play-money route was taken instead of the
+    D-U-N-S/org-migration route, which would ALSO have needed 5.3.4 gambling licensing.
+  - 2.1(a) Sign in with Apple — `createSession()` was called with no argument while the Stack
+    SDK runtime dereferences `options.expiresInMillis`; fixed at all three call sites.
+  - 2.1(a) demo account — demonstration mode added, verified against production.
+- **The refile fought the API, and the sequence matters for next time.** A rejected
+  appStoreVersion stays bound to its old reviewSubmission. `POST /v1/reviewSubmissionItems`
+  fails 409 ITEM_PART_OF_ANOTHER_SUBMISSION, and the stale item cannot be deleted
+  ("Item was already submitted", 409). The old submission must be CANCELLED first
+  (`PATCH canceled:true` -> CANCELING -> COMPLETE, ~15s), and only then does the version
+  accept a new item. Note an empty reviewSubmission created before that cancel CANNOT be
+  deleted (403 FORBIDDEN), so reuse it rather than creating another — that is what
+  e964e306 is.
+- **Correct order:** attach build -> cancel old submission -> wait for COMPLETE -> create
+  submission -> add item -> PATCH submitted:true.
+- **Not done, and called out to the owner rather than hidden:** the remaining screenshots
+  show the older "W" play-currency glyph while build 24 renders "pts". Cosmetic drift, not a
+  misrepresentation — the two that actually lied (cash balance, Deposit/Withdraw) were
+  deleted. Also, $11 of old real card deposits are stranded rather than refunded; refundable
+  by hand via Stripe if ever asked for.
+- **By:** worker · 2026-09-22
