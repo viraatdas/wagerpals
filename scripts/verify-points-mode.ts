@@ -115,6 +115,17 @@ async function main() {
   );
   const mobileFormat = fs.readFileSync('mobile/src/utils/format.ts', 'utf8');
   check('mobile formatMoney branches on IS_POINTS', /IS_POINTS/.test(mobileFormat));
+  // Money.tsx renders the biggest numbers in the app (the wallet balance hero
+  // among them) and used to carry its OWN hardcoded "$" formatter that bypassed
+  // formatMoney entirely — a points build would have shown dollar signs on the
+  // headline figure. Guard that it stays mode-aware.
+  const money = fs.readFileSync('mobile/src/components/Money.tsx', 'utf8');
+  check('the Money component respects the currency mode', /IS_POINTS/.test(money));
+  check(
+    'the Money component has no unconditional dollar formatter left',
+    !/^\s*return `\$\{sign\}\$\$\{abs\}`;/m.test(money)
+  );
+
   const wallet = fs.readFileSync('mobile/src/screens/WalletScreen.tsx', 'utf8');
   check('the mobile wallet hides the cash rails in points mode', /IS_POINTS \? null : \(/.test(wallet));
   check(

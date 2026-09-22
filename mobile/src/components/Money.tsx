@@ -4,10 +4,10 @@
 // columns of these line up without needing font-variant-numeric. Emerald
 // for positive, crimson-ink for negative — amber never touches money.
 //
-// TODO(lead): switch to utils/format.formatMoney once available
 import React from 'react';
 import { Text, StyleSheet, StyleProp, TextStyle } from 'react-native';
 import { colors, font, tokens } from '../theme';
+import { IS_POINTS, formatPointsNumber, pointsLabel } from '../utils/currency';
 
 export type MoneySize = 'sm' | 'md' | 'lg';
 export type MoneyTone = 'auto' | 'neutral';
@@ -24,9 +24,16 @@ export interface MoneyProps {
 const SIZE_FONT: Record<MoneySize, number> = { sm: tokens.fontSize.sm, md: tokens.fontSize.base, lg: tokens.fontSize['2xl'] };
 
 function formatAmount(amount: number, signed: boolean): string {
-  const abs = Math.abs(amount).toFixed(2);
+  const value = Math.abs(amount);
   const sign = amount < 0 ? '-' : signed && amount > 0 ? '+' : '';
-  return `${sign}$${abs}`;
+  // This component renders the largest numbers in the app (the wallet balance
+  // hero among them), so it must respect the currency mode. It previously had
+  // its own hardcoded "$" formatter, which would have left dollar signs all
+  // over a points build. See mobile/src/utils/currency.ts.
+  if (IS_POINTS) {
+    return `${sign}${formatPointsNumber(value)} ${pointsLabel(value)}`;
+  }
+  return `${sign}$${value.toFixed(2)}`;
 }
 
 export const Money = React.memo(function Money({ amount, size = 'md', signed = false, tone = 'auto', style }: MoneyProps) {
