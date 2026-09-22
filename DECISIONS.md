@@ -1330,3 +1330,26 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   `gambling=true` makes this MORE certain, not less. Resubmitting from this account is a
   near-certain repeat rejection, so the refile was NOT filed pending the owner's call.
 - **By:** worker · 2026-09-20
+
+## App Store: the org path is MIGRATION, not app transfer — transfer is not available to us
+- **Finding (Apple docs, checked 2026-09-22):** App transfer requires "at least one version
+  that was released to the App Store", and an app is ineligible while its status is Waiting
+  for Review, In Review, Accepted, Pending Developer Release or Pending Apple Release.
+  Wager Pals 1.1.0 has NEVER been released — it is the only version record and it is
+  currently Rejected. **So Wager Pals cannot be transferred to a new organization account.**
+  Standing up a fresh org account and moving the app across is therefore not a path; it
+  would mean a new app record, and `com.wagerpals.app` is already bound to team 3C4383262W,
+  so the bundle id would have to change too (Apple: a bundle id "can't be changed once a
+  build has been uploaded").
+- **Therefore the correct path is to MIGRATE the existing account** from Individual to
+  Organization via https://developer.apple.com/contact/request/migrate-individual-account .
+  Requirements Apple states: the requester must be a founder/cofounder of the organization,
+  the organization needs a D-U-N-S Number, and Apple may ask for business documents. This
+  keeps the same account, so the app record, bundle id, build 23, TestFlight groups and the
+  1.1.0 metadata all survive. Apple's own help page does NOT spell out Team ID continuity,
+  so that is worth confirming with Developer Support before committing — flagged, not
+  asserted.
+- **Also noted from the transfer docs, for whenever a transfer does become relevant:** apps
+  grouped for Sign in with Apple must be ungrouped first, and a transfer identifier must be
+  generated per user; TestFlight must be turned off beforehand.
+- **By:** worker · 2026-09-22
