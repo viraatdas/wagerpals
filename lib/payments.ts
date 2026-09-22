@@ -72,6 +72,12 @@ function fromCents(cents: number): number {
 // Renders an amount the way product copy wants it: "$25.00". Backend-only
 // formatting for PaymentError messages and route-level text.
 export function formatCurrencyAmount(amount: number): string {
+  // In points mode every stake is play-money, so error text and push copy must
+  // not say dollars. Read at call time; see lib/currency-mode.ts.
+  if (process.env.WAGER_CURRENCY_MODE === 'points') {
+    const rounded = Math.round(amount * 100) / 100;
+    return `${rounded} ${rounded === 1 ? 'pt' : 'pts'}`;
+  }
   return `$${amount.toFixed(2)}`;
 }
 

@@ -47,6 +47,10 @@ export default function WalletPanel({ className }: WalletPanelProps) {
   // the deposit, so the signup credit and winnings off other players are
   // not withdrawable and the balance alone would overpromise.
   const [withdrawable, setWithdrawable] = useState<number | null>(null);
+  // Points mode closes the cash rails server-side (lib/currency-mode.ts). This
+  // is a client component, so it learns the mode from GET /api/wallet rather
+  // than the env, and hides the controls that would only earn a 403.
+  const [isPoints, setIsPoints] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [walletDataLoading, setWalletDataLoading] = useState(true);
   const [depositAmount, setDepositAmount] = useState('');
@@ -80,6 +84,7 @@ export default function WalletPanel({ className }: WalletPanelProps) {
         setWallet(data.wallet);
         setTransactions(data.transactions || []);
         setWithdrawable(typeof data.withdrawable === 'number' ? data.withdrawable : null);
+        setIsPoints(data.currency_mode === 'points');
       }
     } catch {
       // Wallet may not exist yet, that's fine
@@ -201,7 +206,7 @@ export default function WalletPanel({ className }: WalletPanelProps) {
           </div>
         )}
 
-        {walletAction === 'none' ? (
+        {isPoints ? null : walletAction === 'none' ? (
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => setWalletAction('deposit')}
@@ -326,8 +331,16 @@ export default function WalletPanel({ className }: WalletPanelProps) {
         ) : visibleTransactions.length === 0 ? (
           <EmptySlip
             headline="Nothing in the ledger yet."
-            body="Deposit to fund your wallet. Every bet, win, and payout lands here."
-            action={{ label: 'Make a deposit', onClick: () => setWalletAction('deposit') }}
+            body={
+              isPoints
+                ? 'Every bet, win, and payout lands here.'
+                : 'Deposit to fund your wallet. Every bet, win, and payout lands here.'
+            }
+            action={
+              isPoints
+                ? undefined
+                : { label: 'Make a deposit', onClick: () => setWalletAction('deposit') }
+            }
           />
         ) : (
           <div className="card divide-y divide-line">

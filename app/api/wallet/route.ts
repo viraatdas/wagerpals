@@ -12,6 +12,7 @@ import {
   isPaymentError,
   type RefundGateway,
 } from '@/lib/payments';
+import { isPointsMode, currencyMode, CASH_RAILS_CLOSED } from '@/lib/currency-mode';
 import Stripe from 'stripe';
 
 export const dynamic = 'force-dynamic';
@@ -74,8 +75,14 @@ export async function GET(request: NextRequest) {
     transactions,
     escrow_held_total: summary.escrow_held_total,
     available: summary.available,
-    withdrawable: withdrawable.withdrawable,
-    withdrawable_breakdown: withdrawable,
+    // Points mode closes the cash rails entirely, so the cash-out ceiling is
+    // zero no matter what the deposit history says. Clients read currency_mode
+    // to decide whether to render dollars or points.
+    currency_mode: currencyMode(),
+    withdrawable: isPointsMode() ? 0 : withdrawable.withdrawable,
+    withdrawable_breakdown: isPointsMode()
+      ? { withdrawable: 0, deposited: 0, alreadyWithdrawn: 0, balance: summary.wallet?.balance ?? 0 }
+      : withdrawable,
     // The W counterparts — additive, never mixed with the usd fields above.
     escrow_held_total_wp: summary.escrow_held_total_wp,
     available_wp: summary.available_wp,
@@ -97,6 +104,14 @@ export async function POST(request: NextRequest) {
 
   const mismatch = verifyUserMatch(authResult.userId, user_id);
   if (mismatch) return mismatch;
+
+  // Points mode: both real-money rails are closed. This runs BEFORE amount
+  // parsing, before ensureWallet, and before Stripe is constructed, so a
+  // points-mode deployment cannot create a PaymentIntent, write a pending
+  // withdrawal row, or even touch the database on a cash request.
+  if (isPointsMode() && (action === 'deposit' || action === 'withdraw')) {
+    return NextResponse.json(CASH_RAILS_CLOSED, { status: 403 });
+  }
 
   // These two guards short-circuit before the payments engine, so they have
   // to carry the same machine-readable `code` the engine would have thrown —

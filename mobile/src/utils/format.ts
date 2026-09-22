@@ -1,3 +1,5 @@
+import { IS_POINTS, formatPointsNumber, pointsLabel } from './currency';
+
 // Pure display-formatting helpers shared across screens.
 //
 // Every function here must be safe to call with garbage input (NaN,
@@ -13,7 +15,13 @@ function safeNumber(n: number | undefined | null): number {
 
 export function formatMoney(n: number, opts?: { sign?: boolean }): string {
   const value = safeNumber(n);
-  const formatted = `$${Math.abs(value).toFixed(2)}`;
+  const abs = Math.abs(value);
+  // In points mode the same amounts are stakes in play-money points, never
+  // dollars, so nothing in the UI may render a currency symbol. See
+  // mobile/src/utils/currency.ts for why.
+  const formatted = IS_POINTS
+    ? `${formatPointsNumber(abs)} ${pointsLabel(abs)}`
+    : `$${abs.toFixed(2)}`;
   if (opts?.sign && value !== 0) {
     return value > 0 ? `+${formatted}` : `-${formatted}`;
   }
@@ -33,10 +41,12 @@ export function formatCompactMoney(n: number): string {
     // Avoid a trailing ".0" ("$2k" not "$2.0k") while still showing one
     // decimal place when it's meaningful ("$1.2k").
     const digits = thousands % 1 === 0 ? thousands.toFixed(0) : thousands.toFixed(1);
-    return `${sign}$${digits}k`;
+    return IS_POINTS ? `${sign}${digits}k ${pointsLabel(2)}` : `${sign}$${digits}k`;
   }
 
-  return `${sign}$${abs.toFixed(2)}`;
+  return IS_POINTS
+    ? `${sign}${formatPointsNumber(abs)} ${pointsLabel(abs)}`
+    : `${sign}$${abs.toFixed(2)}`;
 }
 
 // Core "how long ago" logic — this used to live in helpers.ts as

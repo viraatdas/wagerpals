@@ -133,8 +133,18 @@ export function formatTimestamp(timestamp: number): string {
 }
 
 export function formatAmount(amount: number): string {
-  const formatted = amount.toFixed(2);
-  return amount >= 0 ? `+$${formatted}` : `-$${Math.abs(amount).toFixed(2)}`;
+  // Points mode renders play-money points, never a currency symbol. The mode
+  // is read at call time rather than module load so a server restart is not
+  // needed to flip it. See lib/currency-mode.ts.
+  const points = process.env.WAGER_CURRENCY_MODE === 'points';
+  const abs = Math.abs(amount);
+  if (points) {
+    const rounded = Math.round(abs * 100) / 100;
+    const body = `${Number.isInteger(rounded) ? rounded : rounded} ${rounded === 1 ? 'pt' : 'pts'}`;
+    return amount >= 0 ? `+${body}` : `-${body}`;
+  }
+  const formatted = abs.toFixed(2);
+  return amount >= 0 ? `+$${formatted}` : `-$${formatted}`;
 }
 
 // Renders a USERNAME as an inline "@handle" — the single formatting site so

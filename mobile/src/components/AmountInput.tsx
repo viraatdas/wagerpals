@@ -8,6 +8,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, font, radius, spacing, tokens } from '../theme';
 import { tapLight } from '../utils/haptics';
 import { formatMoney } from '../utils/format';
+import { IS_POINTS, pointsLabel } from '../utils/currency';
 
 export interface AmountInputProps {
   value: string;
@@ -17,7 +18,7 @@ export interface AmountInputProps {
   /** Server-side transaction cap (e.g. 500). Entering more shows an inline error. */
   max?: number;
   quickAmounts?: number[];
-  /** The user's current balance, if relevant — renders "Available: $X.XX". */
+  /** The user's current balance, if relevant — renders "Available: ..." in the active currency mode. */
   available?: number;
   editable?: boolean;
 }
@@ -91,7 +92,7 @@ export function AmountInput({
           !editable && styles.inputWrapDisabled,
         ]}
       >
-        <Text style={styles.prefix}>$</Text>
+        {IS_POINTS ? null : <Text style={styles.prefix}>$</Text>}
         <TextInput
           style={styles.input}
           value={value}
@@ -103,12 +104,13 @@ export function AmountInput({
           accessibilityLabel={label}
           maxLength={9}
         />
+        {IS_POINTS ? <Text style={styles.suffix}>{pointsLabel(2)}</Text> : null}
       </View>
 
       {quickAmounts && quickAmounts.length > 0 ? (
         <View style={styles.quickRow}>
           {quickAmounts.map((amount) => {
-            const chipLabel = `$${amount}`;
+            const chipLabel = IS_POINTS ? `${amount} ${pointsLabel(amount)}` : `$${amount}`;
             return (
               <Pressable
                 key={amount}
@@ -168,6 +170,13 @@ const styles = StyleSheet.create({
     fontSize: tokens.fontSize['3xl'],
     color: colors.textMuted,
     marginRight: spacing.xs,
+  },
+  // Points render as a trailing unit ("120 pts") rather than a leading symbol.
+  suffix: {
+    fontFamily: font.monoMedium,
+    fontSize: tokens.fontSize.lg,
+    color: colors.textMuted,
+    marginLeft: spacing.xs,
   },
   input: {
     flex: 1,

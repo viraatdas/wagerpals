@@ -17,6 +17,7 @@
 // page a search engine or an App Review reader is most likely to load cold.
 
 import Link from 'next/link';
+import { isPointsMode } from '@/lib/currency-mode';
 
 export const metadata = {
   title: 'How WagerPals works',
@@ -25,6 +26,9 @@ export const metadata = {
 };
 
 export default function AboutPage() {
+  // Points mode makes every money claim on this page false, and this page is
+  // the app's Support URL, so App Review reads it. See lib/currency-mode.ts.
+  const points = isPointsMode();
   return (
     <div className="page-shell-narrow py-10 sm:py-16">
       <style>{CSS}</style>
@@ -34,12 +38,12 @@ export default function AboutPage() {
         <h1 className="text-3xl sm:text-4xl font-semibold text-ink leading-tight mb-4">
           Your friends already argue about this.
           <br />
-          WagerPals just keeps score and holds the money.
+          {points ? 'WagerPals just keeps score.' : 'WagerPals just keeps score and holds the money.'}
         </h1>
         <p className="lede max-w-2xl">
-          Make a bet with people you know, put real dollars behind it, and let the app
-          settle up when the answer is in. No bookmaker, no odds against the house —
-          just the pot your group put in, going to whoever called it right.
+          {points
+            ? 'Make a bet with people you know, back it with points, and let the app settle up when the answer is in. Points are for bragging rights — they have no cash value, cannot be bought, and cannot be cashed out.'
+            : 'Make a bet with people you know, put real dollars behind it, and let the app settle up when the answer is in. No bookmaker, no odds against the house — just the pot your group put in, going to whoever called it right.'}
         </p>
       </header>
 
@@ -47,7 +51,9 @@ export default function AboutPage() {
       <Step
         n={1}
         title="Pick a side"
-        body="Someone poses a question with two answers. Everyone who wants in picks a side and names their stake. The bar is just the money: which way the group is leaning, and by how much."
+        body={points
+          ? 'Someone poses a question with two answers. Everyone who wants in picks a side and names their stake. The bar is just the points: which way the group is leaning, and by how much.'
+          : 'Someone poses a question with two answers. Everyone who wants in picks a side and names their stake. The bar is just the money: which way the group is leaning, and by how much.'}
       >
         <SplitBarDemo />
       </Step>
@@ -56,7 +62,9 @@ export default function AboutPage() {
       <Step
         n={2}
         title="The stake leaves your balance immediately"
-        body="This is the part people get wrong about betting apps. Your stake is not an IOU — the moment you take a side, that money moves out of your spendable balance and into escrow, where nobody can touch it. Not you, not the other players, not us."
+        body={points
+          ? 'Your stake is not an IOU — the moment you take a side, those points move out of your usable balance and into escrow, where nobody can touch them. Not you, not the other players, not us.'
+          : 'This is the part people get wrong about betting apps. Your stake is not an IOU — the moment you take a side, that money moves out of your spendable balance and into escrow, where nobody can touch it. Not you, not the other players, not us.'}
       >
         <EscrowDemo />
       </Step>
@@ -65,19 +73,31 @@ export default function AboutPage() {
       <Step
         n={3}
         title="Settlement pays the pot out in one move"
-        body="When the bet is resolved, every stake in escrow is released at once and split across the winning side in proportion to what each person risked. Bet twice as much, take twice as much home. If a bet is called off instead, every stake goes straight back to whoever put it in."
+        body={points
+          ? 'When the bet is resolved, every stake in escrow is released at once and split across the winning side in proportion to what each person risked. Stake twice as much, take twice as much. If a bet is called off instead, every stake goes straight back to whoever put it in.'
+          : 'When the bet is resolved, every stake in escrow is released at once and split across the winning side in proportion to what each person risked. Bet twice as much, take twice as much home. If a bet is called off instead, every stake goes straight back to whoever put it in.'}
       >
         <SettlementDemo />
       </Step>
 
       {/* ---------------------------------------------------------------- */}
-      <Step
-        n={4}
-        title="Money comes in by card, and leaves the same way"
-        body="Deposits are ordinary card payments. Withdrawals are refunds against those same payments, which is why cashing out lands back on the card you paid with. It also means the $10 we give you to start, and anything you win off your friends, stays in the app as money to bet with rather than becoming cash."
-      >
-        <MoneyLoopDemo />
-      </Step>
+      {points ? (
+        <Step
+          n={4}
+          title="Points are not money"
+          body="Points exist only inside WagerPals. There is nothing to deposit and nothing to cash out: you cannot buy points, they cannot be exchanged for money or anything of value, and winning them off your friends gets you bragging rights and a better record. Every account starts with 10 points on the house."
+        >
+          <div />
+        </Step>
+      ) : (
+        <Step
+          n={4}
+          title="Money comes in by card, and leaves the same way"
+          body="Deposits are ordinary card payments. Withdrawals are refunds against those same payments, which is why cashing out lands back on the card you paid with. It also means the $10 we give you to start, and anything you win off your friends, stays in the app as money to bet with rather than becoming cash."
+        >
+          <MoneyLoopDemo />
+        </Step>
+      )}
 
       <section className="card p-6 sm:p-8 mt-16">
         <h2 className="text-xl font-semibold text-ink mb-3">The short version</h2>
@@ -85,12 +105,16 @@ export default function AboutPage() {
           <Fact term="Who holds the stakes" def="Escrow, from the moment a bet is placed until it is resolved. A stake is never in someone else's balance while the bet is open." />
           <Fact term="Where the winnings come from" def="Only the pot your group put in. There is no house taking the other side of your bet." />
           <Fact term="What a tie or a cancelled bet does" def="Every stake is refunded in full to the person who placed it." />
-          <Fact term="What you can withdraw" def="Up to what you have paid in by card and not already taken out. Winnings above that stay in your wallet." />
+          {points ? (
+            <Fact term="What points are worth" def="Nothing outside the app. Points cannot be bought, sold, exchanged for money, or cashed out. They are for keeping score." />
+          ) : (
+            <Fact term="What you can withdraw" def="Up to what you have paid in by card and not already taken out. Winnings above that stay in your wallet." />
+          )}
         </dl>
       </section>
 
       <p className="text-sm text-ink-muted mt-10">
-        Questions about your account or your money?{' '}
+        {points ? 'Questions about your account?' : 'Questions about your account or your money?'}{' '}
         <Link href="/privacy" className="underline underline-offset-4 hover:text-ink">
           Read the privacy policy
         </Link>{' '}

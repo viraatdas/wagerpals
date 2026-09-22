@@ -30,7 +30,8 @@
     "verify:users-auth": "tsx scripts/verify-users-auth.ts",
     "verify:activity-auth": "tsx scripts/verify-activity-auth.ts",
     "brand:verify": "tsx scripts/verify-brand.ts",
-    "verify:withdrawals": "tsx scripts/verify-withdrawals.ts"
+    "verify:withdrawals": "tsx scripts/verify-withdrawals.ts",
+    "verify:points-mode": "tsx scripts/verify-points-mode.ts"
   },
   "dependencies": {
     "@stackframe/stack": "^2.8.41",

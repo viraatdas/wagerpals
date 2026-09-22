@@ -7,6 +7,7 @@
 // native header (title/back button) — this screen only renders the content
 // below that header, matching GroupDetailScreen/EventDetailScreen.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { IS_POINTS } from '../utils/currency';
 import {
   View,
   Text,
@@ -446,34 +447,44 @@ export default function WalletScreen() {
       <Card elevated style={styles.heroCard}>
         <Text style={styles.heroLabel}>Available balance</Text>
         <Money amount={available} tone="auto" size="lg" style={styles.heroAmount} />
-        <Text style={styles.seedText}>New accounts start with $10 on the house.</Text>
+        <Text style={styles.seedText}>
+          {IS_POINTS
+            ? 'New accounts start with 10 points on the house.'
+            : 'New accounts start with $10 on the house.'}
+        </Text>
         <View style={styles.escrowRow}>
           {/* Escrow is money STATE, not a person — quiet info tone, same as
               the "Escrow $X" badge on EventDetailScreen, never amber. */}
           <Pill label={`${formatMoney(escrowed)} escrowed`} tone="info" icon="lock-closed-outline" />
         </View>
         <Text style={styles.escrowExplainer}>
-          Escrowed funds are held for bets on events that haven&apos;t settled yet. They&apos;re yours. You just
-          can&apos;t spend or withdraw them until the event resolves.
+          {IS_POINTS
+            ? "Escrowed points are held for bets on events that haven't settled yet. They're yours. You just can't stake them again until the event resolves."
+            : "Escrowed funds are held for bets on events that haven't settled yet. They're yours. You just can't spend or withdraw them until the event resolves."}
         </Text>
       </Card>
 
-      <View style={styles.actionsRow}>
-        <Button
-          title="Add funds"
-          onPress={openDeposit}
-          variant="primary"
-          icon="add-circle-outline"
-          style={styles.actionButton}
-        />
-        <Button
-          title="Withdraw"
-          onPress={openWithdraw}
-          variant="secondary"
-          icon="arrow-up-circle-outline"
-          style={styles.actionButton}
-        />
-      </View>
+      {/* Points mode has no cash rails to offer. The server refuses deposit and
+          withdraw outright (lib/currency-mode.ts), so rendering the buttons
+          would only lead to a 403. */}
+      {IS_POINTS ? null : (
+        <View style={styles.actionsRow}>
+          <Button
+            title="Add funds"
+            onPress={openDeposit}
+            variant="primary"
+            icon="add-circle-outline"
+            style={styles.actionButton}
+          />
+          <Button
+            title="Withdraw"
+            onPress={openWithdraw}
+            variant="secondary"
+            icon="arrow-up-circle-outline"
+            style={styles.actionButton}
+          />
+        </View>
+      )}
 
       {depositHandoffPending ? (
         <Card style={styles.handoffCard}>
