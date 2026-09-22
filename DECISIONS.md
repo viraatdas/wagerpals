@@ -1383,3 +1383,37 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   web and TestFlight builds. This is a product decision, not an engineering one, so it is
   NOT being made unilaterally — raised for the owner.
 - **By:** worker · 2026-09-22
+
+## App Store: play-money conversion shipped; listing, rating and screenshots realigned
+- **Owner decision (2026-09-22):** after being shown that 5.3.4 licensing, not the
+  organization account, was the real wall, the owner chose the play-money path and then
+  set the goal "optimize for making sure it gets through the app store".
+- **Production is now in points mode.** `WAGER_CURRENCY_MODE=points` is set in Vercel and
+  live. Verified against www.wagerpals.io: `GET /api/wallet` returns
+  `currency_mode: "points"` and `withdrawable: 0`; `POST /api/wallet` with action=deposit
+  and action=withdraw both return **403 CASH_RAILS_CLOSED**; `/about` now renders the
+  points copy ("Points are not money", "cannot be bought", "no cash value") instead of the
+  card round-trip.
+- **Exposure before the switch:** 42 users, $402 of wallet balance, but only **2 real card
+  deposits totalling $11.00** against **$4,920 of house grants**. Nothing of value is
+  stranded. (The $11 is refundable by hand if ever asked for.)
+- **Age rating corrected to the accurate declaration:** `gambling=false` (there is no real
+  money any more) and `gamblingSimulated=FREQUENT_OR_INTENSE` (wagering with play-money
+  points IS simulated gambling, and declaring it is what keeps us clear of a repeat 2.3.6).
+  Resulting appStoreAgeRating: **SEVENTEEN_PLUS**. Note this reverses the `gambling=true`
+  set two days ago — legitimate only because the BINARY changed; the review notes say so
+  explicitly so it does not read as circumvention.
+- **Listing rewritten honestly.** It now states plainly that wagers are staked in points,
+  that points have no cash value, cannot be bought and cannot be cashed out. The earlier
+  scrub-the-money-language approach is dead and buried: it never worked, and this copy is
+  accurate rather than merely silent.
+- **Screenshots: the two wallet shots were deleted** (`appstore-wallet.png`,
+  `appstore-ipad-wallet.png`). Both showed "$ CASH $40.00" with Deposit and Withdraw
+  buttons — controls that no longer exist, which would have been a Guideline 2.3.3
+  misrepresentation and a direct contradiction of the new description. Board and detail
+  shots were checked by eye and show a play-currency glyph with no dollars, so they stay.
+  Every enforced set still has at least one COMPLETE screenshot.
+- **Build 24 is REQUIRED** (unlike the last round): `mobile/` changed this time —
+  `currency.ts`, `format.ts`, `WalletScreen.tsx`, `AmountInput.tsx`. Building locally via
+  `mobile/scripts/local-build.sh 24`.
+- **By:** worker · 2026-09-22
