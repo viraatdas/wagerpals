@@ -1353,3 +1353,33 @@ Shared, agent-authored log of cross-cutting decisions the fleet must honor. The 
   grouped for Sign in with Apple must be ungrouped first, and a transfer identifier must be
   generated per user; TestFlight must be turned off beforehand.
 - **By:** worker · 2026-09-22
+
+## App Store: declaring gambling=Yes triggers 5.3.4, and licensing — not the org account — is the real wall
+- **What:** Apple's 2.3.6 rejection forced `gambling=true`. That declaration pulls the app
+  under **Guideline 5.3.4**, quoted verbatim from the live guidelines on 2026-09-22:
+  "Apps that offer real money gaming (e.g. sports betting, poker, casino games, horse
+  racing) or lotteries must have necessary licensing and permissions in the locations where
+  the app is used, must be geo-restricted to those locations, and must be free on the App
+  Store."
+- **Scored against the current app:**
+  - Free on the App Store — **PASS**. Price point is $0.00.
+  - No IAP for real-money credit (5.3.3) — **PASS**, and correctly so: zero IAP products,
+    deposits go through Stripe. 5.3.3 forbids using IAP here, so Stripe is the right call.
+  - Geo-restricted to licensed locations — **FAIL**. No `appAvailability` record exists, so
+    the app ships to all territories.
+  - Necessary licensing and permissions — **FAIL, and this is the real wall.** WagerPals
+    holds no gambling licence in any jurisdiction. In the US this is state-by-state, and it
+    is a six-figure, multi-month process per state.
+- **Consequence:** the organization account (5.1.1(ix)) is necessary but NOT sufficient.
+  Even with Exla enrolled and migrated, 5.3.4 licensing would still block release. As
+  designed — real dollars staked on outcomes — this app cannot pass App Review without
+  gambling licensing, however the metadata is worded. Note the earlier listing-copy scrub
+  did not avoid this: the reviewer classified the app from the binary, not the description.
+- **The one path that removes both 5.3.4 and 5.1.1(ix):** stop staking real money on the
+  App Store build. If wagers are play-money/bragging-rights, the app is not real money
+  gaming, needs no licence, no geo-restriction and no organization account, and the 4+
+  rating would even be accurate again. The Stripe engine (`lib/payments.ts`, escrow,
+  refund-to-source withdrawals) can stay in the codebase behind a flag and keep serving the
+  web and TestFlight builds. This is a product decision, not an engineering one, so it is
+  NOT being made unilaterally — raised for the owner.
+- **By:** worker · 2026-09-22
